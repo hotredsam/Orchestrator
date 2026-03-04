@@ -445,7 +445,16 @@ class RepoState:
     @classmethod
     def from_dict(cls, d):
         d = dict(d)
-        d["current_state"] = State(d.get("current_state", "idle"))
+        try:
+            d["current_state"] = State(d.get("current_state", "idle"))
+        except ValueError:
+            log.warning("Invalid state value %r, defaulting to IDLE", d.get("current_state"))
+            d["current_state"] = State.IDLE
+        # Validate types for known fields
+        if not isinstance(d.get("cycle_count", 0), int):
+            d["cycle_count"] = int(d.get("cycle_count", 0) or 0)
+        if not isinstance(d.get("errors", []), list):
+            d["errors"] = []
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -583,6 +592,35 @@ class RepoDB:
                     continue
                 raise
 
+    def close(self):
+        """Safely close the database, flushing WAL."""
+        try:
+            with self.lock:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.conn.close()
+        except Exception as e:
+            log.warning("Error closing DB %s: %s", self.path, e)
+
+    def transaction(self):
+        """Context manager for atomic multi-statement operations."""
+        class _Tx:
+            def __init__(tx, db):
+                tx.db = db
+            def __enter__(tx):
+                tx.db.lock.acquire()
+                tx.db.conn.execute("BEGIN IMMEDIATE")
+                return tx.db
+            def __exit__(tx, exc_type, exc_val, exc_tb):
+                try:
+                    if exc_type is None:
+                        tx.db.conn.commit()
+                    else:
+                        tx.db.conn.rollback()
+                finally:
+                    tx.db.lock.release()
+                return False
+        return _Tx(self)
+
     def fetchall(self, q, p=()):
         return [dict(r) for r in self.ex(q, p).fetchall()]
 
@@ -670,7 +708,13 @@ class RepoDB:
 
     def load_state(self):
         r = self.fetchone("SELECT state_json FROM repo_state WHERE id=1")
-        return RepoState.from_dict(json.loads(r["state_json"])) if r else RepoState()
+        if not r:
+            return RepoState()
+        try:
+            return RepoState.from_dict(json.loads(r["state_json"]))
+        except (json.JSONDecodeError, TypeError, KeyError) as e:
+            log.error("Corrupted state JSON in DB, resetting to IDLE: %s", e)
+            return RepoState()
 
     # Log
     def log_exec(self, state, action, result="", agents=0, cost=0, dur=0, error=""):
@@ -1602,7 +1646,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         """Close the per-repo database connection."""
         if hasattr(self, "db") and self.db:
             try:
-                self.db.conn.close()
+                self.db.close()
             except Exception as e:
                 log.debug(f"DB close error for {getattr(self, 'repo', {}).get('name', '?')}: {e}")
 
@@ -3069,16 +3113,14 @@ class API(BaseHTTPRequestHandler):
             items_list = db.fetchall("SELECT * FROM items WHERE status='pending' ORDER BY created_at ASC")
             seen_titles = {}
             dupes_removed = 0
-            for item in items_list:
-                # Normalize title for comparison
-                key = item["title"].lower().strip()
-                if key in seen_titles:
-                    db.ex("DELETE FROM items WHERE id=?", (item["id"],))
-                    dupes_removed += 1
-                else:
-                    seen_titles[key] = item["id"]
-            if dupes_removed > 0:
-                db.commit()
+            with db.transaction():
+                for item in items_list:
+                    key = item["title"].lower().strip()
+                    if key in seen_titles:
+                        db.conn.execute("DELETE FROM items WHERE id=?", (item["id"],))
+                        dupes_removed += 1
+                    else:
+                        seen_titles[key] = item["id"]
             return self._json({"ok": True, "duplicates_removed": dupes_removed, "remaining": len(seen_titles)})
 
         if path == "/api/items/retry":
@@ -3150,10 +3192,10 @@ class API(BaseHTTPRequestHandler):
             swap_idx = idx - 1 if direction == "up" else idx + 1
             if swap_idx < 0 or swap_idx >= len(steps):
                 return self._json({"error": "Cannot move further"}, 400)
-            # Swap step_order values
-            db.ex("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[swap_idx]["step_order"], steps[idx]["id"]))
-            db.ex("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[idx]["step_order"], steps[swap_idx]["id"]))
-            db.commit()
+            # Swap step_order values atomically
+            with db.transaction():
+                db.conn.execute("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[swap_idx]["step_order"], steps[idx]["id"]))
+                db.conn.execute("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[idx]["step_order"], steps[swap_idx]["id"]))
             return self._json({"ok": True})
 
         if path == "/api/notes":

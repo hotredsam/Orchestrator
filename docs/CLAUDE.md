@@ -138,6 +138,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Telegram agent-stats command** — `agent-stats [repo]` shows per-agent-type performance from Telegram
 - **Keyboard shortcuts expanded** — F=focus search, C=clear all filters, [/]=prev/next tab, Esc=deselect
 - **Priority filter** — bounty board items filterable by priority (Critical/High/Medium/Low) alongside status and source filters
+- **Transaction safety** — RepoDB.transaction() context manager for atomic multi-statement operations (dedupe, plan reorder)
+- **State recovery** — corrupted state JSON in DB auto-recovers to IDLE instead of crashing, with type validation
+- **Safe DB close** — WAL checkpoint on close ensures all writes flushed to main database file
 
 ## Commands
 ```bash
