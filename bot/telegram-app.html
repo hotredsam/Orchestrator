@@ -633,9 +633,23 @@
           <button class="btn btn-outline btn-sm" onclick="refreshHome()">Refresh</button>
         </div>
         <div id="homeRepoList">
-          <div class="empty-state">
-            <div class="empty-emoji">🏜️</div>
-            <p>Loading repos...</p>
+          <div class="card" style="opacity:0.6;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+              <div style="width:40%;height:16px;border-radius:6px;background:var(--text-secondary);opacity:0.2;animation:pulse 1.5s infinite;"></div>
+              <div style="width:20%;height:16px;border-radius:10px;background:var(--green);opacity:0.2;animation:pulse 1.5s infinite;"></div>
+            </div>
+            <div style="width:70%;height:12px;border-radius:4px;background:var(--text-secondary);opacity:0.15;margin-bottom:6px;animation:pulse 1.5s infinite;"></div>
+            <div style="width:50%;height:12px;border-radius:4px;background:var(--text-secondary);opacity:0.15;animation:pulse 1.5s infinite;"></div>
+          </div>
+          <div class="card" style="opacity:0.4;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+              <div style="width:35%;height:16px;border-radius:6px;background:var(--text-secondary);opacity:0.2;animation:pulse 1.5s infinite;"></div>
+              <div style="width:18%;height:16px;border-radius:10px;background:var(--orange);opacity:0.2;animation:pulse 1.5s infinite;"></div>
+            </div>
+            <div style="width:65%;height:12px;border-radius:4px;background:var(--text-secondary);opacity:0.15;animation:pulse 1.5s infinite;"></div>
+          </div>
+          <div class="card" style="opacity:0.25;">
+            <div style="width:45%;height:16px;border-radius:6px;background:var(--text-secondary);opacity:0.2;animation:pulse 1.5s infinite;"></div>
           </div>
         </div>
       </div>

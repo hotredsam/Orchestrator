@@ -1196,6 +1196,30 @@ function Dashboard() {
                 })}
               </div>
             )}
+            {/* Cycle Insights */}
+            {(() => {
+              const cycleRepos = repos.filter(r => (r.cycle_count || 0) > 0);
+              if (cycleRepos.length === 0) return null;
+              const totalCycles = cycleRepos.reduce((s, r) => s + (r.cycle_count || 0), 0);
+              const totalDone = cycleRepos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
+              const avgItemsPerCycle = totalCycles > 0 ? (totalDone / totalCycles).toFixed(1) : 0;
+              const avgCostPerCycle = totalCycles > 0 ? (repoStats.totalCost / totalCycles).toFixed(3) : 0;
+              return (
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                  {[
+                    { label: "Total Cycles", val: totalCycles, icon: "\uD83D\uDD04" },
+                    { label: "Avg Items/Cycle", val: avgItemsPerCycle, icon: "\uD83D\uDCE6" },
+                    { label: "Avg $/Cycle", val: "$" + avgCostPerCycle, icon: "\uD83D\uDCB0" },
+                  ].map((m, i) => (
+                    <div key={i} style={{ background: C.white, border: `2px solid ${C.darkBrown}22`, borderRadius: 10, padding: "6px 14px", textAlign: "center", fontSize: 11, minWidth: 90 }}>
+                      <div style={{ fontSize: 16 }}>{m.icon}</div>
+                      <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1 }}>{m.val}</div>
+                      <div style={{ fontSize: 9, color: C.brown, fontWeight: 600 }}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {/* Activity Heatmap */}
             {heatmap && Object.keys(heatmap.grid || {}).length > 0 && (
               <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 12px", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>

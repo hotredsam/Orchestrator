@@ -503,9 +503,27 @@ def cmd_logs(name):
     logs = _orch_get(f"/api/logs?repo_id={repo['id']}")
     if not logs or (isinstance(logs, dict) and "error" in logs):
         return f"No logs for {repo['name']}."
-    lines = [f"*Last 5 logs for {repo['name']}:*\n"]
+
+    err_count = sum(1 for l in logs if l.get("error"))
+    total_cost = sum(l.get("cost_usd", 0) for l in logs)
+    lines = [f"\U0001F4DC *Logs for {repo['name']}* ({len(logs)} entries)"]
+    if err_count > 0 or total_cost > 0:
+        parts = []
+        if err_count > 0:
+            parts.append(f"\u26A0\uFE0F {err_count} errors")
+        if total_cost > 0:
+            parts.append(f"\U0001F4B0 ${total_cost:.3f}")
+        lines.append(" | ".join(parts))
+    lines.append("")
+
     for l in logs[:5]:
-        lines.append(f"[{l.get('state','')}] {l.get('action','')} — {l.get('result','')[:80]}")
+        state_emoji = "\U0001F534" if l.get("error") else "\U0001F7E2"
+        cost_str = f" (${l.get('cost_usd', 0):.3f})" if l.get("cost_usd", 0) > 0 else ""
+        dur_str = f" {l.get('duration_sec', 0):.0f}s" if l.get("duration_sec", 0) > 0 else ""
+        lines.append(f"{state_emoji} `{l.get('state', '')}`{dur_str}{cost_str}")
+        lines.append(f"  {l.get('action', '')} — {l.get('result', '')[:60]}")
+    if len(logs) > 5:
+        lines.append(f"\n_...and {len(logs) - 5} more_")
     return "\n".join(lines)
 
 
