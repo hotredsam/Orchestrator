@@ -947,17 +947,23 @@ def cmd_activity():
     if not isinstance(repos, list):
         return "Could not fetch repos."
     lines = ["*Recent Activity*", ""]
+    total_errors = 0
     for repo in repos[:10]:
         rid = repo.get("id")
-        logs_data = _orch_get(f"/api/logs?repo_id={rid}&limit=3")
+        logs_data = _orch_get(f"/api/logs?repo_id={rid}&limit=5")
         if isinstance(logs_data, list) and logs_data:
-            lines.append(f"*{repo['name']}* ({repo.get('state', 'idle')})")
+            err_count = sum(1 for l in logs_data if l.get("error"))
+            total_errors += err_count
+            err_badge = f" \U0001F534 {err_count} err" if err_count else ""
+            lines.append(f"*{repo['name']}* ({repo.get('state', 'idle')}){err_badge}")
             for l in logs_data[:2]:
-                action = (l.get("action") or l.get("result") or "—")[:60]
+                action = (l.get("action") or l.get("result") or "\u2014")[:60]
                 ts = (l.get("created_at") or "")[-8:]
                 err = " \u274C" if l.get("error") else ""
                 lines.append(f"  `{ts}` {action}{err}")
             lines.append("")
+    if total_errors > 0:
+        lines.insert(2, f"\u26A0\uFE0F *{total_errors} total errors* across recent activity\n")
     return "\n".join(lines) if len(lines) > 2 else "No recent activity."
 
 

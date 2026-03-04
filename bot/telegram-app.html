@@ -1597,15 +1597,25 @@
       document.getElementById('healthResults').innerHTML = results.map(r => {
         const score = r.health_score || 0;
         const color = score >= 80 ? 'var(--green)' : score >= 50 ? 'var(--orange)' : 'var(--red)';
+        // Store health history in localStorage for trend
+        const hKey = 'health_' + (r.repo_id || r.repo_name);
+        const hist = JSON.parse(localStorage.getItem(hKey) || '[]');
+        hist.push(score);
+        if (hist.length > 7) hist.splice(0, hist.length - 7);
+        localStorage.setItem(hKey, JSON.stringify(hist));
+        const trend = hist.length >= 2 ? (hist[hist.length-1] - hist[hist.length-2]) : 0;
+        const trendIcon = trend > 0 ? '📈' : trend < 0 ? '📉' : '→';
+        const sparkBars = hist.map(s => `<div style="width:4px;height:${Math.max(2, Math.round(s/5))}px;background:${s >= 80 ? 'var(--green)' : s >= 50 ? 'var(--orange)' : 'var(--red)'};border-radius:1px;"></div>`).join('');
         return `
           <div class="card">
             <div class="flex-between mb-8">
               <div class="card-title">${esc(r.repo_name)}</div>
-              <div class="health-score" style="color:${color}">${score}%</div>
+              <div class="health-score" style="color:${color}">${score}% ${trendIcon}</div>
             </div>
             <div class="health-bar">
               <div class="health-bar-fill" style="width:${score}%; background:${color}"></div>
             </div>
+            ${hist.length > 1 ? `<div style="display:flex;align-items:flex-end;gap:2px;height:22px;margin:4px 0;">${sparkBars}</div>` : ''}
             ${r.issues?.length ? r.issues.map(iss => `
               <div class="issue-item">
                 <span class="issue-severity sev-${iss.severity}">${iss.severity}</span>

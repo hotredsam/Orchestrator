@@ -3279,21 +3279,26 @@ function Dashboard() {
                 {apiMetrics.latency && Object.keys(apiMetrics.latency).length > 0 && (
                   <Card bg={C.white} style={{ padding: 18 }}>
                     <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>{"\u23F1\uFE0F"} Latency Breakdown</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "2fr repeat(4, 1fr)", gap: 4, fontSize: 11 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr repeat(5, 1fr)", gap: 4, fontSize: 11 }}>
                       <div style={{ fontWeight: 700, padding: "4px 0" }}>Endpoint</div>
                       <div style={{ fontWeight: 700, textAlign: "center" }}>Avg</div>
                       <div style={{ fontWeight: 700, textAlign: "center" }}>P50</div>
                       <div style={{ fontWeight: 700, textAlign: "center" }}>P95</div>
                       <div style={{ fontWeight: 700, textAlign: "center" }}>Max</div>
-                      {Object.entries(apiMetrics.latency).sort((a, b) => b[1].p95_ms - a[1].p95_ms).map(([ep, lat]) => (
+                      <div style={{ fontWeight: 700, textAlign: "center" }} title="P95/P50 ratio - higher means more variable">Spiky</div>
+                      {Object.entries(apiMetrics.latency).sort((a, b) => b[1].p95_ms - a[1].p95_ms).map(([ep, lat]) => {
+                        const spikeRatio = lat.p50_ms > 0 ? (lat.p95_ms / lat.p50_ms) : 1;
+                        const spikeColor = spikeRatio > 3 ? C.red : spikeRatio > 2 ? C.orange : C.green;
+                        return (
                         <React.Fragment key={ep}>
                           <div style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ep}</div>
                           <div style={{ textAlign: "center", padding: "3px 0" }}>{lat.avg_ms}ms</div>
                           <div style={{ textAlign: "center", padding: "3px 0" }}>{lat.p50_ms}ms</div>
                           <div style={{ textAlign: "center", padding: "3px 0", color: lat.p95_ms > 500 ? C.red : lat.p95_ms > 200 ? C.orange : C.green, fontWeight: 700 }}>{lat.p95_ms}ms</div>
                           <div style={{ textAlign: "center", padding: "3px 0", color: lat.max_ms > 1000 ? C.red : C.brown }}>{lat.max_ms}ms</div>
+                          <div style={{ textAlign: "center", padding: "3px 0", color: spikeColor, fontWeight: 700, fontSize: 10 }}>{spikeRatio > 3 ? "\uD83D\uDCC8" : spikeRatio > 2 ? "\u26A0\uFE0F" : "\u2705"} {spikeRatio.toFixed(1)}x</div>
                         </React.Fragment>
-                      ))}
+                      );})}
                     </div>
                   </Card>
                 )}
