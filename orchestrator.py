@@ -76,7 +76,7 @@ _wl = os.environ.get("TELEGRAM_WHITELIST", "")
 TELEGRAM_WHITELIST = {int(x.strip()) for x in _wl.split(",") if x.strip().isdigit()} if _wl else set()
 
 # Paths exempt from bearer token auth (static assets + token endpoint)
-AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token", "/api/events", "/api/status"}
+AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token", "/api/events", "/api/status", "/api/docs"}
 
 
 def validate_telegram_init_data(init_data: str) -> dict:
@@ -2989,6 +2989,51 @@ class API(BaseHTTPRequestHandler):
                 "circuit_breakers": cb_summary,
                 "version": "3.0",
             })
+
+        if path == "/api/docs":
+            return self._json({"endpoints": [
+                {"method": "GET", "path": "/api/status", "desc": "System uptime, counts, version"},
+                {"method": "GET", "path": "/api/repos", "desc": "List all repos with stats"},
+                {"method": "GET", "path": "/api/items?repo_id=N", "desc": "Items for a repo"},
+                {"method": "GET", "path": "/api/plan?repo_id=N", "desc": "Plan steps for a repo"},
+                {"method": "GET", "path": "/api/logs?repo_id=N", "desc": "Execution logs"},
+                {"method": "GET", "path": "/api/agents?repo_id=N", "desc": "Active agents"},
+                {"method": "GET", "path": "/api/memory?repo_id=N", "desc": "Memory entries"},
+                {"method": "GET", "path": "/api/mistakes?repo_id=N", "desc": "Mistake log"},
+                {"method": "GET", "path": "/api/costs", "desc": "Per-repo costs"},
+                {"method": "GET", "path": "/api/costs/history", "desc": "Daily cost history"},
+                {"method": "GET", "path": "/api/health-scan", "desc": "Health scan all repos"},
+                {"method": "GET", "path": "/api/health/detailed", "desc": "Health scores (A-F)"},
+                {"method": "GET", "path": "/api/metrics", "desc": "API request/latency stats"},
+                {"method": "GET", "path": "/api/digest", "desc": "Daily digest summary"},
+                {"method": "GET", "path": "/api/circuit-breakers", "desc": "Circuit breaker states"},
+                {"method": "GET", "path": "/api/search?q=term", "desc": "Cross-repo search"},
+                {"method": "GET", "path": "/api/repos/snapshot?repo_id=N", "desc": "Full repo data snapshot"},
+                {"method": "GET", "path": "/api/webhooks", "desc": "List registered webhooks"},
+                {"method": "GET", "path": "/api/budget", "desc": "Budget limit and spend"},
+                {"method": "GET", "path": "/api/token", "desc": "Current API bearer token"},
+                {"method": "GET", "path": "/api/events", "desc": "SSE real-time events stream"},
+                {"method": "GET", "path": "/api/docs", "desc": "This endpoint list"},
+                {"method": "POST", "path": "/api/start", "desc": "Start repo(s)"},
+                {"method": "POST", "path": "/api/stop", "desc": "Stop repo(s)"},
+                {"method": "POST", "path": "/api/pause", "desc": "Pause a running repo"},
+                {"method": "POST", "path": "/api/resume", "desc": "Resume a paused repo"},
+                {"method": "POST", "path": "/api/push", "desc": "Git push a repo"},
+                {"method": "POST", "path": "/api/repos", "desc": "Register a new repo"},
+                {"method": "POST", "path": "/api/repos/delete", "desc": "Remove a repo"},
+                {"method": "POST", "path": "/api/items", "desc": "Add an item (feature/issue)"},
+                {"method": "POST", "path": "/api/items/update", "desc": "Update an item"},
+                {"method": "POST", "path": "/api/items/delete", "desc": "Delete an item"},
+                {"method": "POST", "path": "/api/items/bulk", "desc": "Add multiple items"},
+                {"method": "POST", "path": "/api/items/bulk-update", "desc": "Bulk update items"},
+                {"method": "POST", "path": "/api/items/reorder", "desc": "Reorder items"},
+                {"method": "POST", "path": "/api/webhooks", "desc": "Register a webhook"},
+                {"method": "POST", "path": "/api/webhooks/delete", "desc": "Remove a webhook"},
+                {"method": "POST", "path": "/api/budget", "desc": "Set budget limit"},
+                {"method": "POST", "path": "/api/token/rotate", "desc": "Rotate API token"},
+                {"method": "POST", "path": "/api/rollback", "desc": "Git rollback a repo"},
+                {"method": "POST", "path": "/api/audio", "desc": "Upload audio for transcription"},
+            ]})
 
         if path == "/api/metrics":
             with _metrics_lock:
