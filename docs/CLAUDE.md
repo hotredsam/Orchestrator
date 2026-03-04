@@ -107,6 +107,7 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Browser notifications** — optional desktop notifications for cycle complete, errors, budget exceeded (localStorage toggle)
 - **Cache invalidation** — response cache cleared on all POST requests to ensure fresh data after writes
 - **Master view search** — search bar + state filter chips (All/Running/Idle/Pinned) on master view
+- **Master quick actions** — Start/Stop/Pause/Resume/Push buttons directly on master view cards
 
 ## Commands
 ```bash

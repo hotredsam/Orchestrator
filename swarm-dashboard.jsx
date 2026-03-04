@@ -927,6 +927,22 @@ function Dashboard() {
                         </div>
                       ))}
                     </div>
+                    {/* Quick actions */}
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
+                      {r.running ? (
+                        <>
+                          <button onClick={e => { e.stopPropagation(); f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }).then(load); }}
+                            style={{ background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }}>{"\u23F9"} Stop</button>
+                          <button onClick={e => { e.stopPropagation(); f(`/api/${r.paused ? "resume" : "pause"}`, { method: "POST", body: JSON.stringify({ repo_id: r.id }) }).then(load); }}
+                            style={{ background: r.paused ? C.green : C.orange, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }}>{r.paused ? "\u25B6 Resume" : "\u23F8 Pause"}</button>
+                        </>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); startRepo(r.id); }}
+                          style={{ background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }}>{"\u25B6"} Start</button>
+                      )}
+                      <button onClick={e => { e.stopPropagation(); f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: r.id, message: "manual push" }) }).then(() => showToast(`${r.name} pushed`, "success")); }}
+                        style={{ background: C.teal, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }}>{"\uD83D\uDE80"} Push</button>
+                    </div>
                   </Card>
                 );
               })}
