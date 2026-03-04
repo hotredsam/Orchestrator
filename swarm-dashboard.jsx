@@ -372,6 +372,17 @@ function Dashboard() {
     showToast(`Exported ${logs.length} log entries`, "success");
   };
 
+  const reorderStep = async (stepId, direction) => {
+    if (!sr) return;
+    await apiAction("/api/plan/reorder", { method: "POST", body: JSON.stringify({ repo_id: sr, step_id: stepId, direction }) }, `Step moved ${direction}`);
+  };
+  const importItems = async (jsonText) => {
+    if (!sr) return;
+    try {
+      const items = JSON.parse(jsonText);
+      await apiAction("/api/items/import", { method: "POST", body: JSON.stringify({ repo_id: sr, items: Array.isArray(items) ? items : [items] }) }, "Items imported");
+    } catch { showToast("Invalid JSON", "error"); }
+  };
   const exportComparison = () => {
     if (!comparison?.repos?.length) return;
     const header = "Name,State,Cost,Cost/Item,Items Done,Items Total,Error Rate,Cycles,Actions\n";
@@ -1185,6 +1196,12 @@ function Dashboard() {
               <textarea placeholder="Describe the bounty in detail..." value={ni.description} onChange={e => setNI(p=>({...p,description:e.target.value}))}
                 style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka',sans-serif", minHeight: 70, resize: "vertical", outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
               <Btn onClick={addItem} style={{ fontSize: 16, padding: "12px 28px" }}>Post {ni.type === "issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"} Bounty</Btn>
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ fontSize: 12, color: C.brown, cursor: "pointer", fontWeight: 600 }}>Import items from JSON</summary>
+                <textarea id="import-json" placeholder='[{"title":"My feature","type":"feature","priority":"high","description":"Details..."}]'
+                  style={{ width: "100%", padding: 10, background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, fontSize: 12, fontFamily: "monospace", minHeight: 60, resize: "vertical", marginTop: 6, boxSizing: "border-box" }} />
+                <Btn bg={C.teal} onClick={() => { const el = document.getElementById("import-json"); if (el?.value) importItems(el.value); }} style={{ fontSize: 12, padding: "6px 14px", marginTop: 6 }}>Import JSON</Btn>
+              </details>
             </Card>
             {items.length > 0 && (
               <div style={{ maxWidth: 620, margin: "0 auto 12px", display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
@@ -1338,6 +1355,12 @@ function Dashboard() {
                           {done && <span style={{ fontSize: 10, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u2705"} Tests: {s.tests_passed}/{s.tests_written}</span>}
                           {done && s.cost_usd > 0 && <span style={{ fontSize: 10, background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83D\uDCB0"} ${s.cost_usd.toFixed(3)}</span>}
                           {done && s.duration_sec > 0 && <span style={{ fontSize: 10, background: C.lightTeal, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u23F1\uFE0F"} {Math.round(s.duration_sec)}s</span>}
+                          {!done && (
+                            <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+                              {i > 0 && <button onClick={() => reorderStep(s.id, "up")} style={{ background: C.cream, border: `1px solid ${C.darkBrown}`, borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "1px 6px" }} title="Move up">{"\u25B2"}</button>}
+                              {i < plan.length - 1 && <button onClick={() => reorderStep(s.id, "down")} style={{ background: C.cream, border: `1px solid ${C.darkBrown}`, borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "1px 6px" }} title="Move down">{"\u25BC"}</button>}
+                            </span>
+                          )}
                         </div>
                       </Card>
                     </div>

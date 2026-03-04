@@ -128,6 +128,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Total cost stat card** — Town Square stats row includes total API cost across all repos
 - **Error badge on repo cards** — repos with mistakes show error count badge when not running
 - **Telegram activity command** — `activity` shows recent actions across all repos
+- **Plan step reordering** — `/api/plan/reorder` endpoint + up/down arrows on pending plan steps in dashboard
+- **JSON item import** — `/api/items/import` endpoint + collapsible JSON import form on bounty board
+- **Item import validation** — title required, 200 char cap, 5000 char description cap, source preserved
 
 ## Commands
 ```bash
@@ -178,9 +181,11 @@ POST /api/items/clear              — Clear items {repo_id, status?} (optional 
 POST /api/items/dedupe             — Remove duplicate pending items {repo_id}
 POST /api/items/retry              — Re-queue items to pending {repo_id, item_id?} or {repo_id, status}
 POST /api/items/bulk-update        — Batch update {repo_id, item_ids[], action, value}
+POST /api/items/import             — Import items from JSON {repo_id, items: [...]}
 
 # Data
 GET  /api/plan?repo_id=N           — Plan steps
+POST /api/plan/reorder             — Move plan step {repo_id, step_id, direction: up|down}
 GET  /api/logs?repo_id=N&limit=200&offset=0 — Execution log (paginated)
 GET  /api/agents?repo_id=N         — Active agents
 GET  /api/memory?repo_id=N&q=term  — Memory (with search)

@@ -3106,6 +3106,43 @@ class API(BaseHTTPRequestHandler):
                 db.add_audio(fpath)
             return self._json({"ok": True, "filename": fname}, 201)
 
+        if path == "/api/plan/reorder":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            step_id = b.get("step_id")
+            direction = b.get("direction", "up")  # "up" or "down"
+            if not step_id: return self._json({"error": "step_id required"}, 400)
+            steps = db.all_steps()
+            idx = next((i for i, s in enumerate(steps) if s["id"] == step_id), None)
+            if idx is None: return self._json({"error": "Step not found"}, 404)
+            swap_idx = idx - 1 if direction == "up" else idx + 1
+            if swap_idx < 0 or swap_idx >= len(steps):
+                return self._json({"error": "Cannot move further"}, 400)
+            # Swap step_order values
+            db.ex("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[swap_idx]["step_order"], steps[idx]["id"]))
+            db.ex("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[idx]["step_order"], steps[swap_idx]["id"]))
+            db.commit()
+            return self._json({"ok": True})
+
+        if path == "/api/items/import":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            import_items = b.get("items", [])
+            if not import_items: return self._json({"error": "No items to import"}, 400)
+            added = 0
+            for it in import_items:
+                title = (it.get("title") or "").strip()[:200]
+                if not title: continue
+                desc = (it.get("description") or "")[:5000]
+                type_ = it.get("type", "feature")
+                priority = it.get("priority", "medium")
+                source = it.get("source", "manual")
+                db.add_item(type_, title, desc, priority, source)
+                added += 1
+            return self._json({"ok": True, "added": added, "skipped": len(import_items) - added})
+
         if path == "/api/push":
             rid = b.get("repo_id")
             repos = manager.master.get_repos()
