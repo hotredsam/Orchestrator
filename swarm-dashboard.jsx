@@ -664,6 +664,20 @@ function Dashboard() {
     );
   };
 
+  /* Circular progress ring */
+  const ProgressRing = ({ done = 0, total = 1, size = 32, strokeWidth = 3, color = C.teal }) => {
+    const pct = total > 0 ? Math.min(done / total, 1) : 0;
+    const r = (size - strokeWidth) / 2;
+    const circ = 2 * Math.PI * r;
+    const offset = circ * (1 - pct);
+    return (
+      <svg width={size} height={size} style={{ display: "block", transform: "rotate(-90deg)" }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`${C.darkBrown}15`} strokeWidth={strokeWidth} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.5s" }} />
+      </svg>
+    );
+  };
+
   /* Circular health badge component */
   const HealthBadge = ({ score, size = 44 }) => {
     const sc = score >= 80 ? C.green : score >= 50 ? C.orange : C.red;
@@ -1380,9 +1394,13 @@ function Dashboard() {
                         )}
                       </div>
                     </div>
-                    {/* Progress bar */}
-                    <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 14, overflow: "hidden", marginBottom: 10, position: "relative" }}>
-                      <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, transition: "width .5s" }} />
+                    {/* Progress bar with ring */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                      <ProgressRing done={s.items_done||0} total={s.items_total||1} size={28} strokeWidth={3} color={pct === 100 ? C.green : C.teal} />
+                      <div style={{ flex: 1, background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 14, overflow: "hidden", position: "relative" }}>
+                        <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, transition: "width .5s" }} />
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: pct === 100 ? C.green : C.teal, minWidth: 28, textAlign: "right" }}>{pct}%</span>
                     </div>
                     {/* Tags */}
                     {!compactMaster && r.tags && (
@@ -2664,6 +2682,7 @@ function Dashboard() {
                         <th style={{ padding: "8px 6px", textAlign: "right" }}>Err%</th>
                         <th style={{ padding: "8px 6px", textAlign: "right" }}>Cycles</th>
                         <th style={{ padding: "8px 6px", textAlign: "right" }}>Health</th>
+                        <th style={{ padding: "8px 6px", textAlign: "center" }}>Trend</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2687,6 +2706,9 @@ function Dashboard() {
                             <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
                               background: (r.health_score||0) >= 70 ? C.green : (r.health_score||0) >= 40 ? C.orange : C.red,
                               color: C.white }}>{r.health_score || 0}</span>
+                          </td>
+                          <td style={{ padding: "8px 6px", textAlign: "center" }}>
+                            {sparklines[r.id]?.length > 1 ? <Sparkline data={sparklines[r.id]} width={50} height={14} color={C.teal} /> : <span style={{ fontSize: 9, color: C.brown }}>-</span>}
                           </td>
                         </tr>
                       ))}
@@ -2818,6 +2840,55 @@ function Dashboard() {
                   ))}
                 </div>
               </Card>
+              {/* ── Batch Tag Editor ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 4, letterSpacing: 1.5 }}>{"\uD83C\uDFF7\uFE0F"} Batch Tag Wrangler</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 12 }}>Add or remove tags from multiple repos at once.</p>
+                {(() => {
+                  const allTags = [...new Set(repos.flatMap(r => (r.tags || "").split(",").filter(Boolean)))].sort();
+                  return (
+                    <div>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                        {allTags.map(tag => (
+                          <span key={tag} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 10, background: "#E8D5F5", color: "#7E57C2", fontWeight: 700, border: "1px solid #CE93D8" }}>{tag} ({repos.filter(r => (r.tags||"").split(",").includes(tag)).length})</span>
+                        ))}
+                        {allTags.length === 0 && <span style={{ fontSize: 11, color: C.brown }}>No tags yet</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input id="batch-tag-input" placeholder="Tag name" style={{ padding: "6px 12px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, fontSize: 12, flex: 1, fontFamily: "'Fredoka', sans-serif" }} />
+                        <Btn bg={C.green} style={{ fontSize: 12, padding: "6px 14px" }} onClick={async () => {
+                          const tag = document.getElementById("batch-tag-input")?.value?.trim();
+                          if (!tag) return;
+                          const targets = repos.filter(r => !r.archived);
+                          let added = 0;
+                          for (const r of targets) {
+                            const existing = (r.tags || "").split(",").filter(Boolean);
+                            if (!existing.includes(tag)) {
+                              await f(`/api/repos/tags`, { method: "POST", body: JSON.stringify({ repo_id: r.id, tags: [...existing, tag].join(",") }) });
+                              added++;
+                            }
+                          }
+                          showToast(`Added "${tag}" to ${added} repos`, "success"); load();
+                        }}>+ Add to All</Btn>
+                        <Btn bg={C.red} style={{ fontSize: 12, padding: "6px 14px" }} onClick={async () => {
+                          const tag = document.getElementById("batch-tag-input")?.value?.trim();
+                          if (!tag) return;
+                          let removed = 0;
+                          for (const r of repos) {
+                            const existing = (r.tags || "").split(",").filter(Boolean);
+                            if (existing.includes(tag)) {
+                              await f(`/api/repos/tags`, { method: "POST", body: JSON.stringify({ repo_id: r.id, tags: existing.filter(t => t !== tag).join(",") }) });
+                              removed++;
+                            }
+                          }
+                          showToast(`Removed "${tag}" from ${removed} repos`, "success"); load();
+                        }}>- Remove from All</Btn>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </Card>
+
               {/* ── Cost Tracker ── */}
               {Object.keys(costs).length > 0 && (
                 <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)` }}>
