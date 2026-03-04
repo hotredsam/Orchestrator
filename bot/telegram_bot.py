@@ -706,22 +706,41 @@ def handle_message(msg):
     web_app_data = msg.get("web_app_data")
     if web_app_data:
         try:
-            data = json.loads(web_app_data.get("data", "{}"))
+            raw_data = web_app_data.get("data", "")
+            if not isinstance(raw_data, str) or len(raw_data) > 10000:
+                log.warning("web_app_data: invalid or oversized data field")
+                return
+            data = json.loads(raw_data) if raw_data else {}
+            if not isinstance(data, dict):
+                log.warning("web_app_data: data is not a dict")
+                return
             action = data.get("action", "")
+            VALID_ACTIONS = {"start_repo", "stop_repo", "start_all", "stop_all", "add_item"}
             if action == "start_repo":
-                reply = cmd_start_repo(data.get("repo", ""))
+                repo = str(data.get("repo", "")).strip()
+                reply = cmd_start_repo(repo) if repo else "Missing repo name"
             elif action == "stop_repo":
-                reply = cmd_stop_repo(data.get("repo", ""))
+                repo = str(data.get("repo", "")).strip()
+                reply = cmd_stop_repo(repo) if repo else "Missing repo name"
             elif action == "start_all":
                 reply = cmd_start_all()
             elif action == "stop_all":
                 reply = cmd_stop_all()
             elif action == "add_item":
-                reply = cmd_add_item(data.get("type", "feature"), data.get("title", ""))
+                item_type = str(data.get("type", "feature")).strip()
+                title = str(data.get("title", "")).strip()
+                if item_type not in ("feature", "issue"):
+                    item_type = "feature"
+                reply = cmd_add_item(item_type, title) if title else "Missing item title"
+            elif action:
+                log.warning(f"web_app_data: unknown action '{action}'")
+                reply = f"Unknown action: {action}"
             else:
-                reply = f"Mini App action: {action}"
+                reply = None
             if reply:
                 send_message(reply, chat_id=chat_id)
+        except json.JSONDecodeError:
+            log.error("web_app_data: invalid JSON in data field")
         except Exception as e:
             log.error("web_app_data error: %s", e)
         return

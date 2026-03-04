@@ -104,10 +104,18 @@ function Dashboard() {
   const [costs, setCosts] = useState({});
   const [repoSort, setRepoSort] = useState("name");
   const [repoFilter, setRepoFilter] = useState("all");
+  const [toasts, setToasts] = useState([]);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
   const sseRef = useRef(null);
+
+  // Toast notification system
+  const showToast = useCallback((message, type = "info") => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev.slice(-4), { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }, []);
 
   // Fetch API token on mount (if not already set by Telegram Mini App embed)
   useEffect(() => {
@@ -141,6 +149,19 @@ function Dashboard() {
         try {
           const d = JSON.parse(e.data);
           if (d.cost) setCosts(prev => ({ ...prev, [d.repo_id]: (prev[d.repo_id] || 0) + d.cost }));
+        } catch {}
+      });
+      es.addEventListener("watchdog", (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          showToast(`Watchdog restarted ${d.repo_name || "repo"}`, "warning");
+          load();
+        } catch {}
+      });
+      es.addEventListener("error_event", (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          showToast(`Error in ${d.repo_name || "repo"}: ${(d.error || "").slice(0, 80)}`, "error");
         } catch {}
       });
       es.onerror = () => { es.close(); setTimeout(connect, 5000); };
@@ -199,30 +220,35 @@ function Dashboard() {
 
   const addItem = async () => {
     if (!ni.title || !ni.description || !sr) return;
-    await f("/api/items", { method: "POST", body: JSON.stringify({ ...ni, repo_id: sr }) });
-    setNI(p => ({ ...p, title: "", description: "" })); load();
+    await apiAction("/api/items", { method: "POST", body: JSON.stringify({ ...ni, repo_id: sr }) }, "Item added");
+    setNI(p => ({ ...p, title: "", description: "" }));
   };
   const addRepo = async () => {
     if (!nr.name || !nr.path) return;
-    await f("/api/repos", { method: "POST", body: JSON.stringify(nr) });
-    setNR({ name: "", path: "", github_url: "", branch: "main" }); load();
+    await apiAction("/api/repos", { method: "POST", body: JSON.stringify(nr) }, "Repo registered");
+    setNR({ name: "", path: "", github_url: "", branch: "main" });
   };
-  const startRepo = async id => { await f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
-  const stopRepo = async id => { await f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
-  const startAll = async () => { await f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }); load(); };
-  const pauseRepo = async id => { await f("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
-  const resumeRepo = async id => { await f("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
-  const deleteRepo = async id => { if(confirm("Remove this repo from Swarm Town? (files on disk are kept)")) { await f("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); } };
-  const pushGH = async () => { if(sr) await f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: sr, message: "manual push" }) }); };
+  const startRepo = async id => { await apiAction("/api/start", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo started"); };
+  const stopRepo = async id => { await apiAction("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo stopped"); };
+  const startAll = async () => { await apiAction("/api/start", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }, "All repos started"); };
+  const pauseRepo = async id => { await apiAction("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo paused"); };
+  const resumeRepo = async id => { await apiAction("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo resumed"); };
+  const deleteRepo = async id => { if(confirm("Remove this repo from Swarm Town? (files on disk are kept)")) { await apiAction("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo removed"); } };
+  const pushGH = async () => { if(sr) await apiAction("/api/push", { method: "POST", body: JSON.stringify({ repo_id: sr, message: "manual push" }) }, "Push sent"); };
 
   const scanAll = async () => {
     setScanning(true);
-    try { const r = await f("/api/health-scan"); if(r.ok) setHealthData(await r.json()); } catch {}
+    try {
+      const r = await f("/api/health-scan");
+      if(r.ok) { setHealthData(await r.json()); showToast("Health scan complete", "success"); }
+      else showToast("Health scan failed", "error");
+    } catch(e) { showToast(`Scan error: ${e.message}`, "error"); }
     setScanning(false);
   };
   const fixAll = async () => {
     setFixing(true);
-    try { await f("/api/fix-all", { method: "POST", body: JSON.stringify({}) }); await scanAll(); } catch {}
+    try { await f("/api/fix-all", { method: "POST", body: JSON.stringify({}) }); await scanAll(); showToast("Auto-fix applied", "success"); }
+    catch(e) { showToast(`Fix error: ${e.message}`, "error"); }
     setFixing(false);
   };
   const sendChat = async () => {
@@ -235,8 +261,10 @@ function Dashboard() {
       if (r.ok) {
         const d = await r.json();
         setChatHistory(h => [...h, { role: "assistant", content: d.message, time: new Date().toLocaleTimeString() }]);
+      } else {
+        showToast("Chat request failed", "error");
       }
-    } catch {}
+    } catch(e) { showToast(`Chat error: ${e.message}`, "error"); }
     setChatLoading(false);
   };
 
@@ -274,6 +302,24 @@ function Dashboard() {
     rd.readAsDataURL(file);
   };
   const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+
+  // Error-aware API caller for actions
+  const apiAction = useCallback(async (url, opts, successMsg) => {
+    try {
+      const r = await f(url, opts);
+      if (r.ok) {
+        if (successMsg) showToast(successMsg, "success");
+        load();
+        return true;
+      }
+      const d = await r.json().catch(() => ({}));
+      showToast(d.error || `Request failed (${r.status})`, "error");
+      return false;
+    } catch (err) {
+      showToast(`Connection error: ${err.message}`, "error");
+      return false;
+    }
+  }, [showToast, load]);
 
   const C = {
     orange: "#F7941D", teal: "#00B4D8", cream: "#FFF8E7", yellow: "#FFE066",
@@ -390,6 +436,15 @@ function Dashboard() {
         .timeline-entry:last-child::before{display:none}
         input:focus{border-color:${C.orange}!important;box-shadow:0 0 0 3px rgba(247,148,29,0.2)!important}
         textarea:focus{border-color:${C.orange}!important;box-shadow:0 0 0 3px rgba(247,148,29,0.2)!important}
+        @keyframes toastIn{from{opacity:0;transform:translateX(100%)}to{opacity:1;transform:translateX(0)}}
+        @keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(100%)}}
+        .toast-container{position:fixed;top:80px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+        .toast{padding:10px 16px;border-radius:10px;border:2px solid ${C.darkBrown};font-family:'Fredoka',sans-serif;font-size:13px;font-weight:600;color:${C.white};animation:toastIn .3s ease;pointer-events:auto;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+        .toast-success{background:#2ECC71}
+        .toast-error{background:#E74C3C}
+        .toast-info{background:#00B4D8}
+        .toast-warning{background:#F7941D}
+        .connection-banner{background:${C.red};color:${C.white};text-align:center;padding:8px 16px;font-size:13px;font-weight:700;font-family:'Fredoka',sans-serif;border-bottom:2px solid ${C.darkBrown};animation:pulse 2s infinite}
       `}</style>
 
       {/* ═══ HEADER — Desert Banner ═══ */}
@@ -1448,6 +1503,13 @@ function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* ═══ TOAST NOTIFICATIONS ═══ */}
+      <div className="toast-container">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast toast-${t.type}`}>{t.message}</div>
+        ))}
+      </div>
     </div>
   );
 }

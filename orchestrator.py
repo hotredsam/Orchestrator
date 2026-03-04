@@ -865,6 +865,12 @@ Do NOT repeat these mistakes. If you encounter similar issues, use a different a
         for a in audio:
             log.info(f"🎤 Transcribing: {a['filename']}")
             transcript = runner.whisper(a["filename"])
+            if not transcript or not transcript.strip():
+                log.warning(f"Empty transcript for {a['filename']}, marking as processed")
+                self.db.ex("UPDATE audio_reviews SET transcript='[empty]',status='processed',"
+                           "processed_at=datetime('now') WHERE id=?", (a["id"],))
+                self.db.commit()
+                continue
             self.db.ex("UPDATE audio_reviews SET transcript=?,status='transcribed',"
                        "processed_at=datetime('now') WHERE id=?", (transcript[:10000], a["id"]))
             self.db.commit()
@@ -1369,8 +1375,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         if hasattr(self, "db") and self.db:
             try:
                 self.db.conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f"DB close error for {getattr(self, 'repo', {}).get('name', '?')}: {e}")
 
 
 # ─── Orchestrator Manager ────────────────────────────────────────────────────
@@ -1472,8 +1478,8 @@ class Manager:
                                 try:
                                     from telegram_bot import send_message as tg_send
                                     tg_send(f"🔄 Watchdog restarted *{repo_name}* (thread died)")
-                                except Exception:
-                                    pass
+                                except Exception as tg_err:
+                                    log.debug(f"Watchdog Telegram notify failed: {tg_err}")
                         else:
                             log.error(f"🔄 Watchdog: failed to restart [{repo_name}]: {result}")
 
@@ -1981,12 +1987,27 @@ RATE_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/api/events",
                       "/api/token", "/telegram-app", "/api/status"}
 
 
+RATE_STRICT_PATHS = {"/api/chat", "/api/bridge/inbox", "/api/bridge/outbox"}
+RATE_STRICT_RPM = 30  # stricter limit for chat/bridge (30/min)
+_rate_strict = {}  # ip:path -> [timestamps]
+
+
 def _check_rate_limit(ip, path):
     """Return True if request is allowed, False if rate-limited."""
     if path in RATE_EXEMPT_PATHS:
         return True
     now = time.time()
     with _rate_lock:
+        # Stricter limit for chat/bridge endpoints
+        if path in RATE_STRICT_PATHS:
+            key = f"{ip}:{path}"
+            if key not in _rate_strict:
+                _rate_strict[key] = []
+            _rate_strict[key] = [t for t in _rate_strict[key] if now - t < 60]
+            if len(_rate_strict[key]) >= RATE_STRICT_RPM:
+                return False
+            _rate_strict[key].append(now)
+        # General rate limit
         if ip not in _rate_limits:
             _rate_limits[ip] = []
         # Prune old entries (older than 60s)
@@ -2247,8 +2268,8 @@ class API(BaseHTTPRequestHandler):
                                     "state_before": "", "state_after": "",
                                     "items_snapshot": "", "created_at": parts[2]
                                 })
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(f"Git log fetch failed for history: {e}")
             # Sort by created_at descending
             history.sort(key=lambda x: x.get("created_at", ""), reverse=True)
             return self._json(history[:100])
@@ -2418,7 +2439,8 @@ class API(BaseHTTPRequestHandler):
                     manager.master.add_repo(name, rpath, rd.get("github_url", ""), rd.get("branch", "main"))
                     RepoDB(os.path.join(rpath, ".swarm-agent.db"))
                     imported += 1
-                except Exception:
+                except Exception as e:
+                    log.warning(f"Import repo '{name}' failed: {e}")
                     skipped += 1
             return self._json({"ok": True, "imported": imported, "skipped": skipped})
 
@@ -2644,8 +2666,8 @@ class API(BaseHTTPRequestHandler):
                 db.mem_store("health", "score", str(report["health_score"]))
                 db.mem_store("health", "issues_count", str(len(report["issues"])))
                 count += 2
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f"Health scan failed during memory seed: {e}")
             # Seed from state
             st = db.load_state()
             db.mem_store("state", "current_state", st.current_state.value)
@@ -2826,7 +2848,8 @@ def generate_daily_digest() -> str:
                 f"  Items: {len(done)}/{len(items)} | Steps: {len(steps_done)}/{len(steps)} | "
                 f"Mistakes: {len(mistakes)} | Cost: ${cost:.2f}"
             )
-        except Exception:
+        except Exception as e:
+            log.debug(f"Digest: skipping repo {r.get('name', '?')}: {e}")
             continue
 
     # Overall stats
