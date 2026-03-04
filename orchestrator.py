@@ -2590,6 +2590,25 @@ class API(BaseHTTPRequestHandler):
             db.commit()
             return self._json({"ok": True})
 
+        if path == "/api/items/dedupe":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            items_list = db.fetchall("SELECT * FROM items WHERE status='pending' ORDER BY created_at ASC")
+            seen_titles = {}
+            dupes_removed = 0
+            for item in items_list:
+                # Normalize title for comparison
+                key = item["title"].lower().strip()
+                if key in seen_titles:
+                    db.ex("DELETE FROM items WHERE id=?", (item["id"],))
+                    dupes_removed += 1
+                else:
+                    seen_titles[key] = item["id"]
+            if dupes_removed > 0:
+                db.commit()
+            return self._json({"ok": True, "duplicates_removed": dupes_removed, "remaining": len(seen_titles)})
+
         if path == "/api/audio":
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)

@@ -56,10 +56,15 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Intake folder** — drop audio files in `~/Desktop/intake`, auto-picked up per repo
 - **Scoped permissions** — each repo folder gets readwrite, intake folder gets read, configurable via `permissions` table
 - **Thread watchdog** — background thread checks every 30s, auto-restarts dead orchestrator threads with Telegram + SSE notification
+- **Stuck detection** — watchdog detects repos stuck in same state for 30min, auto-restarts them
 - **Pause/Resume** — individual repos can be paused (thread stays alive) and resumed via API or Telegram
 - **Graceful shutdown** — joins threads (5s timeout), closes DBs, drains SSE clients
 - **DB retry** — SQLite operations retry 3x on "database locked" errors with exponential backoff
-- **Rate limiting** — 120 requests/min per IP (configurable), exempt paths for static/SSE
+- **Rate limiting** — 120 requests/min per IP (configurable), 30/min for chat/bridge, exempt paths for static/SSE
+- **Dark mode** — dashboard supports dark mode with localStorage persistence (D key or header toggle)
+- **Toast notifications** — dashboard shows success/error/warning toasts for all API actions
+- **Duplicate detection** — `/api/items/dedupe` removes duplicate pending items by title
+- **Pagination** — items and logs endpoints support `?limit=N&offset=N&status=X` params
 
 ## Commands
 ```bash
@@ -101,16 +106,17 @@ POST /api/resume                   — Resume repo {repo_id}
 POST /api/push                     — Git push {repo_id, message}
 
 # Items
-GET  /api/items?repo_id=N          — Issues + features
+GET  /api/items?repo_id=N&limit=200&offset=0&status=pending — Issues + features (paginated, filterable)
 POST /api/items                    — Add {repo_id, type, title, description, priority}
 POST /api/items/bulk               — Add multiple {repo_id, items: [...]}
 POST /api/items/update             — Update {repo_id, item_id, status, priority, ...}
 POST /api/items/delete             — Delete {repo_id, item_id}
 POST /api/items/clear              — Clear items {repo_id, status?} (optional status filter)
+POST /api/items/dedupe             — Remove duplicate pending items {repo_id}
 
 # Data
 GET  /api/plan?repo_id=N           — Plan steps
-GET  /api/logs?repo_id=N           — Execution log
+GET  /api/logs?repo_id=N&limit=200&offset=0 — Execution log (paginated)
 GET  /api/agents?repo_id=N         — Active agents
 GET  /api/memory?repo_id=N&q=term  — Memory (with search)
 GET  /api/mistakes?repo_id=N       — Mistake memory
@@ -161,6 +167,7 @@ push [repo]     — Git push
 screenshot      — Dashboard screenshot
 digest          — Daily digest summary
 costs           — Per-repo API costs
+health          — Health scan all repos
 app             — Open Mini App link
 help            — Show all commands
 ```
