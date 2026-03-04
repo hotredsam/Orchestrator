@@ -300,6 +300,7 @@ class RepoState:
     running: bool = False
     paused_state: str = ""  # state to resume after credits return
     errors: list = field(default_factory=list)
+    last_activity: float = field(default_factory=time.time)
 
     def to_dict(self):
         d = asdict(self)
@@ -1336,6 +1337,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                                         state_snapshot=json.dumps(self.state.to_dict()))
                     nxt = State.IDLE
                 self.state.current_state = nxt
+                self.state.last_activity = time.time()
                 self.save()
                 self._telegram_notify(old_state, nxt)
         except Exception as e:
@@ -1457,9 +1459,32 @@ class Manager:
         return state.to_dict()
 
     def watchdog(self):
-        """Background thread that auto-restarts dead repo threads."""
+        """Background thread that auto-restarts dead repo threads and detects stuck orchestrators."""
+        STUCK_THRESHOLD = 1800  # 30 minutes without state change
         while True:
             time.sleep(30)
+            now = time.time()
+            # Check for stuck orchestrators (alive but not progressing)
+            for rid, orch in list(self.orchestrators.items()):
+                if orch.state.running and not orch.pause_event.is_set():
+                    idle_time = now - orch.state.last_activity
+                    if idle_time > STUCK_THRESHOLD and orch.state.current_state not in (State.IDLE, State.CREDITS_EXHAUSTED):
+                        repo_name = orch.repo.get("name", f"id={rid}")
+                        state_name = orch.state.current_state.value
+                        log.warning(f"⏰ Watchdog: [{repo_name}] stuck in {state_name} for {int(idle_time/60)}m, restarting...")
+                        orch.stop()
+                        if rid in self.threads:
+                            self.threads[rid].join(timeout=10)
+                        orch.cleanup()
+                        del self.orchestrators[rid]
+                        if rid in self.threads:
+                            del self.threads[rid]
+                        result = self.start_repo(rid)
+                        if result.get("ok"):
+                            sse_broadcast("watchdog", {"repo_id": rid, "repo_name": repo_name, "action": "unstuck", "was_stuck_in": state_name})
+                            log.info(f"⏰ Watchdog: [{repo_name}] unstuck and restarted")
+                        continue
+            # Check for dead threads
             for rid, t in list(self.threads.items()):
                 if not t.is_alive() and rid in self.orchestrators:
                     orch = self.orchestrators[rid]
@@ -2231,10 +2256,20 @@ class API(BaseHTTPRequestHandler):
 
         # Per-repo endpoints need repo_id
         rid = int(q.get("repo_id", [0])[0]) if "repo_id" in q else None
+        # Pagination params
+        limit = min(int(q.get("limit", [200])[0]), 1000)
+        offset = max(int(q.get("offset", [0])[0]), 0)
+        status_filter = q.get("status", [None])[0]
 
         if path == "/api/items" and rid:
             db = manager.get_repo_db(rid)
-            return self._json(db.fetchall("SELECT * FROM items ORDER BY created_at DESC") if db else [])
+            if not db: return self._json([])
+            if status_filter:
+                return self._json(db.fetchall(
+                    "SELECT * FROM items WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    (status_filter, limit, offset)))
+            return self._json(db.fetchall(
+                "SELECT * FROM items ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)))
 
         if path == "/api/plan" and rid:
             db = manager.get_repo_db(rid)
@@ -2242,7 +2277,9 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/logs" and rid:
             db = manager.get_repo_db(rid)
-            return self._json(db.fetchall("SELECT * FROM execution_log ORDER BY created_at DESC LIMIT 100") if db else [])
+            return self._json(db.fetchall(
+                "SELECT * FROM execution_log ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset)) if db else [])
 
         if path == "/api/history" and rid:
             db = manager.get_repo_db(rid)

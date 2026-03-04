@@ -76,6 +76,8 @@ const FLOW_EDGES = [
 ];
 
 function Dashboard() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("swarm-dark") === "1");
+  const toggleDark = () => { setDarkMode(d => { const v = !d; localStorage.setItem("swarm-dark", v ? "1" : "0"); return v; }); };
   const [tab, setTab] = useState("home");
   const [repos, setRepos] = useState([]);
   const [sr, setSR] = useState(null);
@@ -207,6 +209,7 @@ function Dashboard() {
       if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${repo?.running ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
       if (e.key === "p" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr && repo?.running) f(`/api/${repo?.paused ? "resume" : "pause"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
       if (e.key === "r" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
+      if (e.key === "d" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleDark(); }
       if (e.key === "/") { e.preventDefault(); setTab("home"); setTimeout(() => { const el = document.querySelector("input[placeholder*='command']"); if (el) el.focus(); }, 100); }
       if (e.key === "Escape") setShowHelp(false);
       if (e.key === "?") setShowHelp(prev => !prev);
@@ -324,7 +327,12 @@ function Dashboard() {
     }
   }, [showToast, load]);
 
-  const C = {
+  const C = darkMode ? {
+    orange: "#E8850F", teal: "#0097B8", cream: "#1E1E2E", yellow: "#D4A830",
+    sky: "#0D1117", sand: "#2D2D3D", red: "#E74C3C", green: "#2ECC71",
+    darkBrown: "#C0C0C0", brown: "#999999", white: "#1A1A2E",
+    lightOrange: "#3D2B1F", lightTeal: "#1A3040",
+  } : {
     orange: "#F7941D", teal: "#00B4D8", cream: "#FFF8E7", yellow: "#FFE066",
     sky: "#87CEEB", sand: "#F4D35E", red: "#E74C3C", green: "#2ECC71",
     darkBrown: "#3D2B1F", brown: "#5D4037", white: "#FFFFFF",
@@ -498,7 +506,7 @@ function Dashboard() {
           </p>
         </div>
 
-        {/* Status pill + Global repo selector */}
+        {/* Status pill + Dark mode + Global repo selector */}
         <div style={{ position: "absolute", top: 12, right: 16, display: "flex", alignItems: "center", gap: 8, zIndex: 3 }}>
           {repos.length > 0 && <select value={sr||""} onChange={e => setSR(Number(e.target.value))}
             style={{ padding: "5px 10px", background: C.yellow, border: `3px solid ${C.darkBrown}`, borderRadius: 12, fontSize: 13, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 180 }}>
@@ -509,7 +517,10 @@ function Dashboard() {
               ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}
             </div>
           )}
-          <div style={{ background: connected ? C.green : C.red, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: C.white, animation: connected ? "none" : "pulse 1s infinite" }}>
+          <button onClick={toggleDark} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1 }} title="Toggle dark mode">
+            {darkMode ? "\uD83C\uDF19" : "\u2600\uFE0F"}
+          </button>
+          <div style={{ background: connected ? C.green : C.red, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: "#FFFFFF", animation: connected ? "none" : "pulse 1s infinite" }}>
             {connected ? "● LIVE" : "● OFFLINE"}
           </div>
         </div>
@@ -1546,6 +1557,7 @@ function Dashboard() {
                 ["S", "Start/Stop selected repo"],
                 ["P", "Pause/Resume selected repo"],
                 ["R", "Refresh all data"],
+                ["D", "Toggle dark mode"],
                 ["/", "Focus command center"],
                 ["?", "Toggle this help"],
                 ["Esc", "Close overlays"],
