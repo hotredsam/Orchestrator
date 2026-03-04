@@ -334,7 +334,7 @@ function Dashboard() {
       if (e.key === "Escape") { setShowHelp(false); setSelectedItems(new Set()); }
       if (e.key === "?") setShowHelp(prev => !prev);
       if (e.key === "f" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
-      if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setStatusFilter("all"); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
+      if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
       if (e.key === "[") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci > 0) setTab(TABS_LIST[ci - 1]); }
       if (e.key === "]") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci < TABS_LIST.length - 1) setTab(TABS_LIST[ci + 1]); }
     };
@@ -680,6 +680,9 @@ function Dashboard() {
           h1{font-size:24px!important}
           p{font-size:11px!important}
         }
+        @media(max-width:640px){
+          .repo-grid{grid-template-columns:1fr!important}
+        }
         .hover-card:hover{transform:translateY(-2px)!important;box-shadow:0 4px 8px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.1), 4px 4px 0 #3D2B1F!important}
         .hover-lift:hover{transform:translateY(-4px) scale(1.02)!important;box-shadow:0 6px 16px rgba(0,0,0,.12), 6px 6px 0 #3D2B1F!important}
         .hover-glow:hover{box-shadow:0 0 12px rgba(247,148,29,0.4), 0 4px 12px rgba(0,0,0,.08), 4px 4px 0 #3D2B1F!important;transform:translateY(-2px)!important}
@@ -1013,7 +1016,7 @@ function Dashboard() {
                 <option value="cycles">Sort: Cycles</option>
               </select>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+            <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
               {repos.filter(r => {
                 if (repoFilter === "all") return true;
                 if (repoFilter === "running") return r.running && !r.paused;
@@ -1218,7 +1221,7 @@ function Dashboard() {
                 ))}
               </>); })()}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+            <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {[...repos].filter(r => {
                 if (repoFilter === "running") return r.running;
                 if (repoFilter === "idle") return !r.running;

@@ -1841,6 +1841,12 @@ class Manager:
                         if result.get("ok"):
                             sse_broadcast("watchdog", {"repo_id": rid, "repo_name": repo_name, "action": "unstuck", "was_stuck_in": state_name})
                             log.info(f"⏰ Watchdog: [{repo_name}] unstuck and restarted")
+                            if TELEGRAM_ENABLED:
+                                try:
+                                    from telegram_bot import send_message as tg_send
+                                    tg_send(f"⏰ Watchdog unstuck *{repo_name}* (was in {state_name} for {int(idle_time/60)}m)")
+                                except Exception:
+                                    pass
                         continue
             # Check for dead threads
             for rid, t in list(self.threads.items()):
