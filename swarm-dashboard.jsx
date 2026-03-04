@@ -374,8 +374,8 @@ function Dashboard() {
       if (e.key === "[") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci > 0) setTab(TABS_LIST[ci - 1]); }
       if (e.key === "]") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci < TABS_LIST.length - 1) setTab(TABS_LIST[ci + 1]); }
       // j/k navigation in master view
-      if (tab === "master" && e.key === "j") { e.preventDefault(); setMasterFocus(prev => Math.min(prev + 1, repos.length - 1)); }
-      if (tab === "master" && e.key === "k") { e.preventDefault(); setMasterFocus(prev => Math.max(prev - 1, 0)); }
+      if (tab === "master" && e.key === "j") { e.preventDefault(); setMasterFocus(prev => { const next = Math.min(prev + 1, repos.length - 1); const cards = document.querySelectorAll(".master-card"); if (cards[next]) cards[next].scrollIntoView({ behavior: "smooth", block: "nearest" }); return next; }); }
+      if (tab === "master" && e.key === "k") { e.preventDefault(); setMasterFocus(prev => { const next = Math.max(prev - 1, 0); const cards = document.querySelectorAll(".master-card"); if (cards[next]) cards[next].scrollIntoView({ behavior: "smooth", block: "nearest" }); return next; }); }
       if (tab === "master" && e.key === "Enter" && masterFocus >= 0 && masterFocus < repos.length) {
         e.preventDefault(); const r = repos[masterFocus]; if (r) { setSR(r.id); setTab("flow"); }
       }
@@ -1317,7 +1317,7 @@ function Dashboard() {
                 const pct = s.steps_total ? Math.round(s.steps_done / s.steps_total * 100) : 0;
                 const isFocused = _mi === masterFocus;
                 return (
-                  <Card key={r.id} className="hover-lift" bg={batchSelected.has(r.id) ? C.yellow : isFocused ? C.lightTeal : C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", outline: isFocused ? `3px solid ${C.teal}` : "none", outlineOffset: -1, background: batchSelected.has(r.id) ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` : isFocused ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
+                  <Card key={r.id} className="hover-lift master-card" bg={batchSelected.has(r.id) ? C.yellow : isFocused ? C.lightTeal : C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", outline: isFocused ? `3px solid ${C.teal}` : "none", outlineOffset: -1, background: batchSelected.has(r.id) ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` : isFocused ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
                       <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
@@ -2881,6 +2881,36 @@ function Dashboard() {
                   </div>
                 )}
                 {webhooks.length === 0 && <div style={{ fontSize: 12, color: C.brown, textAlign: "center", padding: 10 }}>No webhooks registered</div>}
+              </Card>
+
+              {/* ── Dashboard Settings Export/Import ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E8EAF6 0%, #C5CAE9 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\u2699\uFE0F"} Dashboard Preferences</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Export or import your dashboard settings (dark mode, pinned repos, refresh interval, notifications).</p>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <Btn bg={C.teal} style={{ fontSize: 13, padding: "8px 18px" }} onClick={() => {
+                    const prefs = { darkMode, pinnedRepos, refreshInterval, browserNotifs, version: 1 };
+                    const blob = new Blob([JSON.stringify(prefs, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a"); a.href = url; a.download = "swarm-dashboard-prefs.json"; a.click(); URL.revokeObjectURL(url);
+                    showToast("Preferences exported", "success");
+                  }}>{"\uD83D\uDCE5"} Export Prefs</Btn>
+                  <Btn bg={C.orange} style={{ fontSize: 13, padding: "8px 18px" }} onClick={() => {
+                    const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+                    input.onchange = async (e) => {
+                      const file = e.target.files[0]; if (!file) return;
+                      try {
+                        const p = JSON.parse(await file.text());
+                        if (typeof p.darkMode === "boolean") { setDarkMode(p.darkMode); localStorage.setItem("swarm-dark", p.darkMode ? "1" : "0"); }
+                        if (Array.isArray(p.pinnedRepos)) { setPinnedRepos(p.pinnedRepos); localStorage.setItem("swarm-pinned", JSON.stringify(p.pinnedRepos)); }
+                        if (typeof p.refreshInterval === "number") { setRefreshInterval(p.refreshInterval); localStorage.setItem("swarm-refresh", String(p.refreshInterval)); }
+                        if (typeof p.browserNotifs === "boolean") { setBrowserNotifs(p.browserNotifs); localStorage.setItem("swarm-notifs", p.browserNotifs ? "1" : "0"); }
+                        showToast("Preferences imported!", "success");
+                      } catch(err) { showToast(`Import error: ${err.message}`, "error"); }
+                    };
+                    input.click();
+                  }}>{"\uD83D\uDCE4"} Import Prefs</Btn>
+                </div>
               </Card>
 
               {/* ── Per-Repo Config ── */}
