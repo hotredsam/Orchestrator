@@ -1023,6 +1023,30 @@ def cmd_tags(text):
         return f"\U0001F3F7\uFE0F *{name}* tags: {tags}" if tags else f"No tags for *{name}*. Use `tags {name}: tag1, tag2` to set."
 
 
+def cmd_uptime():
+    data = _orch_get("/api/status")
+    if "error" in data:
+        return f"Error: {data['error']}"
+    uptime = data.get("uptime", "unknown")
+    repos_total = data.get("repos_total", 0)
+    repos_running = data.get("repos_running", 0)
+    version = data.get("version", "?")
+    return (
+        f"*Swarm Town Uptime*\n\n"
+        f"Uptime: `{uptime}`\n"
+        f"Version: `{version}`\n"
+        f"Repos: {repos_running}/{repos_total} running"
+    )
+
+
+def cmd_rotate_token():
+    data = _orch_post("/api/token/rotate", {})
+    if "error" in data:
+        return f"Error: {data['error']}"
+    token = data.get("token", "?")
+    return f"API token rotated.\nNew prefix: `{token[:8]}...`\nAll open dashboard sessions need to re-authenticate."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -1069,6 +1093,8 @@ def cmd_help():
 `cost-history` — Daily cost totals for last 7 days
 `grades` — Health scores for all repos (A-F)
 `summary` — Quick one-message status overview
+`uptime` — Server uptime and version info
+`rotate-token` — Rotate API bearer token
 `app` — Open Mini App
 `help` — This message
 
@@ -1278,6 +1304,10 @@ def handle_message(msg):
         reply = cmd_snapshot(t[9:].strip())
     elif t.startswith("tags"):
         reply = cmd_tags(t[4:].strip())
+    elif t in ("uptime", "up"):
+        reply = cmd_uptime()
+    elif t in ("rotate-token", "rotate token", "token"):
+        reply = cmd_rotate_token()
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         reply = f"Open the Swarm Town dashboard:\n{public_url}/telegram-app"
