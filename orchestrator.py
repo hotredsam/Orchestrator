@@ -2822,6 +2822,30 @@ class API(BaseHTTPRequestHandler):
                 },
             })
 
+        if path == "/api/agent-stats" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json({"agents": []})
+            rows = db.fetchall(
+                "SELECT agent_type, COUNT(*) as steps, "
+                "SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed, "
+                "AVG(CASE WHEN status='completed' THEN cost_usd END) as avg_cost, "
+                "AVG(CASE WHEN status='completed' THEN duration_sec END) as avg_duration, "
+                "SUM(CASE WHEN status='completed' THEN tests_written END) as total_tests, "
+                "SUM(CASE WHEN status='completed' THEN tests_passed END) as total_passed "
+                "FROM plan_steps GROUP BY agent_type ORDER BY completed DESC"
+            )
+            agents = [{
+                "agent_type": r["agent_type"] or "unknown",
+                "total_steps": r["steps"],
+                "completed": r["completed"] or 0,
+                "avg_cost": round(r["avg_cost"] or 0, 4),
+                "avg_duration": round(r["avg_duration"] or 0, 1),
+                "total_tests": r["total_tests"] or 0,
+                "tests_passed": r["total_passed"] or 0,
+            } for r in rows]
+            return self._json({"agents": agents})
+
         if path == "/api/comparison":
             repos = manager.master.get_repos()
             costs = get_costs()

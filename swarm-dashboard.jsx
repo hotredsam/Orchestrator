@@ -126,6 +126,7 @@ function Dashboard() {
   const [trends, setTrends] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [compSort, setCompSort] = useState("name");
+  const [agentStats, setAgentStats] = useState(null);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -231,7 +232,10 @@ function Dashboard() {
       const fetches = [f(`/api/items?repo_id=${sr}`), f(`/api/plan?repo_id=${sr}`)];
       const keys = ["items", "plan"];
       if (full || t === "home" || t === "logs") { fetches.push(f(`/api/logs?repo_id=${sr}`)); keys.push("logs"); }
-      if (full || t === "agents") { fetches.push(f(`/api/agents?repo_id=${sr}`)); keys.push("agents"); }
+      if (full || t === "agents") {
+        fetches.push(f(`/api/agents?repo_id=${sr}`)); keys.push("agents");
+        fetches.push(f(`/api/agent-stats?repo_id=${sr}`)); keys.push("agentStats");
+      }
       if (full || t === "memory") { fetches.push(f(`/api/memory?repo_id=${sr}`)); keys.push("memory"); }
       if (full || t === "mistakes") {
         fetches.push(f(`/api/mistakes?repo_id=${sr}`)); keys.push("mistakes");
@@ -240,7 +244,7 @@ function Dashboard() {
       if (full || t === "audio") { fetches.push(f(`/api/audio?repo_id=${sr}`)); keys.push("audio"); }
       if (full || t === "history") { fetches.push(f(`/api/history?repo_id=${sr}`)); keys.push("history"); }
       const results = await Promise.all(fetches);
-      const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, memory: setMemory, mistakes: setMistakes, mistakeAnalysis: setMistakeAnalysis, audio: setAudio, history: setHistory };
+      const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, agentStats: setAgentStats, memory: setMemory, mistakes: setMistakes, mistakeAnalysis: setMistakeAnalysis, audio: setAudio, history: setHistory };
       for (let i = 0; i < keys.length; i++) {
         if (results[i].ok) { const d = await results[i].json(); setters[keys[i]](d); }
       }
@@ -1430,6 +1434,36 @@ function Dashboard() {
                   </Card>
                 ))}
             </div>
+            {/* Agent Performance Stats */}
+            {agentStats?.agents?.length > 0 && (
+              <Card bg={C.white} style={{ maxWidth: 650, margin: "16px auto 0", padding: 14 }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 10, textAlign: "center" }}>Agent Performance</div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${C.darkBrown}` }}>
+                      <th style={{ padding: "6px", textAlign: "left" }}>Type</th>
+                      <th style={{ padding: "6px", textAlign: "right" }}>Steps</th>
+                      <th style={{ padding: "6px", textAlign: "right" }}>Done</th>
+                      <th style={{ padding: "6px", textAlign: "right" }}>Avg Cost</th>
+                      <th style={{ padding: "6px", textAlign: "right" }}>Avg Time</th>
+                      <th style={{ padding: "6px", textAlign: "right" }}>Tests</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agentStats.agents.map((a, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${C.darkBrown}22` }}>
+                        <td style={{ padding: "6px", fontWeight: 700 }}>{"\uD83E\uDD20"} {a.agent_type}</td>
+                        <td style={{ padding: "6px", textAlign: "right" }}>{a.total_steps}</td>
+                        <td style={{ padding: "6px", textAlign: "right", color: C.green, fontWeight: 700 }}>{a.completed}</td>
+                        <td style={{ padding: "6px", textAlign: "right" }}>${a.avg_cost}</td>
+                        <td style={{ padding: "6px", textAlign: "right" }}>{a.avg_duration}s</td>
+                        <td style={{ padding: "6px", textAlign: "right" }}>{a.tests_passed}/{a.total_tests}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            )}
           </SectionBg>
         )}
 

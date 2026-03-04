@@ -131,6 +131,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Plan step reordering** — `/api/plan/reorder` endpoint + up/down arrows on pending plan steps in dashboard
 - **JSON item import** — `/api/items/import` endpoint + collapsible JSON import form on bounty board
 - **Item import validation** — title required, 200 char cap, 5000 char description cap, source preserved
+- **Agent performance stats** — `/api/agent-stats` endpoint with per-agent-type step counts, avg cost, avg duration, test pass rates
+- **Crew tab performance table** — agents tab shows performance breakdown table after the active agent cards
 
 ## Commands
 ```bash
