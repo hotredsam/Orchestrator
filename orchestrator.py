@@ -3183,6 +3183,13 @@ class API(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         b = self._body()
 
+        if path == "/api/token/rotate":
+            global API_TOKEN
+            old_token = API_TOKEN
+            API_TOKEN = secrets.token_urlsafe(32)
+            log.info("API token rotated (old prefix: %s...)", old_token[:8])
+            return self._json({"ok": True, "token": API_TOKEN})
+
         if path == "/api/repos/import":
             repos_data = b.get("repos", [])
             if not repos_data:

@@ -138,6 +138,7 @@ function Dashboard() {
   const [costHistory, setCostHistory] = useState([]);
   const [healthScores, setHealthScores] = useState(null);
   const [compactItems, setCompactItems] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
   const [staleItems, setStaleItems] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -296,7 +297,7 @@ function Dashboard() {
     setLoading(false);
   }, [sr]);
 
-  useEffect(() => { load(true); const i = setInterval(() => load(false), 3000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { load(true); const i = setInterval(() => load(false), refreshInterval); return () => clearInterval(i); }, [load, refreshInterval]);
 
   // Auto-scroll logs when tail mode is on
   useEffect(() => { if (logTail && logEndRef.current) logEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [logTail, logs]);
@@ -2487,6 +2488,22 @@ function Dashboard() {
                 </div>
               </Card>
 
+              {/* ── Refresh Interval ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E0F7FA 0%, #B2EBF2 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\u23F1\uFE0F"} Refresh Interval</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>How often the dashboard polls for new data. Lower = more responsive, higher = less load.</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[{ ms: 1000, label: "1s" }, { ms: 3000, label: "3s" }, { ms: 5000, label: "5s" }, { ms: 10000, label: "10s" }, { ms: 30000, label: "30s" }].map(opt => (
+                    <Btn key={opt.ms} bg={refreshInterval === opt.ms ? C.teal : "#bbb"} style={{ fontSize: 14, padding: "8px 18px", opacity: refreshInterval === opt.ms ? 1 : 0.7 }} onClick={() => {
+                      setRefreshInterval(opt.ms);
+                      localStorage.setItem("swarm-refresh", String(opt.ms));
+                      showToast(`Refresh interval set to ${opt.label}`, "info");
+                    }}>{opt.label}</Btn>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: C.brown, marginTop: 6 }}>Current: every {refreshInterval >= 1000 ? `${refreshInterval / 1000}s` : `${refreshInterval}ms`}</div>
+              </Card>
+
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, ${C.cream} 0%, #FFF3CD 100%)` }}>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>Model Routing</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -2570,6 +2587,25 @@ function Dashboard() {
                   )}
                 </Card>
               )}
+
+              {/* ── API Token ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #FCE4EC 0%, #F8BBD0 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\uD83D\uDD11"} API Token</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Rotate the bearer token if you suspect it's been compromised. All open sessions will need to re-authenticate.</p>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <Btn bg={C.red} style={{ fontSize: 14, padding: "10px 20px" }} onClick={async () => {
+                    try {
+                      const r = await f("/api/token/rotate", { method: "POST" });
+                      if (r.ok) {
+                        const d = await r.json();
+                        __authToken = d.token;
+                        showToast("API token rotated. This session updated automatically.", "success");
+                      } else { showToast("Failed to rotate token", "error"); }
+                    } catch(e) { showToast(`Rotation error: ${e.message}`, "error"); }
+                  }}>{"\uD83D\uDD04"} Rotate Token</Btn>
+                  <span style={{ fontSize: 11, color: C.brown }}>Current token prefix: {__authToken ? __authToken.slice(0, 8) + "..." : "none"}</span>
+                </div>
+              </Card>
 
               {/* ── Export / Import ── */}
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)` }}>
