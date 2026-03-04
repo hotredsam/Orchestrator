@@ -568,13 +568,13 @@ function Dashboard() {
   };
 
   const Card = ({ children, bg = C.white, style, className, ...p }) => (
-    <div className={`hover-card ${className||""}`} style={{ background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, padding: 16, boxShadow: "0 2px 4px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.08), 3px 3px 0 #3D2B1F", transition: "transform .2s ease, box-shadow .2s ease", ...style }} {...p}>{children}</div>
+    <div className={`hover-card ${className||""}`} style={{ background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, padding: 16, boxShadow: `0 2px 4px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.08), 3px 3px 0 ${darkMode ? '#000' : '#3D2B1F'}`, transition: "transform .2s ease, box-shadow .2s ease", ...style }} {...p}>{children}</div>
   );
   const Inp = ({ style, ...p }) => (
     <input style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka', sans-serif", boxSizing: "border-box", outline: "none", transition: "border-color .2s, box-shadow .2s", ...style }} {...p} />
   );
   const Btn = ({ children, bg = C.orange, color = C.white, style, ...p }) => (
-    <button className="hover-pop" style={{ padding: "12px 24px", background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, color, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1.5, boxShadow: "0 2px 4px rgba(0,0,0,.12), 3px 3px 0 #3D2B1F", transition: "transform .15s, filter .15s, box-shadow .15s", ...style }}
+    <button className="hover-pop" style={{ padding: "12px 24px", background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, color, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1.5, boxShadow: `0 2px 4px rgba(0,0,0,.12), 3px 3px 0 ${darkMode ? '#000' : '#3D2B1F'}`, transition: "transform .15s, filter .15s, box-shadow .15s", ...style }}
       onMouseDown={e => e.target.style.transform = "translate(2px,2px) scale(0.97)"}
       onMouseUp={e => e.target.style.transform = ""} onMouseOut={e => e.target.style.transform = ""} {...p}>{children}</button>
   );

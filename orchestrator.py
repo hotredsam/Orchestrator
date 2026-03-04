@@ -840,6 +840,14 @@ class MasterDB:
     def get_running(self):
         return [dict(r) for r in self.ex("SELECT * FROM repos WHERE running=1").fetchall()]
 
+    def close(self):
+        """Close the master database connection."""
+        try:
+            with self.lock:
+                self.conn.close()
+        except Exception as e:
+            log.warning("Error closing MasterDB: %s", e)
+
     def delete_repo(self, repo_id):
         """Remove a repo from the registry. Does NOT delete files on disk."""
         self.ex("DELETE FROM repos WHERE id=?", (repo_id,))
@@ -3398,6 +3406,42 @@ class API(BaseHTTPRequestHandler):
             _response_cache.clear()
             return self._json({"ok": True, "tags": tags})
 
+        if path == "/api/repos/batch":
+            repo_ids = b.get("repo_ids", [])
+            action = b.get("action", "")
+            if not isinstance(repo_ids, list) or not all(isinstance(i, int) for i in repo_ids):
+                return self._json({"error": "repo_ids must be a list of integers"}, 400)
+            if action not in ("start", "stop", "pause", "resume", "push"):
+                return self._json({"error": "action must be start/stop/pause/resume/push"}, 400)
+            results = {}
+            for rid in repo_ids[:50]:
+                try:
+                    if action == "start":
+                        r = manager.start_repo(rid)
+                    elif action == "stop":
+                        r = manager.stop_repo(rid)
+                    elif action == "pause":
+                        orch = manager.orchestrators.get(rid)
+                        r = {"ok": True} if orch and orch.pause() else {"ok": False, "error": "not running"}
+                    elif action == "resume":
+                        orch = manager.orchestrators.get(rid)
+                        r = {"ok": True} if orch and orch.resume() else {"ok": False, "error": "not running"}
+                    elif action == "push":
+                        repo = next((rr for rr in manager.master.get_repos() if rr["id"] == rid), None)
+                        if repo:
+                            from subprocess import run as sp_run
+                            res = sp_run(["git", "push"], cwd=repo["path"], capture_output=True, text=True, timeout=30)
+                            r = {"ok": res.returncode == 0, "output": (res.stdout + res.stderr)[:200]}
+                        else:
+                            r = {"ok": False, "error": "not found"}
+                    else:
+                        r = {"ok": False, "error": "unknown"}
+                    results[rid] = r
+                except Exception as e:
+                    results[rid] = {"ok": False, "error": str(e)[:100]}
+            _response_cache.clear()
+            return self._json({"ok": True, "results": results})
+
         if path == "/api/start":
             rid = b.get("repo_id")
             tag = b.get("tag")
@@ -4118,6 +4162,7 @@ def main():
 
     log.info("\n⏹️ Shutting down...")
     manager.stop_all()
+    manager.master.close()
     # Drain SSE clients
     with _sse_lock:
         _sse_clients.clear()
