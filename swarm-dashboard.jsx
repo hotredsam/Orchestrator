@@ -188,6 +188,8 @@ function Dashboard() {
       if(c.ok) setLogs(await c.json()); if(d.ok) setAgents(await d.json());
       if(e.ok) setMemory(await e.json()); if(g.ok) setMistakes(await g.json());
       if(h.ok) setAudio(await h.json()); if(hi.ok) setHistory(await hi.json());
+      // Fetch costs
+      try { const cr = await f("/api/costs"); if(cr.ok) { const cd = await cr.json(); if(cd.costs) setCosts(cd.costs); } } catch {}
     } catch(err) { console.warn("Data fetch error:", err.message); }
   }, [sr]);
 
@@ -231,6 +233,7 @@ function Dashboard() {
   const startRepo = async id => { await apiAction("/api/start", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo started"); };
   const stopRepo = async id => { await apiAction("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo stopped"); };
   const startAll = async () => { await apiAction("/api/start", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }, "All repos started"); };
+  const stopAll = async () => { await apiAction("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }, "All repos stopped"); };
   const pauseRepo = async id => { await apiAction("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo paused"); };
   const resumeRepo = async id => { await apiAction("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo resumed"); };
   const deleteRepo = async id => { if(confirm("Remove this repo from Swarm Town? (files on disk are kept)")) { await apiAction("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo removed"); } };
@@ -546,10 +549,15 @@ function Dashboard() {
         {tab === "home" && (<>
           {/* START ALL banner */}
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F5E6C8 100%)`}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
+            <div style={{ textAlign: "center", marginBottom: 20, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               <Btn onClick={startAll} bg={C.green} style={{ fontSize: 24, padding: "16px 48px", animation: repos.some(r=>r.running) ? "none" : "wiggle 2s infinite" }}>
-                {"\uD83D\uDE80"} START ALL REPOS
+                {"\uD83D\uDE80"} START ALL
               </Btn>
+              {repos.some(r => r.running) && (
+                <Btn onClick={stopAll} bg={C.red} style={{ fontSize: 24, padding: "16px 48px" }}>
+                  {"\u23F9\uFE0F"} STOP ALL
+                </Btn>
+              )}
             </div>
 
             {/* Stats row */}
@@ -1231,7 +1239,8 @@ function Dashboard() {
                                 setRollingBack(true);
                                 const res = await f("/api/rollback", { method: "POST", body: JSON.stringify({ repo_id: sr, commit_hash: h.commit_hash }) });
                                 setRollingBack(false);
-                                if (res.ok) { const d = await res.json(); alert(d.ok ? "Rollback complete!" : d.error || "Rollback failed"); }
+                                if (res.ok) { const d = await res.json(); showToast(d.ok ? "Rollback complete!" : d.error || "Rollback failed", d.ok ? "success" : "error"); load(); }
+                                else showToast("Rollback request failed", "error");
                               }}>
                               {rollingBack ? "Rolling back..." : "\u23EA Rollback"}
                             </Btn>
@@ -1370,13 +1379,11 @@ function Dashboard() {
             <div style={{ maxWidth: 700, margin: "0 auto" }}>
               <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 20 }}>
                 <Btn bg={C.orange} style={{ fontSize: 17, padding: "14px 28px" }} onClick={async () => {
-                  const res = await f("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ all: true }) });
-                  if (res.ok) { const d = await res.json(); alert(`Optimized ${d.optimized} repos!`); load(); }
+                  await apiAction("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ all: true }) }, "All repos optimized");
                 }}>{"\uD83D\uDD04"} Re-Optimize All Repos</Btn>
                 <Btn bg={C.teal} style={{ fontSize: 17, padding: "14px 28px" }} onClick={async () => {
                   if (!sr) return;
-                  const res = await f("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ repo_id: sr }) });
-                  if (res.ok) { const d = await res.json(); alert(`Optimized ${d.optimized} repo(s)!`); load(); }
+                  await apiAction("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ repo_id: sr }) }, "Repo optimized");
                 }}>{"\u26A1"} Optimize Selected Repo</Btn>
               </div>
               {/* ── Selective Item Optimization ── */}
@@ -1413,14 +1420,8 @@ function Dashboard() {
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Btn bg={selOptItems.length > 0 ? C.orange : "#aaa"} style={{ fontSize: 15, padding: "10px 22px", opacity: selOptItems.length > 0 ? 1 : 0.6, cursor: selOptItems.length > 0 ? "pointer" : "not-allowed" }} onClick={async () => {
                       if (!sr || selOptItems.length === 0) return;
-                      const res = await f("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ repo_id: sr, item_ids: selOptItems }) });
-                      if (res.ok) {
-                        const d = await res.json();
-                        const reQueued = d.results?.[0]?.re_queued_items?.length || 0;
-                        alert(`Optimized repo! ${reQueued} item(s) re-queued for the swarm.`);
-                        setSelOptItems([]);
-                        load();
-                      }
+                      const ok = await apiAction("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ repo_id: sr, item_ids: selOptItems }) }, `${selOptItems.length} item(s) re-queued`);
+                      if (ok) setSelOptItems([]);
                     }}>{"\uD83E\uDDE8"} Optimize {selOptItems.length} Selected {selOptItems.length === 1 ? "Item" : "Items"}</Btn>
                     {selOptItems.length > 0 && (
                       <span onClick={() => setSelOptItems([])} style={{ fontSize: 12, color: C.brown, cursor: "pointer", textDecoration: "underline", fontWeight: 600 }}>Clear all</span>
@@ -1445,6 +1446,29 @@ function Dashboard() {
                   ))}
                 </div>
               </Card>
+              {/* ── Cost Tracker ── */}
+              {Object.keys(costs).length > 0 && (
+                <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>{"\uD83D\uDCB0"} API Cost Tracker</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {repos.map(r => {
+                      const cost = costs[r.id] || 0;
+                      return (
+                        <div key={r.id} style={{ background: C.white, borderRadius: 8, padding: "8px 12px", border: `1.5px solid ${C.darkBrown}33`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: cost > 1 ? C.red : cost > 0.1 ? C.orange : C.green, fontFamily: "'Bangers', cursive", letterSpacing: 0.5 }}>
+                            ${cost.toFixed(2)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ textAlign: "right", marginTop: 8, fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>
+                    Total: ${Object.values(costs).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0).toFixed(2)}
+                  </div>
+                </Card>
+              )}
+
               {repos.map(r => {
                 const cfg = r.stats?.ruflo_config || {};
                 return (
