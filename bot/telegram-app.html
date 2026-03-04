@@ -1054,6 +1054,9 @@
               <span class="card-label">Items</span>
               <span class="card-value">${stats.items_done || 0}/${stats.items_total || 0} done</span>
             </div>
+            ${(stats.items_total || 0) > 0 ? `<div style="margin:4px 0;height:5px;border-radius:3px;background:var(--bg);overflow:hidden;">
+              <div style="width:${Math.round((stats.items_done||0)/(stats.items_total||1)*100)}%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--green),var(--teal));transition:width .5s;"></div>
+            </div>` : ''}
             <div class="card-row">
               <span class="card-label">Steps</span>
               <span class="card-value">${stats.steps_done || 0}/${stats.steps_total || 0}</span>

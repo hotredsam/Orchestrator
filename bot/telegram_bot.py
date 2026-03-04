@@ -566,6 +566,39 @@ def cmd_items(name):
     return "\n".join(lines)
 
 
+def cmd_done(arg):
+    """Mark an item as completed. Usage: done repo: title"""
+    if ":" not in arg:
+        return "Usage: `/done repo: item title`\nExample: `/done blog: fix login bug`"
+    parts = arg.split(":", 1)
+    repo_name = parts[0].strip()
+    item_query = parts[1].strip().lower()
+    repo = _find_repo(repo_name)
+    if not repo:
+        return f"Repo '{repo_name}' not found."
+    items = _orch_get(f"/api/items?repo_id={repo['id']}")
+    if not items or isinstance(items, dict):
+        return f"No items found for {repo['name']}."
+    # Find matching item by title substring
+    match = None
+    for it in items:
+        if it.get("status") in ("pending", "in_progress") and item_query in (it.get("title", "").lower()):
+            match = it
+            break
+    if not match:
+        # Try partial match
+        for it in items:
+            if it.get("status") in ("pending", "in_progress") and item_query in it.get("title", "").lower():
+                match = it
+                break
+    if not match:
+        return f"No pending/in-progress item matching '{item_query}' in {repo['name']}."
+    result = _orch_post("/api/items/update", {"repo_id": repo["id"], "item_id": match["id"], "status": "completed"})
+    if isinstance(result, dict) and result.get("ok"):
+        return f"\u2705 Marked *{match.get('title', '')}* as completed in {repo['name']}."
+    return f"Failed to update: {result.get('error', 'unknown')}"
+
+
 def cmd_plan(name):
     """Show plan steps for a repo."""
     repo = _find_repo(name)
@@ -1396,6 +1429,7 @@ def cmd_help():
 `plan [repo]` — Show plan steps progress
 `add feature repo: title - desc` — Add feature
 `add issue repo: title - desc` — Add issue
+`done repo: item title` — Mark item as completed
 
 *Inspection:*
 `logs [repo]` — Last 5 log entries
@@ -1624,6 +1658,8 @@ def handle_message(msg):
         reply = cmd_push(t[5:])
     elif t.startswith("items "):
         reply = cmd_items(t[6:])
+    elif t.startswith("done "):
+        reply = cmd_done(t[5:])
     elif t.startswith("plan "):
         reply = cmd_plan(t[5:])
     elif t.startswith("logs "):
