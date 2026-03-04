@@ -2232,6 +2232,18 @@ function Dashboard() {
                   a.click(); URL.revokeObjectURL(url);
                   showToast(`Exported ${items.length} items to JSON`, "success");
                 }} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDCE5"} Export</Btn>
+                <Btn bg="#2E7D32" onClick={() => {
+                  const header = "title,type,priority,status,source,created_at";
+                  const csvEsc = v => `"${String(v||"").replace(/"/g, '""')}"`;
+                  const rows = items.map(it => [it.title, it.type, it.priority, it.status, it.source, it.created_at].map(csvEsc).join(","));
+                  const csv = [header, ...rows].join("\n");
+                  const blob = new Blob([csv], { type: "text/csv" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a"); a.href = url;
+                  a.download = `swarm-items-${repo?.name || "repo"}-${new Date().toISOString().slice(0,10)}.csv`;
+                  a.click(); URL.revokeObjectURL(url);
+                  showToast(`Exported ${items.length} items to CSV`, "success");
+                }} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDCC8"} CSV</Btn>
                 <button onClick={() => setCompactItems(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactItems ? C.teal : C.cream, color: compactItems ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact view">{compactItems ? "\u2630 Compact" : "\u2637 Full"}</button>
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total

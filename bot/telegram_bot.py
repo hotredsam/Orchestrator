@@ -1615,6 +1615,23 @@ def cmd_fastest():
     return "\n".join(lines)
 
 
+def cmd_dedupe(name: str = ""):
+    """Remove duplicate pending items from a repo."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("dedupe") if not name else f"Repo '{name}' not found."
+    rid = repo["id"]
+    items_before = _orch_get(f"/api/items?repo_id={rid}") or []
+    pending_before = len([i for i in items_before if i.get("status") == "pending"])
+    result = _orch_post("/api/items/dedupe", {"repo_id": rid})
+    items_after = _orch_get(f"/api/items?repo_id={rid}") or []
+    pending_after = len([i for i in items_after if i.get("status") == "pending"])
+    removed = pending_before - pending_after
+    if removed > 0:
+        return f"\U0001F9F9 *Dedupe: {repo['name']}*\n  Removed {removed} duplicate item{'s' if removed != 1 else ''}\n  {pending_after} pending items remaining"
+    return f"\u2705 No duplicates found in *{repo['name']}* ({pending_after} pending items)"
+
+
 def cmd_pin(name: str = ""):
     """Pin a repo as default context for commands."""
     global _pinned_repo
@@ -1719,6 +1736,7 @@ def cmd_help():
 `timeline [repo]` — Execution state transition timeline
 `queue` — Top priority pending items across all repos
 `fastest` — Fastest completed steps across all repos
+`dedupe [repo]` — Remove duplicate pending items
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -2001,6 +2019,8 @@ def handle_message(msg):
         reply = cmd_active()
     elif t in ("fastest", "speed", "quickest"):
         reply = cmd_fastest()
+    elif t == "dedupe" or t.startswith("dedupe "):
+        reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t in ("stale", "stuck"):
         reply = cmd_stale()
     elif t in ("breakers", "circuit-breakers", "circuit"):
@@ -2073,7 +2093,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
