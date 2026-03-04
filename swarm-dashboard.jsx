@@ -223,6 +223,7 @@ function Dashboard() {
   const [newNote, setNewNote] = useState("");
   const [batchSelected, setBatchSelected] = useState(new Set());
   const [editingItem, setEditingItem] = useState(null); // { id, title, priority }
+  const [planSearch, setPlanSearch] = useState("");
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -987,16 +988,26 @@ function Dashboard() {
       {/* ═══ NAV TABS + STICKY REPO BAR ═══ */}
       <div style={{ position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: scrolledPast ? "none" : `3px solid ${C.darkBrown}`, gap: 0 }}>
-          {TABS.map(t => (
-            <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
-              padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
-              border: "none", borderRight: `2px solid ${C.darkBrown}`,
-              borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
-              color: tab === t.id ? C.darkBrown : C.white, cursor: "pointer",
-              fontSize: 13, fontFamily: "'Bangers', cursive", letterSpacing: 1.5,
-              whiteSpace: "nowrap", fontWeight: 700, transition: "background 0.2s, transform 0.15s",
-            }}>{t.label}</button>
-          ))}
+          {TABS.map(t => {
+            const badge = t.id === "items" ? items.filter(i => i.status === "pending").length
+              : t.id === "mistakes" ? mistakes.length
+              : t.id === "logs" && logs.some(l => l.error) ? logs.filter(l => l.error).length
+              : 0;
+            return (
+              <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
+                padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
+                border: "none", borderRight: `2px solid ${C.darkBrown}`,
+                borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
+                color: tab === t.id ? C.darkBrown : C.white, cursor: "pointer",
+                fontSize: 13, fontFamily: "'Bangers', cursive", letterSpacing: 1.5,
+                whiteSpace: "nowrap", fontWeight: 700, transition: "background 0.2s, transform 0.15s",
+                position: "relative",
+              }}>
+                {t.label}
+                {badge > 0 && <span style={{ position: "absolute", top: 2, right: 4, background: t.id === "mistakes" || t.id === "logs" ? C.red : C.teal, color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontFamily: "'Fredoka', sans-serif", border: `1px solid ${C.darkBrown}` }}>{badge > 99 ? "99" : badge}</span>}
+              </button>
+            );
+          })}
         </div>
         {scrolledPast && repos.length > 0 && (
           <div style={{ background: dark ? "#1E1E2E" : C.cream, borderBottom: `3px solid ${C.darkBrown}`, padding: "4px 16px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, fontFamily: "'Fredoka', sans-serif" }}>
@@ -2269,6 +2280,12 @@ function Dashboard() {
                 </div>
               );
             })()}
+            {plan.length > 3 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", justifyContent: "center" }}>
+                <Inp placeholder="Search plan steps..." value={planSearch} onChange={e => setPlanSearch(e.target.value)}
+                  style={{ maxWidth: 320, fontSize: 12, padding: "6px 12px" }} />
+              </div>
+            )}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
               {plan.length === 0 ? (
                 <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
@@ -2277,16 +2294,16 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Add items to the Bounty Board first -- the swarm will draw up a plan!</div>
                 </Card>
               ) :
-                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); const completedSteps = plan.filter(p => p.status === "completed" && p.duration_sec > 0); const avgDur = completedSteps.length ? completedSteps.reduce((a, p) => a + p.duration_sec, 0) / completedSteps.length : 0; const firstPendingIdx = plan.findIndex(s => s.status !== "completed"); return plan.map((s,i) => {
+                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); const completedSteps = plan.filter(p => p.status === "completed" && p.duration_sec > 0); const avgDur = completedSteps.length ? completedSteps.reduce((a, p) => a + p.duration_sec, 0) / completedSteps.length : 0; const firstPendingId = plan.find(s => s.status !== "completed")?.id; const searchedPlan = planSearch ? plan.filter(s => (s.description || "").toLowerCase().includes(planSearch.toLowerCase())) : plan; return searchedPlan.map((s,i) => {
                   const done = s.status==="completed";
-                  const isNextStep = i === firstPendingIdx;
+                  const isNextStep = s.id === firstPendingId;
                   return (
                     <div key={s.id} ref={isNextStep ? el => { if (el && tab === "plan") setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300); } : undefined} style={{ display: "flex", gap: 12, marginBottom: 8, outline: isNextStep ? `2px solid ${C.orange}44` : "none", borderRadius: 8 }}>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                         <div style={{ width: 36, height: 36, borderRadius: "50%", background: done ? `linear-gradient(135deg, ${C.green}, #27ae60)` : C.cream, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontFamily: "'Bangers',cursive", flexShrink: 0, color: done ? C.white : C.darkBrown, boxShadow: done ? `0 2px 8px ${C.green}44` : "none" }}>
-                          {done ? "\u2713" : i+1}
+                          {done ? "\u2713" : (s.step_order || i+1)}
                         </div>
-                        {i < plan.length - 1 && <div style={{ width: 2, flex: 1, background: done ? C.green : `${C.darkBrown}33`, marginTop: 4 }} />}
+                        {i < searchedPlan.length - 1 && <div style={{ width: 2, flex: 1, background: done ? C.green : `${C.darkBrown}33`, marginTop: 4 }} />}
                       </div>
                       <Card bg={done ? C.lightTeal : C.white} style={{ flex: 1, padding: 12, marginBottom: 0, background: isNextStep ? `linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)` : done ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
                         {s.description?.length > 120 ? (
