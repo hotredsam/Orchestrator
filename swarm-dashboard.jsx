@@ -264,6 +264,9 @@ function Dashboard() {
       if (dLogSearch && ![l.state, l.action, l.result, l.error].join(" ").toLowerCase().includes(dLogSearch.toLowerCase())) return false;
       if (logLevelFilter === "errors" && !l.error) return false;
       if (logLevelFilter === "costly" && !(l.cost_usd > 0.01)) return false;
+      if (logLevelFilter === "opus" && !(l.model && l.model.toLowerCase().includes("opus"))) return false;
+      if (logLevelFilter === "sonnet" && !(l.model && l.model.toLowerCase().includes("sonnet"))) return false;
+      if (logLevelFilter === "haiku" && !(l.model && l.model.toLowerCase().includes("haiku"))) return false;
       return true;
     });
   }, [logs, dLogSearch, logLevelFilter]);
@@ -2263,6 +2266,15 @@ function Dashboard() {
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
                 </span>
+                {(() => {
+                  const doneI = items.filter(i => i.status === "completed" && i.completed_at);
+                  const pendI = items.filter(i => i.status === "pending").length;
+                  if (doneI.length < 2 || pendI === 0) return null;
+                  const dts = doneI.map(i => new Date(i.completed_at).getTime()).sort();
+                  const vel = doneI.length / Math.max(1, (dts[dts.length-1] - dts[0]) / 86400000);
+                  const eta = Math.ceil(pendI / vel);
+                  return eta > 0 ? <span style={{ fontSize: 10, background: C.lightTeal, color: C.teal, padding: "2px 8px", borderRadius: 10, fontWeight: 700, border: `1px solid ${C.teal}44` }}>{"\uD83D\uDCC5"} ~{eta}d ETA</span> : null;
+                })()}
               </div>
             )}
             {/* Priority breakdown */}
@@ -2963,14 +2975,14 @@ function Dashboard() {
             <div style={{ maxWidth: 800, margin: "0 auto 10px", display: "flex", justifyContent: "center", gap: 8, alignItems: "center" }}>
               <Inp placeholder="Search logs..." value={logSearch} onChange={e => setLogSearch(e.target.value)}
                 style={{ maxWidth: 300, fontSize: 12, padding: "8px 14px" }} />
-              {["all", "errors", "costly"].map(lf => (
+              {["all", "errors", "costly", "opus", "sonnet", "haiku"].map(lf => (
                 <button key={lf} onClick={() => setLogLevelFilter(lf)} style={{
                   padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
                   fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
-                  background: logLevelFilter === lf ? (lf === "errors" ? C.red : lf === "costly" ? C.green : C.teal) : C.cream,
+                  background: logLevelFilter === lf ? (lf === "errors" ? C.red : lf === "costly" ? C.green : lf === "opus" ? "#9B59B6" : lf === "sonnet" ? C.teal : lf === "haiku" ? C.orange : C.teal) : C.cream,
                   color: logLevelFilter === lf ? C.white : C.darkBrown,
                   border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
-                }}>{lf === "all" ? "All" : lf === "errors" ? "Errors Only" : "$$ High Cost"}</button>
+                }}>{lf === "all" ? "All" : lf === "errors" ? "Errors" : lf === "costly" ? "$$" : lf.charAt(0).toUpperCase() + lf.slice(1)}</button>
               ))}
               <Btn onClick={exportLogs} bg={C.teal} style={{ fontSize: 11, padding: "8px 14px" }}>{"\u2B07"} Export</Btn>
             </div>
