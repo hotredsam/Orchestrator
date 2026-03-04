@@ -2295,6 +2295,7 @@ _rate_strict = {}  # ip:path -> [timestamps]
 
 def _check_rate_limit(ip, path):
     """Return True if request is allowed, False if rate-limited."""
+    path = path.rstrip("/") or "/"  # Normalize trailing slashes
     if path in RATE_EXEMPT_PATHS:
         return True
     now = time.time()
@@ -2544,7 +2545,7 @@ class API(BaseHTTPRequestHandler):
             repos = manager.master.get_repos()
             if name_q:
                 repos = [r for r in repos if name_q in r["name"].lower()]
-            # Enrich with state
+            # Enrich with state — batch counts in single query per repo
             for r in repos:
                 try:
                     db = RepoDB(r["db_path"])
@@ -2556,18 +2557,32 @@ class API(BaseHTTPRequestHandler):
                     # Check if paused
                     orch = manager.orchestrators.get(r["id"])
                     r["paused"] = orch.is_paused if orch else False
+                    # Single query for all item counts
+                    ic = db.fetchone(
+                        "SELECT COUNT(*) c,"
+                        " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done,"
+                        " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pend,"
+                        " SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) prog"
+                        " FROM items")
+                    sc = db.fetchone(
+                        "SELECT COUNT(*) c,"
+                        " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done"
+                        " FROM plan_steps")
+                    mc = db.fetchone("SELECT COUNT(*) c FROM mistakes")
+                    mem_c = db.fetchone("SELECT COUNT(*) c FROM memory")
+                    ac = db.fetchone("SELECT COUNT(*) c FROM audio_reviews")
                     stats = {
-                        "items_total": db.fetchone("SELECT COUNT(*) c FROM items")["c"],
-                        "items_done": db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"],
-                        "items_pending": db.fetchone("SELECT COUNT(*) c FROM items WHERE status='pending'")["c"],
-                        "items_in_progress": db.fetchone("SELECT COUNT(*) c FROM items WHERE status='in_progress'")["c"],
-                        "steps_total": db.fetchone("SELECT COUNT(*) c FROM plan_steps")["c"],
-                        "steps_done": db.fetchone("SELECT COUNT(*) c FROM plan_steps WHERE status='completed'")["c"],
-                        "steps_pending": db.fetchone("SELECT COUNT(*) c FROM plan_steps WHERE status!='completed'")["c"],
+                        "items_total": ic["c"],
+                        "items_done": ic["done"] or 0,
+                        "items_pending": ic["pend"] or 0,
+                        "items_in_progress": ic["prog"] or 0,
+                        "steps_total": sc["c"],
+                        "steps_done": sc["done"] or 0,
+                        "steps_pending": sc["c"] - (sc["done"] or 0),
                         "agents": st.active_agents,
-                        "memory": db.fetchone("SELECT COUNT(*) c FROM memory")["c"],
-                        "mistakes": db.fetchone("SELECT COUNT(*) c FROM mistakes")["c"],
-                        "audio": db.fetchone("SELECT COUNT(*) c FROM audio_reviews")["c"],
+                        "memory": mem_c["c"],
+                        "mistakes": mc["c"],
+                        "audio": ac["c"],
                     }
                     # Include ruflo config
                     ruflo_rows = db.fetchall("SELECT key, value FROM memory WHERE namespace='ruflo_config'")
@@ -3149,7 +3164,8 @@ class API(BaseHTTPRequestHandler):
             return self._json(manager.resume_repo(rid))
 
         if path == "/api/items":
-            rid = b.get("repo_id")
+            rid = self._safe_int(b.get("repo_id"))
+            if rid is None: return self._json({"error": "repo_id required (integer)"}, 400)
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             title = (b.get("title") or "").strip()[:200]
@@ -3575,6 +3591,9 @@ class API(BaseHTTPRequestHandler):
             url = b.get("url", "").strip()
             if not url:
                 return self._json({"error": "url required"}, 400)
+            parsed_url = urlparse(url)
+            if parsed_url.scheme not in ("http", "https") or not parsed_url.netloc:
+                return self._json({"error": "url must be a valid http/https URL"}, 400)
             events = b.get("events", ["*"])
             secret = b.get("secret", "")
             wh = webhook_register(url, events, secret)
