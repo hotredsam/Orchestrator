@@ -610,25 +610,36 @@ class RepoDB:
         except Exception as e:
             log.warning("Error closing DB %s: %s", self.path, e)
 
-    def transaction(self):
-        """Context manager for atomic multi-statement operations."""
+    def transaction(self, retries=3):
+        """Context manager for atomic multi-statement operations with deadlock retry."""
+        db = self
         class _Tx:
-            def __init__(tx, db):
-                tx.db = db
+            def __init__(tx):
+                tx._attempt = 0
             def __enter__(tx):
-                tx.db.lock.acquire()
-                tx.db.conn.execute("BEGIN IMMEDIATE")
-                return tx.db
+                for attempt in range(retries):
+                    db.lock.acquire()
+                    try:
+                        db.conn.execute("BEGIN IMMEDIATE")
+                        tx._attempt = attempt
+                        return db
+                    except sqlite3.OperationalError as e:
+                        db.lock.release()
+                        if "locked" in str(e) and attempt < retries - 1:
+                            time.sleep(0.1 * (2 ** attempt))
+                            continue
+                        raise
+                return db  # shouldn't reach
             def __exit__(tx, exc_type, exc_val, exc_tb):
                 try:
                     if exc_type is None:
-                        tx.db.conn.commit()
+                        db.conn.commit()
                     else:
-                        tx.db.conn.rollback()
+                        db.conn.rollback()
                 finally:
-                    tx.db.lock.release()
+                    db.lock.release()
                 return False
-        return _Tx(self)
+        return _Tx()
 
     _SLOW_QUERY_MS = 200  # log queries slower than this
 
@@ -3429,6 +3440,21 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": f"Invalid action '{action}' or value '{value}'"}, 400)
             db.commit()
             return self._json({"ok": True, "updated": updated})
+
+        if path == "/api/items/reorder":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            order = b.get("order", [])  # list of item IDs in desired order
+            if not isinstance(order, list) or len(order) == 0:
+                return self._json({"error": "order must be a non-empty list of item IDs"}, 400)
+            # Use created_at to set implicit ordering (earlier = higher priority)
+            with db.transaction():
+                base_time = "2020-01-01 00:00:00"
+                for i, item_id in enumerate(order):
+                    ts = f"2020-01-01 00:{i:02d}:00"
+                    db.conn.execute("UPDATE items SET created_at=? WHERE id=?", (ts, item_id))
+            return self._json({"ok": True, "reordered": len(order)})
 
         if path == "/api/audio":
             rid = b.get("repo_id")

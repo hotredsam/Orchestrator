@@ -960,6 +960,34 @@ def cmd_stale():
     return "\n".join(lines)
 
 
+def cmd_summary():
+    """Quick one-message overview: status + health + costs."""
+    status_data = _orch_get("/api/status")
+    health_data = _orch_get("/api/health/detailed")
+    costs_data = _orch_get("/api/costs")
+    lines = ["\U0001F3D8\uFE0F *Swarm Town Summary*", ""]
+    if isinstance(status_data, dict) and "error" not in status_data:
+        lines.append(f"\u23F1 Uptime: {status_data.get('uptime', '?')}")
+        lines.append(f"\U0001F4E6 Repos: {status_data.get('repos_running', 0)}/{status_data.get('repos_total', 0)} running")
+    if isinstance(costs_data, dict) and "total" in costs_data:
+        lines.append(f"\U0001F4B0 Total Cost: ${costs_data['total']:.3f}")
+    if isinstance(health_data, dict):
+        avg = health_data.get("average_score", 0)
+        lines.append(f"\U0001F3E5 Avg Health: {avg}/100")
+        # Count grades
+        grades = {}
+        for r in health_data.get("repos", []):
+            g = r.get("grade", "?")
+            grades[g] = grades.get(g, 0) + 1
+        if grades:
+            grade_str = " ".join(f"{g}:{c}" for g, c in sorted(grades.items()))
+            lines.append(f"   Grades: {grade_str}")
+    cbs = status_data.get("circuit_breakers", {}) if isinstance(status_data, dict) else {}
+    if cbs:
+        lines.append(f"\u26A1 {len(cbs)} circuit breaker(s) tripped")
+    return "\n".join(lines)
+
+
 def cmd_tags(text):
     """View or set repo tags. 'tags repo' to view, 'tags repo: tag1, tag2' to set."""
     if ":" in text:
@@ -1040,6 +1068,7 @@ def cmd_help():
 `snapshot [repo]` — Quick data snapshot with pending items
 `cost-history` — Daily cost totals for last 7 days
 `grades` — Health scores for all repos (A-F)
+`summary` — Quick one-message status overview
 `app` — Open Mini App
 `help` — This message
 
@@ -1233,6 +1262,8 @@ def handle_message(msg):
     elif t.startswith("agent-stats ") or t.startswith("agentstats "):
         arg = t.split(" ", 1)[1].strip() if " " in t else ""
         reply = cmd_agent_stats(arg)
+    elif t in ("summary", "overview"):
+        reply = cmd_summary()
     elif t == "help":
         reply = cmd_help()
     elif t.startswith("search "):
