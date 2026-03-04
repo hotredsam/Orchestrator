@@ -170,6 +170,24 @@ function Dashboard() {
 
   useEffect(() => { load(); const i = setInterval(load, 3000); return () => clearInterval(i); }, [load]);
 
+  // Keyboard shortcuts
+  const [showHelp, setShowHelp] = useState(false);
+  useEffect(() => {
+    const handler = (e) => {
+      // Don't handle when typing in inputs
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+      const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","settings"];
+      if (e.key >= "1" && e.key <= "9") { e.preventDefault(); const idx = parseInt(e.key) - 1; if (TABS_LIST[idx]) setTab(TABS_LIST[idx]); }
+      if (e.key === "0") { e.preventDefault(); setTab("logs"); }
+      if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${repo?.running ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
+      if (e.key === "/") { e.preventDefault(); setTab("home"); setTimeout(() => { const el = document.querySelector("input[placeholder*='command']"); if (el) el.focus(); }, 100); }
+      if (e.key === "Escape") setShowHelp(false);
+      if (e.key === "?") setShowHelp(prev => !prev);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [sr, repo]);
+
   const repo = repos.find(r => r.id === sr);
   const cs = repo?.state || "idle";
   const si = STATES[cs] || STATES.idle;
@@ -1037,7 +1055,13 @@ function Dashboard() {
         {tab === "logs" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.yellow} 0%, #F5D94E 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Town Logs</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Every action, every decision -- all on record</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16 }}>
+              <p style={{ fontSize: 13, color: C.brown }}>Every action, every decision -- all on record</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.green, borderRadius: 12, padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.white }}>
+                <span style={{ animation: "rec 1.5s infinite" }}>●</span> LIVE
+              </div>
+              <span style={{ fontSize: 11, color: C.brown }}>{logs.length} entries</span>
+            </div>
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               {logs.length===0 ? (
                 <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
@@ -1046,12 +1070,13 @@ function Dashboard() {
                   <div style={{ fontSize: 12, color: C.brown }}>Logs appear as the orchestrator works its magic.</div>
                 </Card>
               ) :
-                logs.map(l => (
-                  <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, marginBottom: 3, fontSize: 11, boxShadow: "0 1px 3px rgba(0,0,0,.04)", transition: "transform .15s" }}>
+                logs.map((l, i) => (
+                  <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: i === 0 ? "#FFFDE7" : C.white, border: `2px solid ${i === 0 ? C.orange : C.darkBrown}`, borderRadius: 8, marginBottom: 3, fontSize: 11, boxShadow: i === 0 ? `0 0 8px ${C.orange}44` : "0 1px 3px rgba(0,0,0,.04)", transition: "transform .15s, background .3s, border-color .3s" }}>
                     <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
                     <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
                     <span style={{ minWidth: 80, fontWeight: 500 }}>{l.action}</span>
                     {l.agent_count>0 && <span style={{ color: C.orange, fontSize: 9, background: C.lightOrange, borderRadius: 4, padding: "0 4px" }}>{"\uD83E\uDD20"}{"\u00D7"}{l.agent_count}</span>}
+                    {l.cost_usd > 0 && <span style={{ color: "#2E7D32", fontSize: 9, background: "#E8F5E9", borderRadius: 4, padding: "0 4px" }}>${l.cost_usd.toFixed(3)}</span>}
                     {l.duration_sec>0 && <span style={{ color: C.teal, fontSize: 9, background: C.lightTeal, borderRadius: 4, padding: "0 4px" }}>{l.duration_sec.toFixed(1)}s</span>}
                     {l.error && <span style={{ color: C.red, fontSize: 9 }}>{"\uD83D\uDC80"}{l.error.slice(0,30)}</span>}
                     <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.result?.slice(0,50)}</span>
@@ -1354,6 +1379,31 @@ function Dashboard() {
         )}
 
       </div>
+
+      {/* Keyboard Shortcuts Help Overlay */}
+      {showHelp && (
+        <div onClick={() => setShowHelp(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.cream, border: `4px solid ${C.darkBrown}`, borderRadius: 16, padding: 28, maxWidth: 420, width: "90%", boxShadow: "0 8px 32px rgba(0,0,0,0.3), 6px 6px 0 #3D2B1F" }}>
+            <h3 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, letterSpacing: 2, marginBottom: 16, textAlign: "center", color: C.darkBrown }}>Keyboard Shortcuts</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 16px", fontSize: 14 }}>
+              {[
+                ["1-9", "Switch to tab 1-9"],
+                ["0", "Logs tab"],
+                ["S", "Start/Stop selected repo"],
+                ["/", "Focus command center"],
+                ["?", "Toggle this help"],
+                ["Esc", "Close overlays"],
+              ].map(([key, desc]) => (
+                <React.Fragment key={key}>
+                  <kbd style={{ background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "3px 10px", fontFamily: "'Bangers', cursive", fontSize: 16, textAlign: "center", boxShadow: "2px 2px 0 #3D2B1F" }}>{key}</kbd>
+                  <span style={{ display: "flex", alignItems: "center" }}>{desc}</span>
+                </React.Fragment>
+              ))}
+            </div>
+            <p style={{ textAlign: "center", marginTop: 16, fontSize: 12, color: C.brown }}>Press ? or Esc to close</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

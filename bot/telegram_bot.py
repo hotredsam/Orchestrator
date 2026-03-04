@@ -196,10 +196,25 @@ def take_screenshot(url=None, output_path=None):
 
 # ─── Orchestrator API Helpers ────────────────────────────────────────────────
 
+def _fetch_api_token():
+    """Fetch the Bearer token from the orchestrator's /api/token endpoint."""
+    try:
+        resp = urlopen(f"{ORCH_URL}/api/token", timeout=5)
+        data = json.loads(resp.read())
+        return data.get("token", "")
+    except Exception as e:
+        log.error("Failed to fetch API token: %s", e)
+        return ""
+
+
 def _orch_get(path):
     """GET from orchestrator API."""
     try:
-        resp = urlopen(f"{ORCH_URL}{path}", timeout=5)
+        token = _fetch_api_token()
+        req = Request(f"{ORCH_URL}{path}")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        resp = urlopen(req, timeout=5)
         return json.loads(resp.read())
     except Exception as e:
         return {"error": str(e)}
@@ -208,8 +223,12 @@ def _orch_get(path):
 def _orch_post(path, data):
     """POST to orchestrator API."""
     try:
+        token = _fetch_api_token()
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         req = Request(f"{ORCH_URL}{path}", data=json.dumps(data).encode(),
-                     headers={"Content-Type": "application/json"})
+                     headers=headers)
         resp = urlopen(req, timeout=10)
         return json.loads(resp.read())
     except Exception as e:
@@ -369,6 +388,33 @@ def cmd_memory(name):
     return "\n".join(lines)
 
 
+def cmd_digest():
+    """Fetch the daily digest from the orchestrator and return it."""
+    data = _orch_get("/api/digest")
+    if isinstance(data, dict) and "error" in data:
+        return f"Error fetching digest: {data['error']}"
+    digest = data.get("digest", "")
+    if not digest:
+        return "Daily digest is empty — no data available."
+    return f"*Daily Digest*\n\n{digest}"
+
+
+def cmd_costs():
+    """Fetch cost data from the orchestrator and format it."""
+    data = _orch_get("/api/costs")
+    if isinstance(data, dict) and "error" in data:
+        return f"Error fetching costs: {data['error']}"
+    costs = data.get("costs", {})
+    total = data.get("total", 0)
+    if not costs:
+        return "*API Costs*\n\nNo cost data available."
+    lines = ["*API Costs*\n"]
+    for repo, cost in sorted(costs.items()):
+        lines.append(f"  `{repo}`: ${cost:.4f}")
+    lines.append(f"\n*Total: ${total:.4f}*")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -384,6 +430,8 @@ def cmd_help():
 `logs [repo]` — Last 5 log entries
 `mistakes [repo]` — Last 5 mistakes
 `memory [repo]` — Last 5 memory entries
+`digest` — Daily digest summary
+`costs` — Per-repo API costs
 `help` — This message
 
 Send a voice message to queue audio for transcription."""
@@ -505,6 +553,10 @@ def handle_message(msg):
         reply = cmd_mistakes(t[9:])
     elif t.startswith("memory "):
         reply = cmd_memory(t[7:])
+    elif t == "digest":
+        reply = cmd_digest()
+    elif t == "costs":
+        reply = cmd_costs()
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):
