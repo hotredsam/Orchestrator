@@ -1469,6 +1469,39 @@ function Dashboard() {
                 </Card>
               )}
 
+              {/* ── Export / Import ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>{"\uD83D\uDCBE"} Backup & Restore</div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <Btn bg={C.teal} style={{ fontSize: 14, padding: "10px 20px" }} onClick={async () => {
+                    try {
+                      const r = await f("/api/repos/export");
+                      if (r.ok) {
+                        const data = await r.json();
+                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = `swarm-town-backup-${new Date().toISOString().slice(0,10)}.json`;
+                        a.click(); URL.revokeObjectURL(url);
+                        showToast("Backup exported", "success");
+                      }
+                    } catch(e) { showToast(`Export error: ${e.message}`, "error"); }
+                  }}>{"\uD83D\uDCE5"} Export All Repos</Btn>
+                  <Btn bg={C.orange} style={{ fontSize: 14, padding: "10px 20px" }} onClick={() => {
+                    const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+                    input.onchange = async (e) => {
+                      const file = e.target.files[0]; if (!file) return;
+                      const text = await file.text();
+                      try {
+                        const data = JSON.parse(text);
+                        await apiAction("/api/repos/import", { method: "POST", body: JSON.stringify({ repos: data.repos || data }) }, "Repos imported");
+                      } catch(err) { showToast(`Import error: ${err.message}`, "error"); }
+                    };
+                    input.click();
+                  }}>{"\uD83D\uDCE4"} Import Repos</Btn>
+                </div>
+              </Card>
+
+              {/* ── Per-Repo Config ── */}
               {repos.map(r => {
                 const cfg = r.stats?.ruflo_config || {};
                 return (
