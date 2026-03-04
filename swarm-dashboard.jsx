@@ -372,6 +372,17 @@ function Dashboard() {
     showToast(`Exported ${logs.length} log entries`, "success");
   };
 
+  const exportComparison = () => {
+    if (!comparison?.repos?.length) return;
+    const header = "Name,State,Cost,Cost/Item,Items Done,Items Total,Error Rate,Cycles,Actions\n";
+    const rows = comparison.repos.map(r => `"${r.name}",${r.state},${r.cost},${r.cost_per_item},${r.items_done},${r.items_total},${r.error_rate}%,${r.cycles},${r.total_actions}`).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `swarm-comparison-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast(`Exported ${comparison.repos.length} repos to CSV`, "success");
+  };
   const scanAll = async () => {
     setScanning(true);
     try {
@@ -1878,7 +1889,7 @@ function Dashboard() {
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 12, flexWrap: "wrap" }}>
-                  {[["name","Name"],["cost","Cost"],["items_done","Items"],["error_rate","Errors"],["cycles","Cycles"]].map(([key, label]) => (
+                  {[["name","Name"],["cost","Cost"],["items_done","Items"],["error_rate","Errors"],["cycles","Cycles"],["health_score","Health"]].map(([key, label]) => (
                     <button key={key} onClick={() => setCompSort(key)} style={{
                       padding: "4px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
                       fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
@@ -1887,6 +1898,7 @@ function Dashboard() {
                       border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
                     }}>Sort: {label}</button>
                   ))}
+                  <Btn bg={C.teal} onClick={exportComparison} style={{ fontSize: 11, padding: "4px 12px" }}>{"\u2B07"} CSV</Btn>
                 </div>
                 <Card bg={C.white} style={{ maxWidth: 720, margin: "0 auto", padding: 14, overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -1899,6 +1911,7 @@ function Dashboard() {
                         <th style={{ padding: "8px 6px", textAlign: "right" }}>Items</th>
                         <th style={{ padding: "8px 6px", textAlign: "right" }}>Err%</th>
                         <th style={{ padding: "8px 6px", textAlign: "right" }}>Cycles</th>
+                        <th style={{ padding: "8px 6px", textAlign: "right" }}>Health</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1918,6 +1931,11 @@ function Dashboard() {
                           <td style={{ padding: "8px 6px", textAlign: "right" }}>{r.items_done}/{r.items_total}</td>
                           <td style={{ padding: "8px 6px", textAlign: "right", color: r.error_rate > 20 ? C.red : r.error_rate > 10 ? C.orange : C.green, fontWeight: 700 }}>{r.error_rate}%</td>
                           <td style={{ padding: "8px 6px", textAlign: "right" }}>{r.cycles}</td>
+                          <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                              background: (r.health_score||0) >= 70 ? C.green : (r.health_score||0) >= 40 ? C.orange : C.red,
+                              color: C.white }}>{r.health_score || 0}</span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

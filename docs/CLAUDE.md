@@ -121,6 +121,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Repo comparison** — `/api/comparison` endpoint with per-repo cost, items, error rate, cycles, cost-per-item
 - **Compare dashboard tab** — 16th tab with sortable comparison table, click-to-navigate, color-coded error rates
 - **Telegram compare command** — `compare` shows cross-repo performance table
+- **Health score** — 0-100 composite score (40% completion, 40% low errors, 20% activity) shown in compare view
+- **CSV export** — comparison table downloadable as CSV from Compare tab
+- **Dashboard now 16 tabs** — added Trends (15th) and Compare (16th)
 
 ## Commands
 ```bash

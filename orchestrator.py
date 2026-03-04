@@ -2837,6 +2837,14 @@ class API(BaseHTTPRequestHandler):
                     total_actions = log_row["c"] if log_row else 0
                     cost = costs.get(r["id"], 0)
                     st = db.load_state()
+                    err_rate = round(error_count / max(total_actions, 1) * 100, 1)
+                    completion = round(items_done / max(items_total, 1) * 100, 1)
+                    # Health score: 0-100 based on completion rate (40%), low error rate (40%), activity (20%)
+                    health = min(100, round(
+                        completion * 0.4 +
+                        max(0, 100 - err_rate * 2) * 0.4 +
+                        min(100, total_actions * 2) * 0.2
+                    ))
                     comparison.append({
                         "id": r["id"], "name": r["name"],
                         "state": st.current_state.value,
@@ -2844,12 +2852,13 @@ class API(BaseHTTPRequestHandler):
                         "items_done": items_done, "items_total": items_total,
                         "cost_per_item": round(cost / max(items_done, 1), 4),
                         "error_count": error_count,
-                        "error_rate": round(error_count / max(total_actions, 1) * 100, 1),
+                        "error_rate": err_rate,
                         "total_actions": total_actions,
                         "cycles": st.cycle_count,
+                        "health_score": health,
                     })
                 except Exception:
-                    comparison.append({"id": r["id"], "name": r["name"], "state": "unknown", "cost": 0, "items_done": 0, "items_total": 0, "cost_per_item": 0, "error_count": 0, "error_rate": 0, "total_actions": 0, "cycles": 0})
+                    comparison.append({"id": r["id"], "name": r["name"], "state": "unknown", "cost": 0, "items_done": 0, "items_total": 0, "cost_per_item": 0, "error_count": 0, "error_rate": 0, "total_actions": 0, "cycles": 0, "health_score": 0})
             return self._json({"repos": comparison, "total_cost": round(sum(costs.values()), 4)})
 
         self._json({"error": "Not found"}, 404)
