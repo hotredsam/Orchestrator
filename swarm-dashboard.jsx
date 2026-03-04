@@ -135,6 +135,7 @@ function Dashboard() {
   const [logTail, setLogTail] = useState(false);
   const logEndRef = useRef(null);
   const [scrolledPast, setScrolledPast] = useState(false);
+  const [costHistory, setCostHistory] = useState([]);
   const [staleItems, setStaleItems] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -276,6 +277,7 @@ function Dashboard() {
       }
       if (full || t === "trends") {
         try { const tr = await f(`/api/trends?repo_id=${sr}&days=14`); if(tr.ok) setTrends(await tr.json()); } catch {}
+        try { const ch = await f("/api/costs/history?days=30"); if(ch.ok) { const cd = await ch.json(); setCostHistory(cd.history || []); } } catch {}
       }
       if (full || t === "compare") {
         try { const cr = await f("/api/comparison"); if(cr.ok) setComparison(await cr.json()); } catch {}
@@ -363,6 +365,10 @@ function Dashboard() {
   const retryItem = async (itemId) => {
     if (!sr) return;
     await apiAction("/api/items/retry", { method: "POST", body: JSON.stringify({ repo_id: sr, item_id: itemId }) }, "Item re-queued");
+  };
+  const quickStatusChange = async (itemId, newStatus) => {
+    if (!sr) return;
+    await apiAction("/api/items/update", { method: "POST", body: JSON.stringify({ repo_id: sr, item_id: itemId, status: newStatus }) }, `Item marked ${newStatus}`);
   };
   const togglePin = (repoId) => {
     setPinnedRepos(prev => {
@@ -1512,8 +1518,9 @@ function Dashboard() {
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                         <div style={{ display: "flex", gap: 4 }}>
-                          <button onClick={() => deleteItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.red, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Delete this item">{"\u2716"}</button>
+                          {it.status === "pending" && <button onClick={() => quickStatusChange(it.id, "completed")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.green, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Mark as completed">{"\u2705"}</button>}
                           {it.status === "completed" && <button onClick={() => retryItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.orange, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Retry this item">{"\uD83D\uDD04"}</button>}
+                          <button onClick={() => deleteItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.red, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Delete this item">{"\u2716"}</button>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {it.source && it.source !== "manual" && (
@@ -2182,6 +2189,33 @@ function Dashboard() {
                         );
                       });
                     })()}
+                  </Card>
+                )}
+                {costHistory.length > 0 && (
+                  <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 16px", padding: 14 }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 10 }}>30-Day Cost History</div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 80 }}>
+                      {(() => {
+                        const byDate = {};
+                        costHistory.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + r.cost; });
+                        const dates = Object.keys(byDate).sort();
+                        const maxC = Math.max(...Object.values(byDate), 0.001);
+                        return dates.map((d, i) => {
+                          const h = Math.max(3, (byDate[d] / maxC) * 70);
+                          return (
+                            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}>
+                              <div style={{ width: "100%", height: h, background: `linear-gradient(180deg, ${C.teal} 0%, #4DB6AC 100%)`, borderRadius: "3px 3px 0 0", minWidth: 4 }} title={`${d}: $${byDate[d].toFixed(3)}`} />
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: C.brown, marginTop: 2 }}>
+                      {(() => {
+                        const dates = [...new Set(costHistory.map(r => r.date))].sort();
+                        return dates.length > 0 ? (<><span>{dates[0]?.slice(5)}</span><span>{dates[dates.length - 1]?.slice(5)}</span></>) : null;
+                      })()}
+                    </div>
                   </Card>
                 )}
                 {trends.daily?.length > 0 && (
