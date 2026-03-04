@@ -147,6 +147,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Telegram search command** — `search [query]` searches items/logs/mistakes across all repos from Telegram
 - **Item auto-archive** — `/api/items/archive` moves completed items older than N days to 'archived' status. "Archive 7d+" button on bounty board
 - **Archived status filter** — bounty board status filter includes 'Archived' chip
+- **Repo tags** — repos table has `tags` column (comma-separated), tag editor in Settings, tag badges on master view cards
+- **Tag filter** — master view has tag filter chips auto-populated from all repos' tags
+- **Tags API** — `/api/repos/tags` POST to set repo tags, auto-migration adds column to existing DBs
 
 ## Commands
 ```bash
@@ -179,6 +182,7 @@ POST /api/repos                    — Add repo {name, path, github_url, branch}
 POST /api/repos/delete             — Remove repo {repo_id}
 GET  /api/repos/export             — Export all repos as JSON backup
 POST /api/repos/import             — Import repos from JSON {repos: [...]}
+POST /api/repos/tags               — Set repo tags {repo_id, tags: "tag1,tag2"}
 
 # Control
 POST /api/start                    — Start repo {repo_id} or {repo_id: "all"}

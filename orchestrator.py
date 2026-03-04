@@ -756,10 +756,16 @@ class MasterDB:
                 github_url TEXT DEFAULT '',
                 branch TEXT DEFAULT 'main',
                 running INTEGER DEFAULT 0,
+                tags TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now'))
             );
         """)
         self.conn.commit()
+        # Migration: add tags column to existing DBs
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(repos)").fetchall()}
+        if "tags" not in cols:
+            self.conn.execute("ALTER TABLE repos ADD COLUMN tags TEXT DEFAULT ''")
+            self.conn.commit()
 
     def ex(self, q, p=()):
         with self.lock:
@@ -3038,6 +3044,20 @@ class API(BaseHTTPRequestHandler):
                     del manager.orchestrators[rid]
             manager.master.delete_repo(rid)
             return self._json({"ok": True, "deleted": rid})
+
+        if path == "/api/repos/tags":
+            rid = self._safe_int(b.get("repo_id"))
+            if rid is None:
+                return self._json({"error": "repo_id required"}, 400)
+            tags = b.get("tags", "")
+            if not isinstance(tags, str):
+                tags = ",".join(str(t) for t in tags)
+            # Sanitize: lowercase, strip, max 200 chars
+            tags = ",".join(t.strip().lower() for t in tags.split(",") if t.strip())[:200]
+            manager.master.ex("UPDATE repos SET tags=? WHERE id=?", (tags, rid))
+            manager.master.commit()
+            _response_cache.clear()
+            return self._json({"ok": True, "tags": tags})
 
         if path == "/api/start":
             rid = b.get("repo_id")

@@ -1034,12 +1034,23 @@ function Dashboard() {
                 </span>
               ))}
               <span style={{ fontSize: 11, color: C.brown }}>{repos.length} repos</span>
+              {/* Tag filter chips */}
+              {(() => { const allTags = [...new Set(repos.flatMap(r => (r.tags || "").split(",").filter(Boolean)))].sort(); return allTags.length > 0 && (<>
+                <span style={{ fontSize: 11, color: C.brown }}>|</span>
+                {allTags.map(t => (
+                  <span key={t} onClick={() => setRepoFilter("tag:" + t)}
+                    style={{ cursor: "pointer", padding: "3px 10px", borderRadius: 10, fontSize: 10, fontWeight: 700,
+                      background: repoFilter === "tag:" + t ? "#7E57C2" : "#E8D5F5", color: repoFilter === "tag:" + t ? C.white : "#7E57C2",
+                      border: "1px solid #CE93D8", transition: "all .2s" }}>{t}</span>
+                ))}
+              </>); })()}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {[...repos].filter(r => {
                 if (repoFilter === "running") return r.running;
                 if (repoFilter === "idle") return !r.running;
                 if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
+                if (repoFilter.startsWith("tag:")) return (r.tags || "").split(",").includes(repoFilter.slice(4));
                 if (repoFilter.startsWith("q:")) return r.name.toLowerCase().includes(repoFilter.slice(2).toLowerCase());
                 return true;
               }).sort((a, b) => {
@@ -1078,6 +1089,14 @@ function Dashboard() {
                     <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 14, overflow: "hidden", marginBottom: 10, position: "relative" }}>
                       <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, transition: "width .5s" }} />
                     </div>
+                    {/* Tags */}
+                    {r.tags && (
+                      <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap" }}>
+                        {r.tags.split(",").filter(Boolean).map(tag => (
+                          <span key={tag} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, background: "#E8D5F5", color: "#7E57C2", fontWeight: 700, border: "1px solid #CE93D8" }}>{tag}</span>
+                        ))}
+                      </div>
+                    )}
                     {/* Stats row */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
                       {[
@@ -2289,6 +2308,31 @@ function Dashboard() {
                   <span style={{ fontSize: 11, color: C.brown }}>Press Enter to save</span>
                 </div>
               </Card>
+
+              {/* ── Repo Tags ── */}
+              {sr && (
+                <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\uD83C\uDFF7\uFE0F"} Repo Tags</div>
+                  <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Comma-separated tags for organizing repos (e.g. "frontend, react, priority").</p>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <Inp placeholder="tag1, tag2, tag3" defaultValue={repo?.tags || ""}
+                      style={{ flex: 1, fontSize: 13, padding: "8px 12px" }}
+                      onKeyDown={async e => {
+                        if (e.key === "Enter") {
+                          await apiAction("/api/repos/tags", { method: "POST", body: JSON.stringify({ repo_id: sr, tags: e.target.value }) }, "Tags updated");
+                        }
+                      }} />
+                    <span style={{ fontSize: 11, color: C.brown }}>Press Enter to save</span>
+                  </div>
+                  {repo?.tags && (
+                    <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+                      {repo.tags.split(",").filter(Boolean).map(t => (
+                        <span key={t} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "#CE93D8", color: C.white, fontWeight: 700 }}>{t.trim()}</span>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
 
               {/* ── Export / Import ── */}
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)` }}>
