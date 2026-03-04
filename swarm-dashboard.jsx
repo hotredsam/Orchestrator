@@ -222,6 +222,7 @@ function Dashboard() {
   const [cmdQuery, setCmdQuery] = useState("");
   const [newNote, setNewNote] = useState("");
   const [batchSelected, setBatchSelected] = useState(new Set());
+  const [editingItem, setEditingItem] = useState(null); // { id, title, priority }
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -512,6 +513,11 @@ function Dashboard() {
   const quickStatusChange = async (itemId, newStatus) => {
     if (!sr) return;
     await apiAction("/api/items/update", { method: "POST", body: JSON.stringify({ repo_id: sr, item_id: itemId, status: newStatus }) }, `Item marked ${newStatus}`);
+  };
+  const saveItemEdit = async () => {
+    if (!sr || !editingItem) return;
+    await apiAction("/api/items/update", { method: "POST", body: JSON.stringify({ repo_id: sr, item_id: editingItem.id, title: editingItem.title, priority: editingItem.priority }) }, "Item updated");
+    setEditingItem(null);
   };
   const togglePin = (repoId) => {
     setPinnedRepos(prev => {
@@ -2149,14 +2155,34 @@ function Dashboard() {
                           {it.type==="issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontFamily: "'Bangers', cursive", fontSize: 17, letterSpacing: 1, marginBottom: 2, lineHeight: 1.2 }}>{it.title}</div>
-                          <div style={{ fontSize: 12, color: C.brown, lineHeight: 1.4 }}>{it.description}</div>
+                          {editingItem?.id === it.id ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <input value={editingItem.title} onChange={e => setEditingItem(prev => ({ ...prev, title: e.target.value }))}
+                                style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1, padding: "4px 8px", border: `2px solid ${C.teal}`, borderRadius: 6, background: C.white, width: "100%", boxSizing: "border-box" }}
+                                onKeyDown={e => { if (e.key === "Enter") saveItemEdit(); if (e.key === "Escape") setEditingItem(null); }}
+                                autoFocus />
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <select value={editingItem.priority} onChange={e => setEditingItem(prev => ({ ...prev, priority: e.target.value }))}
+                                  style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, border: `1px solid ${C.darkBrown}` }}>
+                                  {["critical","high","medium","low"].map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                                <button onClick={saveItemEdit} style={{ fontSize: 10, padding: "2px 10px", background: C.green, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 4, cursor: "pointer", fontWeight: 700 }}>Save</button>
+                                <button onClick={() => setEditingItem(null)} style={{ fontSize: 10, padding: "2px 8px", background: C.cream, border: `1px solid ${C.darkBrown}`, borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 17, letterSpacing: 1, marginBottom: 2, lineHeight: 1.2 }}>{it.title}</div>
+                              <div style={{ fontSize: 12, color: C.brown, lineHeight: 1.4 }}>{it.description}</div>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                         <div style={{ display: "flex", gap: 4 }}>
                           {it.status === "pending" && <button onClick={() => quickStatusChange(it.id, "completed")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.green, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Mark as completed">{"\u2705"}</button>}
                           {it.status === "completed" && <button onClick={() => retryItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.orange, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Retry this item">{"\uD83D\uDD04"}</button>}
+                          <button onClick={() => setEditingItem({ id: it.id, title: it.title, priority: it.priority })} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.teal, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Edit item">{"\u270F\uFE0F"}</button>
                           <button onClick={() => deleteItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.red, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Delete this item">{"\u2716"}</button>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

@@ -1051,6 +1051,29 @@ def cmd_forecast():
     return "\n".join(lines)
 
 
+def cmd_leaderboard():
+    """Show top repos ranked by items completed."""
+    data = _orch_get("/api/comparison")
+    if isinstance(data, dict) and "error" in data:
+        return f"Error: {data['error']}"
+    repos = data.get("repos", []) if isinstance(data, dict) else []
+    if not repos:
+        return "No repos to compare yet."
+    ranked = sorted(repos, key=lambda r: r.get("items_done", 0), reverse=True)
+    medals = ["\U0001F947", "\U0001F948", "\U0001F949"]
+    lines = ["*\U0001F3C6 Repo Leaderboard:*\n"]
+    for i, r in enumerate(ranked[:10]):
+        medal = medals[i] if i < 3 else f"#{i+1}"
+        pct = round(r["items_done"] / max(r["items_total"], 1) * 100)
+        bar_len = min(pct // 5, 20)
+        lines.append(
+            f"{medal} *{r['name']}* — {r['items_done']}/{r['items_total']} "
+            f"({'█' * bar_len}{'░' * (20 - bar_len)}) {pct}%"
+        )
+        lines.append(f"   Cost: ${r.get('cost', 0)} | Health: {r.get('health_score', '-')}")
+    return "\n".join(lines)
+
+
 def cmd_tags(text):
     """View or set repo tags. 'tags repo' to view, 'tags repo: tag1, tag2' to set."""
     if ":" in text:
@@ -1461,6 +1484,8 @@ def handle_message(msg):
         reply = cmd_eta()
     elif t in ("forecast", "cost-forecast", "cost forecast"):
         reply = cmd_forecast()
+    elif t in ("leaderboard", "leader", "rankings", "rank"):
+        reply = cmd_leaderboard()
     elif t in ("errors", "recent-errors", "recent errors"):
         reply = cmd_recent_errors()
     elif t in ("docs", "api-docs", "api docs", "endpoints"):
