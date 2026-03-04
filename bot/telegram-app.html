@@ -675,6 +675,35 @@
         <div id="statsBreakdown"></div>
       </div>
 
+      <!-- Screen 7: Items -->
+      <div class="screen" id="screen-items">
+        <h2 class="section-title">Items</h2>
+        <div class="btn-row mb-12">
+          <select class="input" id="itemsRepoSelect" onchange="loadItems()" style="flex:1;"></select>
+          <select class="input" id="itemsFilter" onchange="loadItems()" style="width:auto;">
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div id="itemsList">
+          <div class="empty-state"><div class="empty-emoji">📦</div><p>Select a repo to view items</p></div>
+        </div>
+      </div>
+
+      <!-- Screen 8: Logs -->
+      <div class="screen" id="screen-logs">
+        <h2 class="section-title">Execution Logs</h2>
+        <div class="btn-row mb-12">
+          <select class="input" id="logsRepoSelect" onchange="loadLogs()" style="flex:1;"></select>
+          <button class="btn btn-outline btn-sm" onclick="loadLogs()">Refresh</button>
+        </div>
+        <div id="logsList" style="font-size:12px;">
+          <div class="empty-state"><div class="empty-emoji">📜</div><p>Select a repo to view logs</p></div>
+        </div>
+      </div>
+
     </div>
 
     <!-- Tab Bar -->
@@ -683,10 +712,16 @@
         <span>🏠</span><span class="tab-label">Home</span>
       </button>
       <button class="tab-btn" data-tab="add" onclick="switchTab('add')">
-        <span>📋</span><span class="tab-label">Add</span>
+        <span>➕</span><span class="tab-label">Add</span>
+      </button>
+      <button class="tab-btn" data-tab="items" onclick="switchTab('items')">
+        <span>📦</span><span class="tab-label">Items</span>
       </button>
       <button class="tab-btn" data-tab="flow" onclick="switchTab('flow')">
         <span>🗺️</span><span class="tab-label">Flow</span>
+      </button>
+      <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">
+        <span>📜</span><span class="tab-label">Logs</span>
       </button>
       <button class="tab-btn" data-tab="health" onclick="switchTab('health')">
         <span>🔍</span><span class="tab-label">Health</span>
@@ -789,7 +824,9 @@
 
       if (tab === 'home') refreshHome();
       if (tab === 'add') populateRepoDropdowns();
+      if (tab === 'items') { populateRepoDropdowns(); loadItems(); }
       if (tab === 'flow') { populateRepoDropdowns(); loadFlowMap(); }
+      if (tab === 'logs') { populateRepoDropdowns(); loadLogs(); }
       if (tab === 'stats') refreshStats();
       if (tab === 'chat') loadChatHistory();
     }
@@ -809,11 +846,14 @@
       el.innerHTML = repos.map(r => {
         const st = r.state || 'idle';
         const running = r.running;
+        const paused = r.paused;
         const badgeClass = st === 'credits_exhausted' ? 'badge-credits' :
                            st === 'error' ? 'badge-error' :
+                           paused ? 'badge-credits' :
                            running ? 'badge-running' : 'badge-idle';
         const badgeText = st === 'credits_exhausted' ? 'Credits' :
                           st === 'error' ? 'Error' :
+                          paused ? 'Paused' :
                           running ? 'Running' : 'Idle';
         const stats = r.stats || {};
         return `
@@ -846,6 +886,10 @@
               ${running
                 ? `<button class="btn btn-red btn-sm" onclick="stopRepo(${r.id})">Stop</button>`
                 : `<button class="btn btn-green btn-sm" onclick="startRepo(${r.id})">Start</button>`}
+              ${running ? (r.paused
+                ? `<button class="btn btn-sm" style="background:var(--teal);color:#fff;" onclick="resumeRepo(${r.id})">Resume</button>`
+                : `<button class="btn btn-sm" style="background:var(--orange);color:#fff;" onclick="pauseRepo(${r.id})">Pause</button>`)
+                : ''}
               <button class="btn btn-outline btn-sm" onclick="pushRepo(${r.id})">Push</button>
               <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red);" onclick="deleteRepo(${r.id})">Remove</button>
             </div>
@@ -869,6 +913,18 @@
       haptic('heavy');
       await api('/api/push', { method: 'POST', body: JSON.stringify({ repo_id: id, message: 'manual push from telegram' }) });
       haptic('medium');
+    }
+
+    async function pauseRepo(id) {
+      haptic('medium');
+      await api('/api/pause', { method: 'POST', body: JSON.stringify({ repo_id: id }) });
+      refreshHome();
+    }
+
+    async function resumeRepo(id) {
+      haptic('medium');
+      await api('/api/resume', { method: 'POST', body: JSON.stringify({ repo_id: id }) });
+      refreshHome();
     }
 
     async function deleteRepo(id) {
@@ -937,7 +993,7 @@
     }
 
     function populateRepoDropdowns() {
-      const selects = ['addRepoSelect', 'flowRepoSelect'];
+      const selects = ['addRepoSelect', 'flowRepoSelect', 'itemsRepoSelect', 'logsRepoSelect'];
       selects.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -945,6 +1001,83 @@
         el.innerHTML = repos.map(r => `<option value="${r.id}" ${r.id == current ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
         if (!repos.length) el.innerHTML = '<option value="">No repos</option>';
       });
+    }
+
+    // ─── Screen 7: Items List ───────────────────────────────────────────────
+    async function loadItems() {
+      const repoId = document.getElementById('itemsRepoSelect')?.value;
+      const filter = document.getElementById('itemsFilter')?.value;
+      const el = document.getElementById('itemsList');
+      if (!repoId || !repos.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-emoji">📦</div><p>No repo selected</p></div>';
+        return;
+      }
+
+      const data = await api('/api/items?repo_id=' + repoId);
+      if (!data || !data.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-emoji">✨</div><p>No items yet</p></div>';
+        return;
+      }
+
+      let items = data;
+      if (filter) items = items.filter(i => i.status === filter);
+
+      el.innerHTML = items.map(item => {
+        const statusColors = { pending: 'var(--orange)', in_progress: 'var(--teal)', completed: 'var(--green)' };
+        const typeEmoji = item.type === 'issue' ? '🐛' : '✨';
+        const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
+        return `
+          <div class="card" style="margin-bottom:8px; padding:10px 12px;">
+            <div class="flex-between mb-8">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span>${typeEmoji}</span>
+                <span style="font-weight:600;font-size:14px;">${esc(item.title)}</span>
+              </div>
+              <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:${statusColors[item.status] || 'var(--orange)'};color:#fff;">${item.status}</span>
+            </div>
+            ${item.description && item.description !== item.title ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">${esc(item.description).substring(0, 100)}</div>` : ''}
+            <div class="flex-between" style="font-size:11px;color:var(--text-secondary);">
+              <span>${prioEmoji[item.priority] || '🟡'} ${item.priority} | ${item.source || 'manual'}</span>
+              <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:var(--red);border-color:var(--red);" onclick="deleteItem(${repoId},${item.id})">Del</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    async function deleteItem(repoId, itemId) {
+      haptic('medium');
+      await api('/api/items/delete', { method: 'POST', body: JSON.stringify({ repo_id: repoId, item_id: itemId }) });
+      loadItems();
+    }
+
+    // ─── Screen 8: Logs ─────────────────────────────────────────────────────
+    async function loadLogs() {
+      const repoId = document.getElementById('logsRepoSelect')?.value;
+      const el = document.getElementById('logsList');
+      if (!repoId || !repos.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-emoji">📜</div><p>No repo selected</p></div>';
+        return;
+      }
+
+      const data = await api('/api/logs?repo_id=' + repoId);
+      if (!data || !data.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-emoji">📜</div><p>No logs yet</p></div>';
+        return;
+      }
+
+      el.innerHTML = data.slice(0, 50).map(log => {
+        const time = log.created_at ? new Date(log.created_at).toLocaleTimeString() : '';
+        const actionColors = { state_change: 'var(--teal)', error: 'var(--red)', git_push: 'var(--green)', execute: 'var(--orange)' };
+        const color = actionColors[log.action] || 'var(--text-secondary)';
+        return `
+          <div style="padding:6px 0;border-bottom:1px solid var(--shadow);font-size:12px;">
+            <div class="flex-between">
+              <span style="color:${color};font-weight:600;">${esc(log.action || '')}</span>
+              <span style="color:var(--text-secondary);font-size:10px;">${time}</span>
+            </div>
+            <div style="color:var(--text);margin-top:2px;">${esc((log.details || '').substring(0, 150))}</div>
+          </div>`;
+      }).join('');
     }
 
     // ─── Screen 3: Flow Map ──────────────────────────────────────────────────

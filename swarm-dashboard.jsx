@@ -206,6 +206,8 @@ function Dashboard() {
   const startRepo = async id => { await f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
   const stopRepo = async id => { await f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
   const startAll = async () => { await f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }); load(); };
+  const pauseRepo = async id => { await f("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
+  const resumeRepo = async id => { await f("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
   const deleteRepo = async id => { if(confirm("Remove this repo from Swarm Town? (files on disk are kept)")) { await f("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); } };
   const pushGH = async () => { if(sr) await f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: sr, message: "manual push" }) }); };
 
@@ -575,6 +577,9 @@ function Dashboard() {
                       {r.running
                         ? <Btn bg={C.red} onClick={e => { e.stopPropagation(); stopRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u23F9"} Stop</Btn>
                         : <Btn bg={C.green} onClick={e => { e.stopPropagation(); startRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u25B6"} Start</Btn>}
+                      {r.running && (r.paused
+                        ? <Btn bg={C.teal} onClick={e => { e.stopPropagation(); resumeRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u25B6"} Resume</Btn>
+                        : <Btn bg={C.orange} onClick={e => { e.stopPropagation(); pauseRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u23F8"} Pause</Btn>)}
                       <Btn bg="#888" onClick={e => { e.stopPropagation(); deleteRepo(r.id); }} style={{ fontSize: 11, padding: "5px 10px" }}>{"\u2716"}</Btn>
                       <div style={{ fontSize: 12, color: C.brown, display: "flex", alignItems: "center", gap: 4, flex: 1, fontWeight: 500 }}>
                         {rst.emoji} {rst.label}
@@ -720,6 +725,9 @@ function Dashboard() {
             <div style={{ textAlign: "center", marginBottom: 16, display: "flex", justifyContent: "center", gap: 10 }}>
               {repo && !repo.running && <Btn bg={C.green} onClick={() => startRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9654; Start</Btn>}
               {repo?.running && <Btn bg={C.red} onClick={() => stopRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9209; Stop</Btn>}
+              {repo?.running && (repo.paused
+                ? <Btn bg={C.teal} onClick={() => resumeRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9654; Resume</Btn>
+                : <Btn bg={C.orange} onClick={() => pauseRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9208; Pause</Btn>)}
               <Btn bg={C.teal} onClick={pushGH} style={{ padding: "10px 20px", fontSize: 16 }}>&uarr; Push Git</Btn>
             </div>
 
