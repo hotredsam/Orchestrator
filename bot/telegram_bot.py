@@ -803,6 +803,26 @@ def cmd_agent_stats(name):
     return "\n".join(lines)
 
 
+def cmd_search(query):
+    """Cross-repo search for items, logs, mistakes."""
+    if not query or len(query) < 2:
+        return "Usage: `search <query>` (min 2 chars)"
+    data = _orch_get(f"/api/search?q={query}&scope=all&limit=10")
+    if not isinstance(data, dict):
+        return "Search failed."
+    total = data.get("total", 0)
+    if total == 0:
+        return f"No results for *{query}*."
+    lines = [f"*Search: {query}* ({total} results)", ""]
+    for it in (data.get("items") or [])[:5]:
+        lines.append(f"  \U0001F4CB `{it.get('repo_name', '?')}` {it.get('title', '')[:50]} [{it.get('status', '')}]")
+    for mk in (data.get("mistakes") or [])[:3]:
+        lines.append(f"  \u274C `{mk.get('repo_name', '?')}` {mk.get('error_type', '')}: {mk.get('description', '')[:40]}")
+    for lg in (data.get("logs") or [])[:3]:
+        lines.append(f"  \U0001F4DC `{lg.get('repo_name', '?')}` {lg.get('action', '')} {lg.get('result', '')[:30]}")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -841,6 +861,7 @@ def cmd_help():
 `notes [repo]` — View repo notes
 `add note repo: text` — Add a note
 `agent-stats [repo]` — Agent performance stats
+`search [query]` — Search items/logs/mistakes across all repos
 `app` — Open Mini App
 `help` — This message
 
@@ -1034,6 +1055,8 @@ def handle_message(msg):
         reply = cmd_agent_stats(arg)
     elif t == "help":
         reply = cmd_help()
+    elif t.startswith("search "):
+        reply = cmd_search(t[7:].strip())
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         reply = f"Open the Swarm Town dashboard:\n{public_url}/telegram-app"

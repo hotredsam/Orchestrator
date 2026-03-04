@@ -1303,6 +1303,7 @@ function Dashboard() {
                 <Btn bg={C.teal} onClick={dedupeItems} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83E\uDDF9"} Dedupe</Btn>
                 <Btn bg={C.orange} onClick={retryAllCompleted} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDD04"} Retry Done</Btn>
                 <Btn bg="#A0ADB5" onClick={() => clearItems("completed")} style={{ fontSize: 12, padding: "8px 14px" }}>{"\u2705"} Clear Done</Btn>
+                <Btn bg="#7E57C2" onClick={() => apiAction("/api/items/archive", { method: "POST", body: JSON.stringify({ repo_id: sr, days: 7 }) }, "Old items archived")} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDCE6"} Archive 7d+</Btn>
                 <Btn bg={C.red} onClick={() => clearItems()} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDDD1\uFE0F"} Clear All</Btn>
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
@@ -1311,7 +1312,7 @@ function Dashboard() {
             )}
             {items.length > 0 && (
               <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
-                {["all", "pending", "in_progress", "completed"].map(f => (
+                {["all", "pending", "in_progress", "completed", "archived"].map(f => (
                   <button key={f} onClick={() => setItemFilter(f)} style={{
                     padding: "5px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
                     fontFamily: "'Bangers', cursive", letterSpacing: 1, cursor: "pointer",

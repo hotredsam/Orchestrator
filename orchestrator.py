@@ -3155,6 +3155,20 @@ class API(BaseHTTPRequestHandler):
                         seen_titles[key] = item["id"]
             return self._json({"ok": True, "duplicates_removed": dupes_removed, "remaining": len(seen_titles)})
 
+        if path == "/api/items/archive":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            days = int(b.get("days", 7))
+            archived = db.fetchall(
+                "SELECT id FROM items WHERE status='completed' AND completed_at <= datetime('now', ?)",
+                (f"-{days} days",))
+            if archived:
+                with db.transaction():
+                    for item in archived:
+                        db.conn.execute("UPDATE items SET status='archived' WHERE id=?", (item["id"],))
+            return self._json({"ok": True, "archived": len(archived)})
+
         if path == "/api/items/retry":
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)

@@ -144,6 +144,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Cross-repo search** — `/api/search?q=term&scope=all` searches items, logs, mistakes across all repos. Collapsible UI on master view
 - **Log level filter** — logs tab has "All / Errors Only / High Cost" filter chips alongside text search
 - **Log filtered count** — "Showing X of Y" updates for both text search and level filter
+- **Telegram search command** — `search [query]` searches items/logs/mistakes across all repos from Telegram
+- **Item auto-archive** — `/api/items/archive` moves completed items older than N days to 'archived' status. "Archive 7d+" button on bounty board
+- **Archived status filter** — bounty board status filter includes 'Archived' chip
 
 ## Commands
 ```bash
@@ -195,6 +198,7 @@ POST /api/items/dedupe             — Remove duplicate pending items {repo_id}
 POST /api/items/retry              — Re-queue items to pending {repo_id, item_id?} or {repo_id, status}
 POST /api/items/bulk-update        — Batch update {repo_id, item_ids[], action, value}
 POST /api/items/import             — Import items from JSON {repo_id, items: [...]}
+POST /api/items/archive            — Archive old completed items {repo_id, days?: 7}
 
 # Data
 GET  /api/plan?repo_id=N           — Plan steps
@@ -267,6 +271,7 @@ health          — Health scan all repos
 notes [repo]    — View repo notes
 add note repo: text — Add a note
 agent-stats [repo] — Agent performance stats
+search [query]  — Cross-repo search (items, logs, mistakes)
 app             — Open Mini App link
 help            — Show all commands
 ```
