@@ -1,0 +1,38 @@
+# Databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+server-err.log
+server-out.log
+
+# Test artifacts
+test-server.ps1
+full-test.ps1
+test-orchestration.ps1
+cleanup.ps1
+check-imports.py
+check-tools.py
+check-db.py
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Audio
+*.webm
+*.mp3
+*.wav
+*.m4a
+
+# Zip
+files.zip
