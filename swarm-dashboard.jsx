@@ -127,6 +127,8 @@ function Dashboard() {
   const [comparison, setComparison] = useState(null);
   const [compSort, setCompSort] = useState("name");
   const [agentStats, setAgentStats] = useState(null);
+  const [repoNotes, setRepoNotes] = useState([]);
+  const [newNote, setNewNote] = useState("");
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -232,6 +234,7 @@ function Dashboard() {
       const fetches = [f(`/api/items?repo_id=${sr}`), f(`/api/plan?repo_id=${sr}`)];
       const keys = ["items", "plan"];
       if (full || t === "home" || t === "logs") { fetches.push(f(`/api/logs?repo_id=${sr}`)); keys.push("logs"); }
+      if (full || t === "home") { fetches.push(f(`/api/notes?repo_id=${sr}`)); keys.push("repoNotes"); }
       if (full || t === "agents") {
         fetches.push(f(`/api/agents?repo_id=${sr}`)); keys.push("agents");
         fetches.push(f(`/api/agent-stats?repo_id=${sr}`)); keys.push("agentStats");
@@ -244,7 +247,7 @@ function Dashboard() {
       if (full || t === "audio") { fetches.push(f(`/api/audio?repo_id=${sr}`)); keys.push("audio"); }
       if (full || t === "history") { fetches.push(f(`/api/history?repo_id=${sr}`)); keys.push("history"); }
       const results = await Promise.all(fetches);
-      const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, agentStats: setAgentStats, memory: setMemory, mistakes: setMistakes, mistakeAnalysis: setMistakeAnalysis, audio: setAudio, history: setHistory };
+      const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, agentStats: setAgentStats, memory: setMemory, mistakes: setMistakes, mistakeAnalysis: setMistakeAnalysis, audio: setAudio, history: setHistory, repoNotes: setRepoNotes };
       for (let i = 0; i < keys.length; i++) {
         if (results[i].ok) { const d = await results[i].json(); setters[keys[i]](d); }
       }
@@ -376,6 +379,15 @@ function Dashboard() {
     showToast(`Exported ${logs.length} log entries`, "success");
   };
 
+  const addNote = async () => {
+    if (!sr || !newNote.trim()) return;
+    await apiAction("/api/notes", { method: "POST", body: JSON.stringify({ repo_id: sr, action: "add", text: newNote }) }, "Note added");
+    setNewNote("");
+  };
+  const deleteNote = async (key) => {
+    if (!sr) return;
+    await apiAction("/api/notes", { method: "POST", body: JSON.stringify({ repo_id: sr, action: "delete", key }) }, "Note deleted");
+  };
   const reorderStep = async (stepId, direction) => {
     if (!sr) return;
     await apiAction("/api/plan/reorder", { method: "POST", body: JSON.stringify({ repo_id: sr, step_id: stepId, direction }) }, `Step moved ${direction}`);
@@ -775,6 +787,21 @@ function Dashboard() {
                 ))}
               </Card>
             )}
+            {/* Repo Notes */}
+            <details style={{ maxWidth: 620, margin: "10px auto 0" }}>
+              <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>Notes ({repoNotes.length})</summary>
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <Inp placeholder="Add a note..." value={newNote} onChange={e => setNewNote(e.target.value)} style={{ flex: 1, fontSize: 12 }} onKeyDown={e => e.key === "Enter" && addNote()} />
+                <Btn bg={C.teal} onClick={addNote} style={{ fontSize: 12, padding: "6px 12px" }}>Add</Btn>
+              </div>
+              {repoNotes.map(n => (
+                <div key={n.key} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginTop: 6, background: C.white, borderRadius: 8, padding: "8px 10px", border: `1px solid ${C.darkBrown}22` }}>
+                  <span style={{ flex: 1, fontSize: 12, lineHeight: 1.4 }}>{n.value}</span>
+                  <span style={{ fontSize: 9, color: C.brown, opacity: 0.6, flexShrink: 0 }}>{n.updated_at?.slice(0, 10)}</span>
+                  <button onClick={() => deleteNote(n.key)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: C.red, opacity: 0.5 }}>{"\u2716"}</button>
+                </div>
+              ))}
+            </details>
           </SectionBg>
 
           {/* REPO CARDS */}

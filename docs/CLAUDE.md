@@ -133,6 +133,7 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Item import validation** — title required, 200 char cap, 5000 char description cap, source preserved
 - **Agent performance stats** — `/api/agent-stats` endpoint with per-agent-type step counts, avg cost, avg duration, test pass rates
 - **Crew tab performance table** — agents tab shows performance breakdown table after the active agent cards
+- **Repo notes** — per-repo annotations stored in memory table (namespace='notes'), collapsible Notes section on Town Square with add/delete
 
 ## Commands
 ```bash
@@ -196,6 +197,8 @@ GET  /api/mistakes/analysis?repo_id=N — Error type breakdown, resolution rate,
 GET  /api/audio?repo_id=N          — Audio reviews
 POST /api/audio                    — Upload {repo_id, filename, audio_data(b64)}
 GET  /api/history?repo_id=N        — Combined DB + git history
+GET  /api/notes?repo_id=N          — Repo notes/annotations
+POST /api/notes                    — Add/delete note {repo_id, action, text/note_key}
 
 # System
 GET  /api/status                   — Uptime, repo counts, SSE clients, total cost

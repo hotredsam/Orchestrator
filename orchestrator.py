@@ -2822,6 +2822,13 @@ class API(BaseHTTPRequestHandler):
                 },
             })
 
+        if path == "/api/notes" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json([])
+            notes = db.fetchall("SELECT * FROM memory WHERE namespace='notes' ORDER BY updated_at DESC")
+            return self._json(notes)
+
         if path == "/api/agent-stats" and rid:
             db = manager.get_repo_db(rid)
             if not db:
@@ -3148,6 +3155,25 @@ class API(BaseHTTPRequestHandler):
             db.ex("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[idx]["step_order"], steps[swap_idx]["id"]))
             db.commit()
             return self._json({"ok": True})
+
+        if path == "/api/notes":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            action = b.get("action", "add")
+            if action == "add":
+                text = (b.get("text") or "").strip()[:2000]
+                if not text: return self._json({"error": "text required"}, 400)
+                key = f"note_{int(time.time())}_{secrets.token_hex(4)}"
+                db.mem_store("notes", key, text)
+                return self._json({"ok": True, "key": key})
+            elif action == "delete":
+                key = b.get("key")
+                if not key: return self._json({"error": "key required"}, 400)
+                db.ex("DELETE FROM memory WHERE namespace='notes' AND key=?", (key,))
+                db.commit()
+                return self._json({"ok": True})
+            return self._json({"error": "Invalid action"}, 400)
 
         if path == "/api/items/import":
             rid = b.get("repo_id")
