@@ -141,6 +141,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Transaction safety** — RepoDB.transaction() context manager for atomic multi-statement operations (dedupe, plan reorder)
 - **State recovery** — corrupted state JSON in DB auto-recovers to IDLE instead of crashing, with type validation
 - **Safe DB close** — WAL checkpoint on close ensures all writes flushed to main database file
+- **Cross-repo search** — `/api/search?q=term&scope=all` searches items, logs, mistakes across all repos. Collapsible UI on master view
+- **Log level filter** — logs tab has "All / Errors Only / High Cost" filter chips alongside text search
+- **Log filtered count** — "Showing X of Y" updates for both text search and level filter
 
 ## Commands
 ```bash
@@ -206,6 +209,7 @@ POST /api/audio                    — Upload {repo_id, filename, audio_data(b64
 GET  /api/history?repo_id=N        — Combined DB + git history
 GET  /api/notes?repo_id=N          — Repo notes/annotations
 POST /api/notes                    — Add/delete note {repo_id, action, text/note_key}
+GET  /api/search?q=term&scope=all  — Cross-repo search (items, logs, mistakes)
 
 # System
 GET  /api/status                   — Uptime, repo counts, SSE clients, total cost

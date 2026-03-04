@@ -2708,6 +2708,38 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/state" and rid:
             return self._json(manager.get_repo_state(rid))
 
+        if path == "/api/search":
+            query = q.get("q", [None])[0]
+            if not query or len(query) < 2:
+                return self._json({"error": "Query too short (min 2 chars)"}, 400)
+            scope = q.get("scope", ["all"])[0]  # all, items, logs, mistakes
+            limit = min(int(q.get("limit", [50])[0]), 200)
+            results = {"items": [], "logs": [], "mistakes": []}
+            repos = manager.master.get_repos()
+            qlike = f"%{query}%"
+            for repo in repos:
+                db = manager.get_repo_db(repo["id"])
+                if not db:
+                    continue
+                rname = repo["name"]
+                if scope in ("all", "items"):
+                    for it in db.fetchall("SELECT * FROM items WHERE title LIKE ? OR description LIKE ? LIMIT ?", (qlike, qlike, limit)):
+                        it["repo_name"] = rname
+                        it["repo_id"] = repo["id"]
+                        results["items"].append(it)
+                if scope in ("all", "logs"):
+                    for lg in db.fetchall("SELECT * FROM execution_log WHERE action LIKE ? OR result LIKE ? OR error LIKE ? ORDER BY created_at DESC LIMIT ?", (qlike, qlike, qlike, limit)):
+                        lg["repo_name"] = rname
+                        lg["repo_id"] = repo["id"]
+                        results["logs"].append(lg)
+                if scope in ("all", "mistakes"):
+                    for mk in db.fetchall("SELECT * FROM mistakes WHERE description LIKE ? OR error_type LIKE ? OR resolution LIKE ? ORDER BY created_at DESC LIMIT ?", (qlike, qlike, qlike, limit)):
+                        mk["repo_name"] = rname
+                        mk["repo_id"] = repo["id"]
+                        results["mistakes"].append(mk)
+            results["total"] = sum(len(v) for v in results.values())
+            return self._json(results)
+
         if path == "/api/health-scan":
             repos = manager.master.get_repos()
             results = []

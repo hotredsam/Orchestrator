@@ -129,6 +129,9 @@ function Dashboard() {
   const [compSort, setCompSort] = useState("name");
   const [agentStats, setAgentStats] = useState(null);
   const [repoNotes, setRepoNotes] = useState([]);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [globalResults, setGlobalResults] = useState(null);
+  const [logLevelFilter, setLogLevelFilter] = useState("all");
   const [newNote, setNewNote] = useState("");
   const mRec = useRef(null);
   const chnk = useRef([]);
@@ -291,7 +294,7 @@ function Dashboard() {
       if (e.key === "Escape") { setShowHelp(false); setSelectedItems(new Set()); }
       if (e.key === "?") setShowHelp(prev => !prev);
       if (e.key === "f" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
-      if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setStatusFilter("all"); setSourceFilter("all"); setPriorityFilter("all"); setLogSearch(""); setMemSearch(""); setMasterSearch(""); setMasterFilter("all"); setSelectedItems(new Set()); }
+      if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setStatusFilter("all"); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
       if (e.key === "[") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci > 0) setTab(TABS_LIST[ci - 1]); }
       if (e.key === "]") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci < TABS_LIST.length - 1) setTab(TABS_LIST[ci + 1]); }
     };
@@ -392,6 +395,14 @@ function Dashboard() {
   const deleteNote = async (key) => {
     if (!sr) return;
     await apiAction("/api/notes", { method: "POST", body: JSON.stringify({ repo_id: sr, action: "delete", key }) }, "Note deleted");
+  };
+  const searchGlobal = async (query) => {
+    if (!query || query.length < 2) { setGlobalResults(null); return; }
+    try {
+      const r = await f(`/api/search?q=${encodeURIComponent(query)}&scope=all&limit=30`);
+      const d = await r.json();
+      setGlobalResults(d);
+    } catch { setGlobalResults(null); }
   };
   const reorderStep = async (stepId, direction) => {
     if (!sr) return;
@@ -961,6 +972,54 @@ function Dashboard() {
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>All Repos -- Master View</h2>
             <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 12 }}>Bird's-eye view of every repo in your swarm</p>
+            {/* Cross-repo search */}
+            <details style={{ maxWidth: 600, margin: "0 auto 12px" }}>
+              <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1, textAlign: "center" }}>Cross-Repo Search</summary>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "center" }}>
+                <Inp placeholder="Search items, logs, mistakes across all repos..." value={globalSearch}
+                  onChange={e => setGlobalSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && searchGlobal(globalSearch)}
+                  style={{ flex: 1, maxWidth: 400, fontSize: 12 }} />
+                <Btn bg={C.teal} onClick={() => searchGlobal(globalSearch)} style={{ fontSize: 12, padding: "6px 14px" }}>Search</Btn>
+              </div>
+              {globalResults && globalResults.total > 0 && (
+                <div style={{ marginTop: 10, fontSize: 12, maxHeight: 300, overflowY: "auto" }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4, color: C.darkBrown }}>{globalResults.total} results found</div>
+                  {globalResults.items?.length > 0 && (<>
+                    <div style={{ fontWeight: 700, color: C.orange, fontSize: 11, marginTop: 6 }}>Items ({globalResults.items.length})</div>
+                    {globalResults.items.slice(0, 10).map((it, i) => (
+                      <div key={i} style={{ padding: "3px 8px", background: C.white, borderRadius: 6, marginBottom: 2, fontSize: 11, display: "flex", gap: 6 }}>
+                        <span style={{ fontWeight: 600, color: C.teal, minWidth: 70 }}>{it.repo_name}</span>
+                        <span style={{ fontWeight: 600 }}>{it.title}</span>
+                        <span style={{ color: C.brown, fontSize: 10 }}>{it.status}</span>
+                      </div>
+                    ))}
+                  </>)}
+                  {globalResults.mistakes?.length > 0 && (<>
+                    <div style={{ fontWeight: 700, color: C.red, fontSize: 11, marginTop: 6 }}>Mistakes ({globalResults.mistakes.length})</div>
+                    {globalResults.mistakes.slice(0, 10).map((mk, i) => (
+                      <div key={i} style={{ padding: "3px 8px", background: C.white, borderRadius: 6, marginBottom: 2, fontSize: 11, display: "flex", gap: 6 }}>
+                        <span style={{ fontWeight: 600, color: C.teal, minWidth: 70 }}>{mk.repo_name}</span>
+                        <span style={{ color: C.red, fontWeight: 600 }}>{mk.error_type}</span>
+                        <span style={{ color: C.brown }}>{mk.description?.slice(0, 60)}</span>
+                      </div>
+                    ))}
+                  </>)}
+                  {globalResults.logs?.length > 0 && (<>
+                    <div style={{ fontWeight: 700, color: C.teal, fontSize: 11, marginTop: 6 }}>Logs ({globalResults.logs.length})</div>
+                    {globalResults.logs.slice(0, 10).map((lg, i) => (
+                      <div key={i} style={{ padding: "3px 8px", background: C.white, borderRadius: 6, marginBottom: 2, fontSize: 11, display: "flex", gap: 6 }}>
+                        <span style={{ fontWeight: 600, color: C.teal, minWidth: 70 }}>{lg.repo_name}</span>
+                        <span>{lg.action}</span>
+                        <span style={{ color: C.brown }}>{lg.result?.slice(0, 40)}</span>
+                      </div>
+                    ))}
+                  </>)}
+                </div>
+              )}
+              {globalResults && globalResults.total === 0 && (
+                <div style={{ textAlign: "center", fontSize: 12, color: C.brown, marginTop: 8 }}>No results found.</div>
+              )}
+            </details>
             {/* Filter bar */}
             <div style={{ maxWidth: 600, margin: "0 auto 16px", display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
               <Inp placeholder="Search repos..." value={repoFilter === "all" ? "" : (repoFilter.startsWith("q:") ? repoFilter.slice(2) : "")}
@@ -1617,10 +1676,24 @@ function Dashboard() {
             </div>
             <div style={{ maxWidth: 800, margin: "0 auto 10px", display: "flex", justifyContent: "center", gap: 8, alignItems: "center" }}>
               <Inp placeholder="Search logs..." value={logSearch} onChange={e => setLogSearch(e.target.value)}
-                style={{ maxWidth: 400, fontSize: 12, padding: "8px 14px" }} />
+                style={{ maxWidth: 300, fontSize: 12, padding: "8px 14px" }} />
+              {["all", "errors", "costly"].map(lf => (
+                <button key={lf} onClick={() => setLogLevelFilter(lf)} style={{
+                  padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                  fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
+                  background: logLevelFilter === lf ? (lf === "errors" ? C.red : lf === "costly" ? C.green : C.teal) : C.cream,
+                  color: logLevelFilter === lf ? C.white : C.darkBrown,
+                  border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
+                }}>{lf === "all" ? "All" : lf === "errors" ? "Errors Only" : "$$ High Cost"}</button>
+              ))}
               <Btn onClick={exportLogs} bg={C.teal} style={{ fontSize: 11, padding: "8px 14px" }}>{"\u2B07"} Export</Btn>
             </div>
-            {logSearch && (() => { const ct = logs.filter(l => [l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())).length; return (
+            {(logSearch || logLevelFilter !== "all") && (() => { const ct = logs.filter(l => {
+              if (logSearch && ![l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())) return false;
+              if (logLevelFilter === "errors" && !l.error) return false;
+              if (logLevelFilter === "costly" && !(l.cost_usd > 0.01)) return false;
+              return true;
+            }).length; return (
               <div style={{ textAlign: "center", fontSize: 11, color: C.brown, marginBottom: 6 }}>Showing {ct} of {logs.length} entries</div>
             ); })()}
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
@@ -1631,7 +1704,12 @@ function Dashboard() {
                   <div style={{ fontSize: 12, color: C.brown }}>Logs appear as the orchestrator works its magic.</div>
                 </Card>
               ) :
-                logs.filter(l => !logSearch || [l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())).map((l, i) => (
+                logs.filter(l => {
+                  if (logSearch && ![l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())) return false;
+                  if (logLevelFilter === "errors" && !l.error) return false;
+                  if (logLevelFilter === "costly" && !(l.cost_usd > 0.01)) return false;
+                  return true;
+                }).map((l, i) => (
                   <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: i === 0 ? "#FFFDE7" : C.white, border: `2px solid ${i === 0 ? C.orange : C.darkBrown}`, borderRadius: 8, marginBottom: 3, fontSize: 11, boxShadow: i === 0 ? `0 0 8px ${C.orange}44` : "0 1px 3px rgba(0,0,0,.04)", transition: "transform .15s, background .3s, border-color .3s" }}>
                     <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
                     <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
