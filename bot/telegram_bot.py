@@ -228,48 +228,58 @@ def _invalidate_token():
     _cached_token_ts = 0
 
 
-def _orch_get(path):
-    """GET from orchestrator API."""
-    try:
-        token = _fetch_api_token()
-        req = Request(f"{ORCH_URL}{path}")
-        if token:
-            req.add_header("Authorization", f"Bearer {token}")
-        resp = urlopen(req, timeout=5)
-        return json.loads(resp.read())
-    except HTTPError as e:
-        if e.code == 401:
-            _invalidate_token()
-            log.warning("Got 401 from orchestrator — token invalidated, will re-fetch")
-        return {"error": str(e)}
-    except URLError as e:
-        log.warning("Orchestrator unreachable: %s", e.reason)
-        return {"error": f"Orchestrator unreachable: {e.reason}"}
-    except Exception as e:
-        return {"error": str(e)}
+def _orch_get(path, retries=2):
+    """GET from orchestrator API with retry + backoff."""
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            token = _fetch_api_token()
+            req = Request(f"{ORCH_URL}{path}")
+            if token:
+                req.add_header("Authorization", f"Bearer {token}")
+            resp = urlopen(req, timeout=5)
+            return json.loads(resp.read())
+        except HTTPError as e:
+            if e.code == 401:
+                _invalidate_token()
+                log.warning("Got 401 from orchestrator — token invalidated, will re-fetch")
+            last_err = e
+        except URLError as e:
+            log.warning("Orchestrator unreachable (attempt %d): %s", attempt + 1, e.reason)
+            last_err = e
+        except Exception as e:
+            last_err = e
+        if attempt < retries:
+            time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s backoff
+    return {"error": str(last_err)}
 
 
-def _orch_post(path, data):
-    """POST to orchestrator API."""
-    try:
-        token = _fetch_api_token()
-        headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        req = Request(f"{ORCH_URL}{path}", data=json.dumps(data).encode(),
-                     headers=headers)
-        resp = urlopen(req, timeout=10)
-        return json.loads(resp.read())
-    except HTTPError as e:
-        if e.code == 401:
-            _invalidate_token()
-            log.warning("Got 401 from orchestrator — token invalidated, will re-fetch")
-        return {"error": str(e)}
-    except URLError as e:
-        log.warning("Orchestrator unreachable: %s", e.reason)
-        return {"error": f"Orchestrator unreachable: {e.reason}"}
-    except Exception as e:
-        return {"error": str(e)}
+def _orch_post(path, data, retries=1):
+    """POST to orchestrator API with retry + backoff."""
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            token = _fetch_api_token()
+            headers = {"Content-Type": "application/json"}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            req = Request(f"{ORCH_URL}{path}", data=json.dumps(data).encode(),
+                         headers=headers)
+            resp = urlopen(req, timeout=10)
+            return json.loads(resp.read())
+        except HTTPError as e:
+            if e.code == 401:
+                _invalidate_token()
+                log.warning("Got 401 from orchestrator — token invalidated, will re-fetch")
+            last_err = e
+        except URLError as e:
+            log.warning("Orchestrator unreachable (attempt %d): %s", attempt + 1, e.reason)
+            last_err = e
+        except Exception as e:
+            last_err = e
+        if attempt < retries:
+            time.sleep(0.5 * (2 ** attempt))
+    return {"error": str(last_err)}
 
 
 def _find_repo(name):

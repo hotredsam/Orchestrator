@@ -132,6 +132,8 @@ function Dashboard() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [globalResults, setGlobalResults] = useState(null);
   const [logLevelFilter, setLogLevelFilter] = useState("all");
+  const [logTail, setLogTail] = useState(false);
+  const logEndRef = useRef(null);
   const [staleItems, setStaleItems] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -289,6 +291,9 @@ function Dashboard() {
   }, [sr]);
 
   useEffect(() => { load(true); const i = setInterval(() => load(false), 3000); return () => clearInterval(i); }, [load]);
+
+  // Auto-scroll logs when tail mode is on
+  useEffect(() => { if (logTail && logEndRef.current) logEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [logTail, logs]);
 
   // Keyboard shortcuts
   const [showHelp, setShowHelp] = useState(false);
@@ -1760,6 +1765,12 @@ function Dashboard() {
                 <span style={{ animation: "rec 1.5s infinite" }}>●</span> LIVE
               </div>
               <span style={{ fontSize: 11, color: C.brown }}>{logs.length} entries</span>
+              <button onClick={() => setLogTail(t => !t)} style={{
+                padding: "3px 10px", borderRadius: 12, fontSize: 10, fontWeight: 700,
+                fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
+                background: logTail ? C.orange : C.cream, color: logTail ? C.white : C.brown,
+                border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
+              }}>{logTail ? "\u23EC Tail ON" : "\u23EC Tail"}</button>
             </div>
             <div style={{ maxWidth: 800, margin: "0 auto 10px", display: "flex", justifyContent: "center", gap: 8, alignItems: "center" }}>
               <Inp placeholder="Search logs..." value={logSearch} onChange={e => setLogSearch(e.target.value)}
@@ -1808,6 +1819,7 @@ function Dashboard() {
                     <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.result?.slice(0,50)}</span>
                   </div>
                 ))}
+              <div ref={logEndRef} />
             </div>
           </SectionBg>
         )}

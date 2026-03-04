@@ -2429,8 +2429,10 @@ class API(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         latency = (time.time() - getattr(self, "_req_start", time.time())) * 1000
         _record_metric(path, status, latency)
+        req_id = getattr(self, "_req_id", secrets.token_hex(8))
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("X-Request-ID", req_id)
         self._cors()
         self.end_headers()
         self.wfile.write(json.dumps(data, indent=2, default=str).encode())
@@ -2461,6 +2463,7 @@ class API(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self._req_start = time.time()
+        self._req_id = secrets.token_hex(8)
         p = urlparse(self.path)
         path = p.path
         q = parse_qs(p.query)
@@ -2826,6 +2829,27 @@ class API(BaseHTTPRequestHandler):
             return self._json({"repos": export, "count": len(export),
                                "exported_at": datetime.now(timezone.utc).isoformat()})
 
+        # Full repo data export — items, plan, logs, mistakes for backup
+        if path == "/api/repos/snapshot" and "repo_id" in q:
+            rid = int(q["repo_id"][0])
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json({"error": "Repo not found"}, 404)
+            repo = manager.master.get_repo(rid)
+            include = set((q.get("include", ["all"])[0]).split(","))
+            snap = {"repo": repo.get("name", "?"), "exported_at": datetime.now(timezone.utc).isoformat()}
+            if "all" in include or "items" in include:
+                snap["items"] = db.fetchall("SELECT * FROM items ORDER BY created_at DESC")
+            if "all" in include or "plan" in include:
+                snap["plan_steps"] = db.all_steps()
+            if "all" in include or "logs" in include:
+                snap["logs"] = db.fetchall("SELECT * FROM execution_log ORDER BY created_at DESC LIMIT 500")
+            if "all" in include or "mistakes" in include:
+                snap["mistakes"] = db.get_mistakes(500)
+            if "all" in include or "memory" in include:
+                snap["memory"] = db.fetchall("SELECT * FROM memory ORDER BY updated_at DESC LIMIT 200")
+            return self._json(snap)
+
         # System status — uptime, counts, version
         if path == "/api/status":
             uptime_sec = time.time() - _start_time
@@ -3033,6 +3057,7 @@ class API(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self._req_start = time.time()
+        self._req_id = secrets.token_hex(8)
         # Invalidate response cache on any write operation
         with _cache_lock:
             _response_cache.clear()
