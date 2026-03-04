@@ -7,7 +7,7 @@ Autonomous multi-repo coding orchestrator. Combines Ruflo swarm intelligence (10
 ```
   Dashboard (localhost:6969)        Telegram Mini App (11 tabs)
        ↓ REST API + SSE                    ↓
-  Master DB (repo registry)         Telegram Bot (30+ commands)
+  Master DB (repo registry)         Telegram Bot (40+ commands)
        ↓                                   ↓
   Per-Repo DB (.swarm-agent.db in each repo)
        ↓
@@ -161,6 +161,32 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Mobile responsive** — media queries for 700px/480px/360px breakpoints. Touch-friendly 36px min button height, compact header on small screens
 - **Telegram stale command** — `stale` shows items stuck in_progress for 2+ hours from Telegram
 - **Cost breakdown chart** — Trends tab shows per-repo cost breakdown with colored bars and percentages
+- **Telegram circuit-breaker command** — `breakers` shows open/half-open circuit breakers across all repos
+- **N+1 query optimization** — /api/repos batches 8 COUNT queries into 2 per repo using conditional SUM aggregation
+- **Webhook URL validation** — rejects non-http/https URLs and missing netloc on webhook registration
+- **Rate limit path normalization** — trailing slashes stripped before rate limit check
+- **Repo snapshot API** — `/api/repos/snapshot?repo_id=N&include=items,plan,logs,mistakes,memory` for full data export
+- **Request trace IDs** — X-Request-ID response header on all API responses for debugging/correlation
+- **Live log tail** — toggle button on logs tab auto-scrolls to latest entries as they arrive
+- **Telegram retry with backoff** — _orch_get retries 2x, _orch_post retries 1x with exponential backoff (0.5s, 1s)
+- **Message buffer overflow cap** — Telegram message buffer capped at 100 entries with forced flush on overflow
+- **Telegram 429 handling** — adaptive retry_after backoff when Telegram rate-limits the bot
+- **Sticky repo bar** — compact repo selector + state/stats bar appears when scrolled past header
+- **Daily cost persistence** — daily_costs table in MasterDB with UPSERT, persisted at each digest cycle
+- **Cost history API** — `/api/costs/history?days=30` returns daily cost totals per repo for historical tracking
+- **Slow query logging** — RepoDB logs queries taking >200ms with table path for performance tuning
+- **Telegram snapshot command** — `snapshot [repo]` shows item/step counts and pending items
+- **Telegram cost-history command** — `cost-history` shows 7-day daily costs with ASCII bar chart
+- **30-day cost history chart** — Trends tab sparkline chart from persisted daily cost data
+- **Item quick actions** — one-click complete button on pending items, reordered action buttons (complete/retry/delete)
+- **Git rollback item reset** — rollback now resets completed/in_progress items to pending
+- **Tag count limits** — repo tags capped at 20 tags max (previously unlimited, only had 200 char limit)
+- **DB indexes** — SQLite indexes on items(status), items(created_at), plan_steps(status), execution_log(created_at), memory(namespace)
+- **Circuit breaker home alert** — Town Square shows alert card when any breakers are tripped
+- **Detailed health scores** — `/api/health/detailed` computes 0-100 score per repo with A-F letter grades
+- **Health scores overview** — Health tab shows all repo grades with color-coded badges and average score
+- **Telegram health scores command** — `grades` shows A-F health scores for all repos with issues
+- **Compact item view** — toggle between full poster cards and one-line compact rows on Bounty Board
 
 ## Commands
 ```bash
@@ -291,6 +317,11 @@ add note repo: text — Add a note
 agent-stats [repo] — Agent performance stats
 search [query]  — Cross-repo search (items, logs, mistakes)
 tags / tags repo / tags repo: t1,t2 — View/set repo tags
+stale           — Show items stuck in_progress for 2+ hours
+breakers        — Circuit breaker states across all repos
+snapshot [repo] — Quick data snapshot with pending items
+cost-history    — Daily cost totals for last 7 days with chart
+grades          — Health scores (A-F) for all repos
 app             — Open Mini App link
 help            — Show all commands
 ```
