@@ -141,6 +141,7 @@ function Dashboard() {
   const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
   const [staleItems, setStaleItems] = useState([]);
+  const [recentErrors, setRecentErrors] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
@@ -290,6 +291,7 @@ function Dashboard() {
       try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); } } catch {}
       if (full || t === "home") {
         try { const sl = await f("/api/stale-items?hours=2"); if(sl.ok) { const sd = await sl.json(); setStaleItems(sd.stale_items || []); } } catch {}
+        try { const er = await f("/api/errors/recent?limit=5"); if(er.ok) { const ed = await er.json(); setRecentErrors(ed.errors || []); } } catch {}
       }
       if (full || t === "health") {
         try { const cb = await f("/api/circuit-breakers"); if(cb.ok) { const cd = await cb.json(); setCircuitBreakers(cd.circuit_breakers || []); } } catch {}
@@ -907,6 +909,20 @@ function Dashboard() {
                     <span style={{ fontWeight: 600, color: cb.state === "open" ? C.red : C.orange, minWidth: 80 }}>{cb.repo_name}</span>
                     <span>{cb.state.toUpperCase()} ({cb.failures}/{cb.threshold})</span>
                     {cb.last_failure_ago && <span style={{ color: C.brown, fontSize: 10 }}>{cb.last_failure_ago}s ago</span>}
+                  </div>
+                ))}
+              </Card>
+            )}
+            {/* Recent Errors */}
+            {recentErrors.length > 0 && (
+              <Card bg="#FFF3E0" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.orange}` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1, marginBottom: 6, color: C.red }}>{"\uD83D\uDCA5"} Recent Errors ({recentErrors.length})</div>
+                {recentErrors.slice(0, 5).map((err, i) => (
+                  <div key={i} style={{ fontSize: 11, padding: "3px 0", display: "flex", gap: 8, borderBottom: i < 4 ? `1px solid ${C.darkBrown}11` : "none" }}>
+                    <span style={{ fontWeight: 600, color: C.teal, minWidth: 70 }}>{err.repo_name}</span>
+                    <span style={{ color: C.red, fontWeight: 600, minWidth: 80 }}>{err.error_type}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.brown }}>{(err.description || "").slice(0, 80)}</span>
+                    <span style={{ fontSize: 9, color: C.brown, opacity: 0.6, flexShrink: 0 }}>{err.created_at?.slice(11, 19) || ""}</span>
                   </div>
                 ))}
               </Card>

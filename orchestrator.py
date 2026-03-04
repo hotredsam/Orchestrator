@@ -2847,6 +2847,23 @@ class API(BaseHTTPRequestHandler):
                 cbs.append(status)
             return self._json({"circuit_breakers": cbs})
 
+        if path == "/api/errors/recent":
+            repos = manager.master.get_repos()
+            limit = min(int(q.get("limit", [20])[0]), 100)
+            errors = []
+            for r in repos:
+                db = manager.get_repo_db(r["id"])
+                if not db:
+                    continue
+                rows = db.fetchall(
+                    "SELECT * FROM mistakes ORDER BY created_at DESC LIMIT ?", (limit,))
+                for row in rows:
+                    row["repo_id"] = r["id"]
+                    row["repo_name"] = r["name"]
+                errors.append(row)
+            errors.sort(key=lambda e: e.get("created_at", ""), reverse=True)
+            return self._json({"errors": errors[:limit]})
+
         if path == "/api/health-scan":
             repos = manager.master.get_repos()
             results = []
