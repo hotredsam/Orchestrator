@@ -1,4 +1,14 @@
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+// Debounce hook — delays value updates for search perf
+function useDebounce(value, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
 
 const API = window.__SWARM_API_URL__ || (window.location.port ? window.location.origin : "http://localhost:6969");
 // Auth token — may be set by Telegram Mini App page or fetched from /api/token
@@ -227,6 +237,52 @@ function Dashboard() {
     setToastHistory(prev => [...prev.slice(-49), { id, message, type, time: new Date().toLocaleTimeString() }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
+
+  // Debounced search values — avoids filtering on every keystroke
+  const dLogSearch = useDebounce(logSearch, 200);
+  const dMemSearch = useDebounce(memSearch, 200);
+
+  // Memoized filtered logs — only recomputes when inputs change
+  const filteredLogs = useMemo(() => {
+    if (!dLogSearch && logLevelFilter === "all") return logs;
+    return logs.filter(l => {
+      if (dLogSearch && ![l.state, l.action, l.result, l.error].join(" ").toLowerCase().includes(dLogSearch.toLowerCase())) return false;
+      if (logLevelFilter === "errors" && !l.error) return false;
+      if (logLevelFilter === "costly" && !(l.cost_usd > 0.01)) return false;
+      return true;
+    });
+  }, [logs, dLogSearch, logLevelFilter]);
+
+  // Memoized filtered memory
+  const filteredMemory = useMemo(() => {
+    if (!dMemSearch) return memory;
+    return memory.filter(m => [m.namespace, m.key, m.value].join(" ").toLowerCase().includes(dMemSearch.toLowerCase()));
+  }, [memory, dMemSearch]);
+
+  // Memoized filtered items
+  const filteredItems = useMemo(() => {
+    return items.filter(it =>
+      (itemFilter === "all" || it.status === itemFilter) &&
+      (sourceFilter === "all" || it.source === sourceFilter) &&
+      (priorityFilter === "all" || it.priority === priorityFilter)
+    );
+  }, [items, itemFilter, sourceFilter, priorityFilter]);
+
+  // Log page size for virtual scrolling — reset on filter change
+  const [logPageSize, setLogPageSize] = useState(100);
+  useEffect(() => setLogPageSize(100), [dLogSearch, logLevelFilter]);
+  const visibleLogs = useMemo(() => filteredLogs.slice(0, logPageSize), [filteredLogs, logPageSize]);
+
+  // Memoized repo stats for master view
+  const repoStats = useMemo(() => {
+    return {
+      total: repos.length,
+      running: repos.filter(r => r.running).length,
+      paused: repos.filter(r => r.paused).length,
+      idle: repos.filter(r => !r.running).length,
+      totalCost: Object.values(costs).reduce((a, b) => a + (b || 0), 0),
+    };
+  }, [repos, costs]);
 
   const notify = useCallback((title, body) => {
     if (!browserNotifs) return;
@@ -478,8 +534,7 @@ function Dashboard() {
   };
   const toggleSelectItem = (id) => setSelectedItems(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const toggleSelectAll = () => {
-    const visible = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter) && (priorityFilter === "all" || it.priority === priorityFilter));
-    setSelectedItems(prev => prev.size === visible.length ? new Set() : new Set(visible.map(it => it.id)));
+    setSelectedItems(prev => prev.size === filteredItems.length ? new Set() : new Set(filteredItems.map(it => it.id)));
   };
   const addRepo = async () => {
     if (!nr.name || !nr.path) return;
@@ -983,12 +1038,12 @@ function Dashboard() {
             {/* Stats row */}
             <div style={{ display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
               {[
-                { emoji: "\uD83D\uDCE6", label: "Repos", val: repos.length, bg: C.lightOrange },
-                { emoji: "\u26A1", label: "Running", val: repos.filter(r=>r.running).length, bg: C.lightTeal },
+                { emoji: "\uD83D\uDCE6", label: "Repos", val: repoStats.total, bg: C.lightOrange },
+                { emoji: "\u26A1", label: "Running", val: repoStats.running, bg: C.lightTeal },
                 { emoji: "\uD83D\uDCCB", label: "Items", val: repos.reduce((s,r)=>(s+(r.stats?.items_total||0)),0), bg: C.yellow },
                 { emoji: "\u2705", label: "Done", val: repos.reduce((s,r)=>(s+(r.stats?.items_done||0)),0), bg: C.lightTeal },
                 { emoji: "\uD83E\uDD20", label: "Agents", val: repos.reduce((s,r)=>(s+(r.stats?.agents||0)),0), bg: C.lightOrange },
-                { emoji: "\uD83D\uDCB0", label: "Total Cost", val: "$" + Object.values(costs).reduce((s,v)=>s+v,0).toFixed(2), bg: C.yellow },
+                { emoji: "\uD83D\uDCB0", label: "Total Cost", val: "$" + repoStats.totalCost.toFixed(2), bg: C.yellow },
               ].map((s,i) => (
                 <div key={i} className="stat-card" style={{ background: `linear-gradient(135deg, ${s.bg} 0%, ${s.bg}ee 100%)`, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "12px 20px", textAlign: "center", boxShadow: "0 2px 4px rgba(0,0,0,.1), 3px 3px 0 #3D2B1F", minWidth: 95, transition: "transform 0.2s, box-shadow 0.2s", cursor: "default" }}>
                   <div style={{ fontSize: 26 }}>{s.emoji}</div>
@@ -2025,8 +2080,8 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Post a bounty above to get the swarm working!</div>
                 </Card>
               ) :
-                (() => { const vis = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter) && (priorityFilter === "all" || it.priority === priorityFilter)); return vis.length > 0 && <div style={{ textAlign: "center", marginBottom: 6 }}><button onClick={toggleSelectAll} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>{selectedItems.size === vis.length ? "Deselect All" : `Select All (${vis.length})`}</button></div>; })()}
-                {items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter) && (priorityFilter === "all" || it.priority === priorityFilter)).map((it, idx) => {
+                (() => { return filteredItems.length > 0 && <div style={{ textAlign: "center", marginBottom: 6 }}><button onClick={toggleSelectAll} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>{selectedItems.size === filteredItems.length ? "Deselect All" : `Select All (${filteredItems.length})`}</button></div>; })()}
+                {filteredItems.map((it, idx) => {
                   const prioConfig = {
                     critical: { bg: C.red, icon: "\uD83D\uDD34", label: "CRITICAL", size: 13 },
                     high: { bg: C.orange, icon: "\uD83D\uDFE0", label: "HIGH", size: 12 },
@@ -2365,7 +2420,7 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Start a repo to generate plans and build Ruflo memory. Or click "Seed Memory" above.</div>
                 </Card>
               ) :
-                memory.filter(m => !memSearch || [m.namespace,m.key,m.value].join(" ").toLowerCase().includes(memSearch.toLowerCase())).map(m => (
+                filteredMemory.map(m => (
                   <div key={m.id} className="hover-glow" style={{ display: "flex", gap: 8, padding: "7px 12px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 4, fontSize: 12, transition: "box-shadow 0.2s, transform 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                     <span style={{ background: C.orange, color: C.white, borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{m.namespace}</span>
                     <span style={{ fontWeight: 700, minWidth: 80 }}>{m.key}</span>
@@ -2473,14 +2528,9 @@ function Dashboard() {
               ))}
               <Btn onClick={exportLogs} bg={C.teal} style={{ fontSize: 11, padding: "8px 14px" }}>{"\u2B07"} Export</Btn>
             </div>
-            {(logSearch || logLevelFilter !== "all") && (() => { const ct = logs.filter(l => {
-              if (logSearch && ![l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())) return false;
-              if (logLevelFilter === "errors" && !l.error) return false;
-              if (logLevelFilter === "costly" && !(l.cost_usd > 0.01)) return false;
-              return true;
-            }).length; return (
-              <div style={{ textAlign: "center", fontSize: 11, color: C.brown, marginBottom: 6 }}>Showing {ct} of {logs.length} entries</div>
-            ); })()}
+            {(dLogSearch || logLevelFilter !== "all" || filteredLogs.length < logs.length) && (
+              <div style={{ textAlign: "center", fontSize: 11, color: C.brown, marginBottom: 6 }}>Showing {Math.min(visibleLogs.length, filteredLogs.length)} of {filteredLogs.length} matched ({logs.length} total)</div>
+            )}
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               {logs.length===0 ? (
                 <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
@@ -2489,12 +2539,7 @@ function Dashboard() {
                   <div style={{ fontSize: 12, color: C.brown }}>Logs appear as the orchestrator works its magic.</div>
                 </Card>
               ) :
-                logs.filter(l => {
-                  if (logSearch && ![l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())) return false;
-                  if (logLevelFilter === "errors" && !l.error) return false;
-                  if (logLevelFilter === "costly" && !(l.cost_usd > 0.01)) return false;
-                  return true;
-                }).map((l, i) => (
+                visibleLogs.map((l, i) => (
                   <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: i === 0 ? "#FFFDE7" : C.white, border: `2px solid ${i === 0 ? C.orange : C.darkBrown}`, borderRadius: 8, marginBottom: 3, fontSize: 11, boxShadow: i === 0 ? `0 0 8px ${C.orange}44` : "0 1px 3px rgba(0,0,0,.04)", transition: "transform .15s, background .3s, border-color .3s" }}>
                     <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
                     <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
@@ -2506,6 +2551,13 @@ function Dashboard() {
                     <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.result?.slice(0,50)}</span>
                   </div>
                 ))}
+              {filteredLogs.length > logPageSize && (
+                <div style={{ textAlign: "center", margin: "8px 0" }}>
+                  <Btn bg={C.teal} onClick={() => setLogPageSize(p => p + 100)} style={{ fontSize: 11, padding: "6px 16px" }}>
+                    Show more ({filteredLogs.length - logPageSize} remaining)
+                  </Btn>
+                </div>
+              )}
               <div ref={logEndRef} />
             </div>
           </SectionBg>
