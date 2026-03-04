@@ -119,6 +119,7 @@ function Dashboard() {
     try { return JSON.parse(localStorage.getItem("swarm-pinned") || "[]"); } catch { return []; }
   });
   const [uptime, setUptime] = useState("");
+  const [browserNotifs, setBrowserNotifs] = useState(() => localStorage.getItem("swarm-notifs") === "1");
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -130,6 +131,13 @@ function Dashboard() {
     setToasts(prev => [...prev.slice(-4), { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
+
+  const notify = useCallback((title, body) => {
+    if (!browserNotifs) return;
+    if (Notification.permission === "granted") {
+      new Notification(title, { body, icon: "/favicon.ico" });
+    }
+  }, [browserNotifs]);
 
   // Fetch API token on mount (if not already set by Telegram Mini App embed)
   useEffect(() => {
@@ -176,12 +184,14 @@ function Dashboard() {
         try {
           const d = JSON.parse(e.data);
           showToast(`Error in ${d.repo_name || "repo"}: ${(d.error || "").slice(0, 80)}`, "error");
+          notify("Swarm Error", `${d.repo_name || "repo"}: ${(d.error || "").slice(0, 80)}`);
         } catch {}
       });
       es.addEventListener("cycle_complete", (e) => {
         try {
           const d = JSON.parse(e.data);
           showToast(`${d.repo || "Repo"} completed cycle #${d.cycle} (${d.items_done}/${d.items_total} items, ${d.tests_passed} tests)`, "success");
+          notify("Cycle Complete", `${d.repo} cycle #${d.cycle}: ${d.items_done}/${d.items_total} items done`);
           load();
         } catch {}
       });
@@ -189,6 +199,7 @@ function Dashboard() {
         try {
           const d = JSON.parse(e.data);
           showToast(`${d.repo || "Repo"} paused: budget $${d.budget?.toFixed(2)} exceeded ($${d.cost?.toFixed(2)} spent)`, "warning");
+          notify("Budget Exceeded", `${d.repo} paused: $${d.cost?.toFixed(2)} spent`);
           load();
         } catch {}
       });
@@ -1685,6 +1696,30 @@ function Dashboard() {
                   </div>
                 </Card>
               )}
+              {/* ── Notifications ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\uD83D\uDD14"} Browser Notifications</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Get desktop notifications for cycle completions, errors, and budget alerts.</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <Btn bg={browserNotifs ? C.green : "#999"} style={{ fontSize: 13, padding: "8px 18px" }} onClick={() => {
+                    if (!browserNotifs && Notification.permission !== "granted") {
+                      Notification.requestPermission().then(p => {
+                        if (p === "granted") { setBrowserNotifs(true); localStorage.setItem("swarm-notifs", "1"); showToast("Notifications enabled!", "success"); }
+                        else showToast("Notifications blocked by browser", "warning");
+                      });
+                    } else {
+                      const next = !browserNotifs;
+                      setBrowserNotifs(next);
+                      localStorage.setItem("swarm-notifs", next ? "1" : "0");
+                      showToast(next ? "Notifications enabled" : "Notifications disabled", "info");
+                    }
+                  }}>{browserNotifs ? "\u2705 Enabled" : "\u274C Disabled"}</Btn>
+                  <span style={{ fontSize: 11, color: C.brown }}>
+                    {typeof Notification !== "undefined" ? `Browser permission: ${Notification.permission}` : "Not supported"}
+                  </span>
+                </div>
+              </Card>
+
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, ${C.cream} 0%, #FFF3CD 100%)` }}>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>Model Routing</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>

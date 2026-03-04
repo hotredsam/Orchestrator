@@ -2751,6 +2751,9 @@ class API(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self._req_start = time.time()
+        # Invalidate response cache on any write operation
+        with _cache_lock:
+            _response_cache.clear()
         # Rate limit check
         if not self._check_rate():
             return
