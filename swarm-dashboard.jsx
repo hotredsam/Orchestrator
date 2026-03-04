@@ -634,7 +634,7 @@ function Dashboard() {
       </div>
 
       {/* ═══ NAV TABS ═══ */}
-      <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: `3px solid ${C.darkBrown}`, gap: 0 }}>
+      <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: `3px solid ${C.darkBrown}`, gap: 0, position: "sticky", top: 0, zIndex: 100 }}>
         {TABS.map(t => (
           <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
             padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
@@ -1197,8 +1197,16 @@ function Dashboard() {
                           <button onClick={() => deleteItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.red, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Delete this item">{"\u2716"}</button>
                           {it.status === "completed" && <button onClick={() => retryItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.orange, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Retry this item">{"\uD83D\uDD04"}</button>}
                         </div>
-                        <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
-                          {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {it.source && it.source !== "manual" && (
+                            <span style={{ fontSize: 9, color: C.brown, background: C.lightTeal, padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                              {it.source === "audio" ? "\uD83C\uDFA4" : it.source === "error_detected" ? "\uD83D\uDC1B" : ""} {it.source}
+                            </span>
+                          )}
+                          {it.created_at && <span style={{ fontSize: 9, color: C.brown, opacity: 0.6 }}>{it.created_at.slice(0, 10)}</span>}
+                          <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
+                            {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}
+                          </div>
                         </div>
                       </div>
                     </div>

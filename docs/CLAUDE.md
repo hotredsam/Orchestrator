@@ -108,6 +108,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Cache invalidation** — response cache cleared on all POST requests to ensure fresh data after writes
 - **Master view search** — search bar + state filter chips (All/Running/Idle/Pinned) on master view
 - **Master quick actions** — Start/Stop/Pause/Resume/Push buttons directly on master view cards
+- **Sticky tab bar** — tab navigation bar stays fixed at top when scrolling
+- **Item metadata** — bounty board shows source badge (audio/error_detected) and created date
 
 ## Commands
 ```bash
