@@ -100,6 +100,7 @@ function Dashboard() {
   const [token, setToken] = useState(__authToken);
   const [history, setHistory] = useState([]);
   const [rollingBack, setRollingBack] = useState(false);
+  const [selOptItems, setSelOptItems] = useState([]);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -1208,8 +1209,58 @@ function Dashboard() {
                   if (!sr) return;
                   const res = await f("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ repo_id: sr }) });
                   if (res.ok) { const d = await res.json(); alert(`Optimized ${d.optimized} repo(s)!`); load(); }
-                }}>{"\u26A1"} Optimize Selected</Btn>
+                }}>{"\u26A1"} Optimize Selected Repo</Btn>
               </div>
+              {/* ── Selective Item Optimization ── */}
+              {sr && items.length > 0 && (
+                <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #FFF8E7 0%, #F5E6C8 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 4, letterSpacing: 1.5 }}>{"\uD83C\uDFAF"} Selective Item Roundup</div>
+                  <p style={{ fontSize: 12, color: C.brown, marginBottom: 12 }}>Pick specific bounties to re-wrangle. Selected items get reset to pending and re-planned by the swarm.</p>
+                  <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 12, border: `2px solid ${C.darkBrown}33`, borderRadius: 10, background: C.white }}>
+                    {items.map(it => {
+                      const checked = selOptItems.includes(it.id);
+                      const typeIcon = it.type === "issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F";
+                      const statusColor = it.status === "completed" ? C.green : it.status === "in_progress" ? C.orange : "#999";
+                      const statusLabel = it.status === "completed" ? "Done" : it.status === "in_progress" ? "Active" : "Pending";
+                      return (
+                        <label key={it.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                          borderBottom: `1px solid ${C.darkBrown}15`, cursor: "pointer", transition: "background 0.15s",
+                          background: checked ? `${C.lightTeal}88` : "transparent" }}
+                          onMouseEnter={e => e.currentTarget.style.background = checked ? `${C.lightTeal}aa` : `${C.sand}66`}
+                          onMouseLeave={e => e.currentTarget.style.background = checked ? `${C.lightTeal}88` : "transparent"}>
+                          <input type="checkbox" checked={checked} onChange={() => {
+                            setSelOptItems(prev => checked ? prev.filter(x => x !== it.id) : [...prev, it.id]);
+                          }} style={{ width: 18, height: 18, accentColor: C.teal, cursor: "pointer", flexShrink: 0 }} />
+                          <span style={{ fontSize: 18, flexShrink: 0 }}>{typeIcon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
+                            <div style={{ fontSize: 10, color: C.brown }}>{it.priority} priority</div>
+                          </div>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: C.white, background: statusColor,
+                            padding: "2px 8px", borderRadius: 6, flexShrink: 0, fontFamily: "'Bangers', cursive", letterSpacing: 0.5 }}>{statusLabel}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <Btn bg={selOptItems.length > 0 ? C.orange : "#aaa"} style={{ fontSize: 15, padding: "10px 22px", opacity: selOptItems.length > 0 ? 1 : 0.6, cursor: selOptItems.length > 0 ? "pointer" : "not-allowed" }} onClick={async () => {
+                      if (!sr || selOptItems.length === 0) return;
+                      const res = await f("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ repo_id: sr, item_ids: selOptItems }) });
+                      if (res.ok) {
+                        const d = await res.json();
+                        const reQueued = d.results?.[0]?.re_queued_items?.length || 0;
+                        alert(`Optimized repo! ${reQueued} item(s) re-queued for the swarm.`);
+                        setSelOptItems([]);
+                        load();
+                      }
+                    }}>{"\uD83E\uDDE8"} Optimize {selOptItems.length} Selected {selOptItems.length === 1 ? "Item" : "Items"}</Btn>
+                    {selOptItems.length > 0 && (
+                      <span onClick={() => setSelOptItems([])} style={{ fontSize: 12, color: C.brown, cursor: "pointer", textDecoration: "underline", fontWeight: 600 }}>Clear all</span>
+                    )}
+                    <span onClick={() => setSelOptItems(items.map(it => it.id))} style={{ fontSize: 12, color: C.brown, cursor: "pointer", textDecoration: "underline", fontWeight: 600, marginLeft: "auto" }}>Select all</span>
+                  </div>
+                </Card>
+              )}
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, ${C.cream} 0%, #FFF3CD 100%)` }}>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>Model Routing</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>

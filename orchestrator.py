@@ -55,6 +55,10 @@ INTAKE_FOLDER = os.environ.get("INTAKE_FOLDER", os.path.expanduser("~/Desktop/in
 
 TELEGRAM_ENABLED = os.environ.get("TELEGRAM_ENABLED", "0") == "1"
 
+# Public URL override — set when using ngrok or other tunnel
+# Used by the Telegram Mini App and bot for external-facing URLs
+PUBLIC_URL = os.environ.get("PUBLIC_URL") or os.environ.get("NGROK_URL") or ""
+
 # ─── API Security ─────────────────────────────────────────────────────────────
 
 # Layer 1: Bearer Token — generated fresh each startup
@@ -2248,6 +2252,7 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/ruflo-optimize":
             rid = b.get("repo_id")
             optimize_all = b.get("all", False)
+            item_ids = b.get("item_ids")  # selective item optimization
             results = []
             repos_to_opt = manager.master.get_repos() if optimize_all else []
             if rid and not optimize_all:
@@ -2261,20 +2266,56 @@ class API(BaseHTTPRequestHandler):
                     db = manager.get_repo_db(repo["id"])
                     if not db:
                         continue
-                    # Auto-configure based on project type
+                    # Auto-configure based on project type, size, and complexity
+                    fc = ptype_info.get("file_count", 0) if isinstance(ptype_info, dict) else 0
+                    stk = ptype_info.get("stack", []) if isinstance(ptype_info, dict) else []
+                    sparc = ptype_info.get("sparc_mode", "dev") if isinstance(ptype_info, dict) else "dev"
+                    topo = ptype_info.get("topology", "mesh") if isinstance(ptype_info, dict) else "mesh"
                     defaults = {
-                        "python": {"agents": "10", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "50"},
-                        "node": {"agents": "8", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"},
-                        "node-react": {"agents": "8", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"},
-                        "fullstack": {"agents": "10", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "50"},
-                        "rust": {"agents": "6", "model_arch": "opus", "model_code": "opus", "model_scan": "sonnet", "ralph_iters": "30"},
-                        "static": {"agents": "4", "model_arch": "sonnet", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "20"},
+                        "python":    {"agents": "10", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "50"},
+                        "node":      {"agents": "8",  "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"},
+                        "node-react":{"agents": "8",  "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"},
+                        "fullstack": {"agents": "12", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "60"},
+                        "rust":      {"agents": "6",  "model_arch": "opus", "model_code": "opus",   "model_scan": "sonnet","ralph_iters": "30"},
+                        "static":    {"agents": "4",  "model_arch": "sonnet","model_code": "sonnet","model_scan": "haiku", "ralph_iters": "20"},
                     }
                     config = defaults.get(ptype, {"agents": "8", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"})
+                    # Scale agents and iterations by codebase size
+                    if fc > 200:
+                        config["agents"] = str(min(int(config["agents"]) + 4, 15))
+                        config["ralph_iters"] = str(int(config["ralph_iters"]) + 20)
+                    elif fc > 100:
+                        config["agents"] = str(min(int(config["agents"]) + 2, 12))
+                        config["ralph_iters"] = str(int(config["ralph_iters"]) + 10)
+                    elif fc < 10:
+                        config["agents"] = str(max(int(config["agents"]) - 2, 3))
+                        config["ralph_iters"] = str(max(int(config["ralph_iters"]) - 10, 10))
+                    # TypeScript projects need more thorough scanning
+                    if "typescript" in stk:
+                        config["model_scan"] = "sonnet"
+                    # Large fullstack projects upgrade arch model
+                    if ptype == "fullstack" and fc > 100:
+                        config["model_arch"] = "opus"
+                        config["model_code"] = "opus"
+                    config["sparc_mode"] = sparc
+                    config["topology"] = topo
                     config["project_type"] = ptype
                     for k, v in config.items():
                         db.mem_store("ruflo_config", k, v)
-                    results.append({"repo": repo["name"], "type": ptype, "config": config})
+                    # Selective item optimization: reset chosen items to pending
+                    # so the swarm re-plans and re-processes only those items
+                    re_queued = []
+                    if item_ids and isinstance(item_ids, list):
+                        placeholders = ",".join("?" for _ in item_ids)
+                        db.ex(f"UPDATE items SET status='pending', started_at=NULL, completed_at=NULL "
+                              f"WHERE id IN ({placeholders})", tuple(int(i) for i in item_ids))
+                        # Remove plan steps linked to those items so they get re-planned
+                        db.ex(f"DELETE FROM plan_steps WHERE item_id IN ({placeholders})",
+                              tuple(int(i) for i in item_ids))
+                        db.commit()
+                        re_queued = [int(i) for i in item_ids]
+                    results.append({"repo": repo["name"], "type": ptype, "config": config,
+                                    "re_queued_items": re_queued})
                 except Exception as e:
                     results.append({"repo": repo.get("name", "?"), "error": str(e)})
             return self._json({"ok": True, "optimized": len(results), "results": results})
@@ -2305,6 +2346,9 @@ class API(BaseHTTPRequestHandler):
 def serve():
     s = HTTPServer(("0.0.0.0", API_PORT), API)
     log.info(f"🌐 API on http://localhost:{API_PORT}")
+    if PUBLIC_URL:
+        log.info(f"🌍 Public URL: {PUBLIC_URL}")
+        log.info(f"📱 Telegram Mini App: {PUBLIC_URL}/telegram-app")
     log.info(f"🔑 API Bearer Token: {API_TOKEN}")
     s.serve_forever()
 

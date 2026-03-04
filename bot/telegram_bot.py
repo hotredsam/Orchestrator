@@ -16,7 +16,7 @@ import logging
 import tempfile
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 log = logging.getLogger("swarm.telegram")
 
@@ -25,8 +25,16 @@ log = logging.getLogger("swarm.telegram")
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
-ORCH_URL = "http://localhost:6969"
+_port = os.environ.get("AGENT_API_PORT", "6969")
+ORCH_URL = os.environ.get("PUBLIC_URL") or os.environ.get("NGROK_URL") or f"http://localhost:{_port}"
 AUDIO_DIR = os.environ.get("AGENT_AUDIO_DIR", os.path.expanduser("~/swarm-audio"))
+
+# Bridge paths — matches orchestrator.py layout
+BRIDGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bridge")
+BRIDGE_INBOX = os.path.join(BRIDGE_DIR, "inbox.jsonl")
+BRIDGE_OUTBOX = os.path.join(BRIDGE_DIR, "outbox.jsonl")
+
+os.makedirs(BRIDGE_DIR, exist_ok=True)
 
 # Rate limiting
 _last_send = 0
@@ -381,6 +389,52 @@ def cmd_help():
 Send a voice message to queue audio for transcription."""
 
 
+# ─── Chat Bridge (Telegram → inbox.jsonl → Claude Code) ──────────────────────
+
+_bridge_lock = threading.Lock()
+
+
+def bridge_append_inbox(text: str):
+    """Append a user message to bridge/inbox.jsonl.
+
+    Uses the same JSON schema as orchestrator.bridge_write_inbox so that
+    Claude Code sessions pick it up identically regardless of entry point.
+    """
+    entry = {
+        "text": text,
+        "source": "telegram",
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    with _bridge_lock:
+        with open(BRIDGE_INBOX, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    log.info("Bridge inbox: wrote %d chars from telegram", len(text))
+
+
+def bridge_poll_outbox(last_ts: str = None) -> list:
+    """Read new entries from bridge/outbox.jsonl after *last_ts*.
+
+    Returns a list of dicts with keys: text, source, ts.
+    """
+    if not os.path.exists(BRIDGE_OUTBOX):
+        return []
+    entries = []
+    with _bridge_lock:
+        with open(BRIDGE_OUTBOX, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if last_ts and entry.get("ts", "") <= last_ts:
+                        continue
+                    entries.append(entry)
+                except json.JSONDecodeError:
+                    continue
+    return entries
+
+
 # ─── Message Router ──────────────────────────────────────────────────────────
 
 def handle_message(msg):
@@ -390,6 +444,30 @@ def handle_message(msg):
     # Security: only respond to allowed chat
     if chat_id != str(CHAT_ID):
         log.warning(f"Ignoring message from unknown chat: {chat_id}")
+        return
+
+    # Handle web_app_data from Telegram Mini App
+    web_app_data = msg.get("web_app_data")
+    if web_app_data:
+        try:
+            data = json.loads(web_app_data.get("data", "{}"))
+            action = data.get("action", "")
+            if action == "start_repo":
+                reply = cmd_start_repo(data.get("repo", ""))
+            elif action == "stop_repo":
+                reply = cmd_stop_repo(data.get("repo", ""))
+            elif action == "start_all":
+                reply = cmd_start_all()
+            elif action == "stop_all":
+                reply = cmd_stop_all()
+            elif action == "add_item":
+                reply = cmd_add_item(data.get("type", "feature"), data.get("title", ""))
+            else:
+                reply = f"Mini App action: {action}"
+            if reply:
+                send_message(reply, chat_id=chat_id)
+        except Exception as e:
+            log.error("web_app_data error: %s", e)
         return
 
     # Handle voice messages
@@ -429,8 +507,14 @@ def handle_message(msg):
         reply = cmd_memory(t[7:])
     elif t == "help":
         reply = cmd_help()
+    elif t in ("app", "dashboard", "open"):
+        public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
+        reply = f"Open the Swarm Town dashboard:\n{public_url}/telegram-app"
     else:
-        reply = f"Unknown command. Send `help` for available commands."
+        # Not a known command — forward to the bridge inbox so Claude Code
+        # sessions can read it as a user instruction.
+        bridge_append_inbox(text)
+        reply = "Message forwarded to Claude Code bridge."
 
     if reply:
         send_message(reply, chat_id=chat_id)
@@ -489,10 +573,35 @@ def handle_voice(msg, voice):
         "audio_data": base64.b64encode(audio_data).decode(),
     })
 
-    send_message(
-        f"🎤 Audio received for *{active_repo['name']}*. Queued for Whisper transcription.",
-        chat_id=chat_id,
-    )
+    # Try inline Whisper transcription for the bridge
+    transcript = None
+    try:
+        import whisper as _whisper
+        _model = _whisper.load_model("base")
+        result = _model.transcribe(fpath)
+        transcript = result.get("text", "").strip()
+        if transcript:
+            bridge_append_inbox(transcript)
+            send_message(
+                f"🎤 *{active_repo['name']}* -- Voice transcribed:\n\n_{transcript}_\n\nForwarded to Claude Code bridge.",
+                chat_id=chat_id,
+            )
+        else:
+            send_message(
+                f"🎤 Audio received for *{active_repo['name']}*. Transcription was empty.",
+                chat_id=chat_id,
+            )
+    except ImportError:
+        send_message(
+            f"🎤 Audio received for *{active_repo['name']}*. Queued for Whisper transcription (whisper not installed locally).",
+            chat_id=chat_id,
+        )
+    except Exception as e:
+        log.error("Whisper transcription failed: %s", e)
+        send_message(
+            f"🎤 Audio saved for *{active_repo['name']}*. Transcription error: {e}",
+            chat_id=chat_id,
+        )
 
 
 # ─── Notification Functions (called from orchestrator) ───────────────────────
@@ -641,6 +750,8 @@ class TelegramBot:
         self.thread = None
         self.offset = 0
         self._digest_timer = None
+        self._outbox_thread = None
+        self._outbox_last_ts = None  # track last-seen outbox timestamp
 
     def start(self):
         if self.running:
@@ -648,7 +759,9 @@ class TelegramBot:
         self.running = True
         self.thread = threading.Thread(target=self._poll_loop, name="telegram-bot", daemon=True)
         self.thread.start()
-        log.info("📱 Telegram bot started")
+        self._outbox_thread = threading.Thread(target=self._outbox_loop, name="telegram-outbox", daemon=True)
+        self._outbox_thread.start()
+        log.info("Telegram bot started (polling + outbox watcher)")
 
     def stop(self):
         self.running = False
@@ -707,7 +820,7 @@ class TelegramBot:
 
     def _poll_loop(self):
         """Long-poll for updates from Telegram."""
-        log.info(f"📱 Telegram bot polling (chat_id={CHAT_ID})")
+        log.info(f"Telegram bot polling (chat_id={CHAT_ID})")
         while self.running:
             try:
                 updates = get_updates(offset=self.offset, timeout=30)
@@ -719,6 +832,25 @@ class TelegramBot:
             except Exception as e:
                 log.error(f"Telegram poll error: {e}")
                 time.sleep(5)
+
+    def _outbox_loop(self):
+        """Watch bridge/outbox.jsonl and forward new entries to Telegram."""
+        log.info("Outbox watcher started")
+        # Initialise last_ts to "now" so we only send messages written after
+        # the bot starts, not the entire backlog.
+        self._outbox_last_ts = datetime.now(timezone.utc).isoformat()
+        while self.running:
+            try:
+                entries = bridge_poll_outbox(last_ts=self._outbox_last_ts)
+                for entry in entries:
+                    text = entry.get("text", "")
+                    source = entry.get("source", "unknown")
+                    if text:
+                        send_message(f"[{source}] {text}")
+                    self._outbox_last_ts = entry.get("ts", self._outbox_last_ts)
+            except Exception as e:
+                log.error(f"Outbox watcher error: {e}")
+            time.sleep(3)  # check every 3 seconds
 
 
 # Global bot instance
