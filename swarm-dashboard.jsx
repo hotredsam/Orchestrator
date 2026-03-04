@@ -1061,6 +1061,7 @@ function Dashboard() {
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
               {lastRefresh && <span style={{ fontSize: 8, color: C.brown, opacity: 0.7 }}>{Math.floor((Date.now() - lastRefresh) / 1000) < 10 ? "just now" : Math.floor((Date.now() - lastRefresh) / 1000) + "s ago"}</span>}
+              {repos.length > 0 && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: repos.filter(r => r.running).length > 0 ? `${C.green}22` : `${C.brown}11`, color: repos.filter(r => r.running).length > 0 ? C.green : C.brown, fontWeight: 700 }}>{repos.filter(r => r.running).length}/{repos.length} running</span>}
               {healthScores?.average_score != null && (() => {
                 const s = healthScores.average_score;
                 const hc = s >= 80 ? C.green : s >= 60 ? C.orange : C.red;

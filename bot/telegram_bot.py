@@ -1499,6 +1499,30 @@ def cmd_timeline(name: str = ""):
     return "\n".join(lines)
 
 
+def cmd_queue():
+    """Show top priority pending items across all repos."""
+    repos = _get("/api/repos") or []
+    all_pending = []
+    for r in repos:
+        items = _get(f"/api/items?repo_id={r['id']}") or []
+        for it in items:
+            if it.get("status") == "pending":
+                it["_repo"] = r["name"]
+                all_pending.append(it)
+    if not all_pending:
+        return "\u2705 No pending items across any repo!"
+    prio_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    all_pending.sort(key=lambda x: prio_order.get(x.get("priority", "medium"), 2))
+    lines = [f"\U0001F4CB *Queue — {len(all_pending)} pending items:*\n"]
+    prio_emoji = {"critical": "\u26D4", "high": "\U0001F534", "medium": "\U0001F7E1", "low": "\U0001F7E2"}
+    for it in all_pending[:15]:
+        pe = prio_emoji.get(it.get("priority", "medium"), "\U0001F7E1")
+        lines.append(f"  {pe} *{it['_repo']}*: {it.get('title', '?')[:50]}")
+    if len(all_pending) > 15:
+        lines.append(f"\n  _...and {len(all_pending) - 15} more_")
+    return "\n".join(lines)
+
+
 def cmd_pin(name: str = ""):
     """Pin a repo as default context for commands."""
     global _pinned_repo
@@ -1601,6 +1625,7 @@ def cmd_help():
 `pin [repo]` / `pin clear` — Set default repo for commands
 `changelog [repo]` — Recent git commits
 `timeline [repo]` — Execution state transition timeline
+`queue` — Top priority pending items across all repos
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -1889,6 +1914,8 @@ def handle_message(msg):
         reply = cmd_leaderboard()
     elif t in ("summary", "overview", "report"):
         reply = cmd_summary()
+    elif t in ("queue", "pending", "backlog"):
+        reply = cmd_queue()
     elif t in ("errors", "recent-errors", "recent errors"):
         reply = cmd_recent_errors()
     elif t in ("docs", "api-docs", "api docs", "endpoints"):
