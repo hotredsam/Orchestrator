@@ -2515,6 +2515,26 @@ function Dashboard() {
                   );
                 }); })()}
             </div>
+            {/* Step Model Distribution */}
+            {(() => {
+              const models = {};
+              plan.filter(s => s.status === "completed" && s.model).forEach(s => {
+                const m = s.model.replace("claude-","").replace("-20251001","").replace("-20250514","");
+                models[m] = (models[m] || 0) + 1;
+              });
+              const entries = Object.entries(models).sort((a, b) => b[1] - a[1]);
+              if (entries.length < 2) return null;
+              const total = entries.reduce((s, e) => s + e[1], 0);
+              return (
+                <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginTop: 8, marginBottom: 4 }}>
+                  {entries.map(([m, c]) => (
+                    <span key={m} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, background: `${C.teal}22`, border: `1px solid ${C.teal}44`, fontWeight: 600, color: C.teal }}>
+                      {"\uD83E\uDD16"} {m}: {c} ({Math.round(c / total * 100)}%)
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
             {/* Step Duration Histogram */}
             {(() => {
               const completed = plan.filter(s => s.status === "completed" && s.duration_sec > 0);

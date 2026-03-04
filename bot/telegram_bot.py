@@ -332,6 +332,22 @@ def _find_repo(name):
     return None
 
 
+def _repo_hint(cmd: str) -> str:
+    """Return a helpful message listing available repos when none specified."""
+    repos = _orch_get("/api/repos") or []
+    if isinstance(repos, dict):
+        repos = []
+    names = [r["name"] for r in repos[:10]]
+    hint = f"Usage: `/{cmd} <repo>`"
+    if _pinned_repo:
+        hint += f"\n\U0001F4CC Pinned: *{_pinned_repo}*"
+    if names:
+        hint += "\n\nAvailable repos:\n" + "\n".join(f"  \u25B9 `{n}`" for n in names)
+        if len(repos) > 10:
+            hint += f"\n  _...and {len(repos) - 10} more_"
+    return hint
+
+
 # ─── Command Handlers ────────────────────────────────────────────────────────
 
 def _progress_bar(done, total, width=10):
@@ -500,6 +516,8 @@ def cmd_push(name):
 
 
 def cmd_logs(name):
+    if not name:
+        return _repo_hint("logs")
     repo = _find_repo(name)
     if not repo:
         return f"Repo '{name}' not found."
@@ -531,6 +549,8 @@ def cmd_logs(name):
 
 
 def cmd_mistakes(name):
+    if not name:
+        return _repo_hint("mistakes")
     repo = _find_repo(name)
     if not repo:
         return f"Repo '{name}' not found."
@@ -560,6 +580,8 @@ def cmd_mistakes(name):
 
 
 def cmd_memory(name):
+    if not name:
+        return _repo_hint("memory")
     repo = _find_repo(name)
     if not repo:
         return f"Repo '{name}' not found."
@@ -589,6 +611,8 @@ def cmd_memory(name):
 
 def cmd_items(name):
     """List items for a repo."""
+    if not name:
+        return _repo_hint("items")
     repo = _find_repo(name)
     if not repo:
         return f"Repo '{name}' not found."
@@ -653,6 +677,8 @@ def cmd_done(arg):
 
 def cmd_plan(name):
     """Show plan steps for a repo."""
+    if not name:
+        return _repo_hint("plan")
     repo = _find_repo(name)
     if not repo:
         return f"Repo '{name}' not found."

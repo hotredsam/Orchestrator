@@ -1300,8 +1300,19 @@
       const data = await api('/api/items?repo_id=' + repoId);
       if (!data || !data.length) {
         el.innerHTML = '<div class="empty-state"><div class="empty-emoji">✨</div><p>No items yet</p></div>';
+        document.querySelectorAll('#itemsPrioRow button[data-prio]').forEach(b => { const badge = b.querySelector('.prio-count'); if (badge) badge.textContent = ''; });
         return;
       }
+
+      // Update priority count badges
+      const prioCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+      data.forEach(it => { const p = it.priority || 'medium'; if (prioCounts[p] !== undefined) prioCounts[p]++; });
+      document.querySelectorAll('#itemsPrioRow button[data-prio]').forEach(b => {
+        const p = b.getAttribute('data-prio');
+        let badge = b.querySelector('.prio-count');
+        if (!badge) { badge = document.createElement('span'); badge.className = 'prio-count'; badge.style.cssText = 'font-size:9px;margin-left:3px;opacity:0.7;'; b.appendChild(badge); }
+        badge.textContent = p ? (prioCounts[p] || 0) : data.length;
+      });
 
       let items = data;
       if (filter) items = items.filter(i => i.status === filter);
