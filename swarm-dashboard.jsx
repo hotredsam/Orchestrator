@@ -2568,6 +2568,33 @@ function Dashboard() {
                   </Card>
                 ))}
             </div>
+            {/* Model Distribution */}
+            {plan.filter(s => s.model).length > 0 && (() => {
+              const modelCounts = {};
+              plan.forEach(s => { if (s.model) modelCounts[s.model] = (modelCounts[s.model] || 0) + 1; });
+              const models = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]);
+              const total = models.reduce((s, m) => s + m[1], 0);
+              const modelColors = [C.teal, C.orange, C.green, "#7E57C2", C.red, C.brown];
+              return (
+                <Card bg={C.white} style={{ maxWidth: 650, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 10, textAlign: "center" }}>Model Distribution</div>
+                  <div style={{ display: "flex", height: 10, borderRadius: 5, overflow: "hidden", marginBottom: 8 }}>
+                    {models.map(([model, count], i) => (
+                      <div key={model} style={{ width: `${(count / total) * 100}%`, background: modelColors[i % modelColors.length], transition: "width 0.3s" }} title={`${model}: ${count} steps (${Math.round(count/total*100)}%)`} />
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                    {models.map(([model, count], i) => (
+                      <span key={model} style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 3 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 2, background: modelColors[i % modelColors.length], display: "inline-block" }} />
+                        <span style={{ fontWeight: 600 }}>{model.replace("claude-", "").replace("-20251001", "")}</span>
+                        <span style={{ color: C.brown }}>({count})</span>
+                      </span>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })()}
             {/* Agent Leaderboard */}
             {agentStats?.agents?.length > 1 && (() => {
               const sorted = [...agentStats.agents].sort((a, b) => b.completed - a.completed);
@@ -2633,6 +2660,7 @@ function Dashboard() {
               <Btn bg={C.teal} onClick={async () => { await f("/api/memory/seed", { method: "POST", body: JSON.stringify({ repo_id: sr }) }); load(); }} style={{ fontSize: 14, padding: "8px 18px" }}>{"\uD83D\uDD04"} Seed Memory</Btn>
               <Inp placeholder="Search memory..." value={memSearch} onChange={e => setMemSearch(e.target.value)}
                 style={{ maxWidth: 280, fontSize: 12, padding: "8px 14px" }} />
+              {dMemSearch && <span style={{ fontSize: 11, color: C.brown, alignSelf: "center" }}>{filteredMemory.length}/{memory.length} matched</span>}
             </div>
             <div style={{ maxWidth: 700, margin: "0 auto" }}>
               {memory.length===0 ? (
@@ -2777,13 +2805,14 @@ function Dashboard() {
                       <div style={{ background: C.cream, border: `2px solid ${C.teal}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "8px 12px", marginBottom: 3, fontSize: 11 }}>
                         {l.result && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.teal }}>Result:</span> <span style={{ color: C.darkBrown }}>{l.result}</span></div>}
                         {l.error && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.red }}>Error:</span> <span style={{ color: C.red }}>{l.error}</span></div>}
-                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", color: C.brown, fontSize: 10 }}>
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", color: C.brown, fontSize: 10, alignItems: "center" }}>
                           {l.model && <span>Model: {l.model}</span>}
                           {l.tokens_in > 0 && <span>Tokens in: {l.tokens_in}</span>}
                           {l.tokens_out > 0 && <span>Tokens out: {l.tokens_out}</span>}
                           {l.agent_count > 0 && <span>Agents: {l.agent_count}</span>}
                           {l.cost_usd > 0 && <span>Cost: ${l.cost_usd.toFixed(4)}</span>}
                           {l.duration_sec > 0 && <span>Duration: {l.duration_sec.toFixed(2)}s</span>}
+                          <button onClick={e => { e.stopPropagation(); const txt = [l.created_at, l.state, l.action, l.result, l.error, l.model ? `model:${l.model}` : "", l.cost_usd > 0 ? `cost:$${l.cost_usd}` : ""].filter(Boolean).join(" | "); navigator.clipboard.writeText(txt); showToast("Copied to clipboard", "success"); }} style={{ marginLeft: "auto", background: C.white, border: `1px solid ${C.darkBrown}33`, borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 9, fontWeight: 600, color: C.teal }}>Copy</button>
                         </div>
                       </div>
                     )}
