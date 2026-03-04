@@ -808,7 +808,7 @@
         <h2 class="section-title">Agent Memory</h2>
         <div class="btn-row mb-12">
           <select class="input" id="memoryRepoSelect" onchange="loadMemory()" style="flex:1;"></select>
-          <input type="text" class="input" id="memorySearch" placeholder="Search..." style="flex:1;" onkeydown="if(event.key==='Enter')loadMemory()">
+          <input type="text" class="input" id="memorySearch" placeholder="Search..." style="flex:1;" oninput="clearTimeout(window._memDebounce); window._memDebounce=setTimeout(loadMemory, 300)" onkeydown="if(event.key==='Enter'){clearTimeout(window._memDebounce);loadMemory()}">
         </div>
         <div id="memoryList">
           <div class="empty-state"><div class="empty-emoji">🧠</div><p>Select a repo to view memory</p></div>
@@ -1393,7 +1393,7 @@
         return;
       }
 
-      el.innerHTML = data.map(m => `
+      el.innerHTML = `${search ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${data.length} results for "${esc(search)}"</div>` : `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${data.length} memory entries</div>`}` + data.map(m => `
         <div style="padding:8px 0;border-bottom:1px solid var(--shadow);">
           <div class="flex-between">
             <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:var(--teal);color:#fff;">${esc(m.namespace || 'default')}</span>

@@ -2285,6 +2285,7 @@ function Dashboard() {
                         ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)`
                         : `linear-gradient(135deg, #FFF8E7 0%, #F5E6C8 100%)`,
                       border: `3px solid ${C.darkBrown}`,
+                      borderLeft: `5px solid ${prioConfig.bg}`,
                       borderRadius: 12,
                       padding: "14px 16px",
                       marginBottom: 10,

@@ -1224,14 +1224,23 @@ def cmd_recent_errors():
         return f"Error: {data['error']}"
     errors = data.get("errors", [])
     if not errors:
-        return "No recent errors across any repos."
-    lines = ["*Recent Errors:*\n"]
+        return "\u2705 No recent errors across any repos."
+    # Count errors per repo
+    repo_counts = {}
+    for e in errors:
+        rn = e.get("repo_name", "?")
+        repo_counts[rn] = repo_counts.get(rn, 0) + 1
+    top_repos = sorted(repo_counts.items(), key=lambda x: -x[1])[:5]
+    lines = [f"*\u274C Recent Errors ({len(errors)})*\n"]
+    if len(top_repos) > 1:
+        lines.append("*By repo:* " + ", ".join(f"{r}({c})" for r, c in top_repos))
+        lines.append("")
     for e in errors[:10]:
         repo = e.get("repo_name", "?")
         etype = e.get("error_type", "?")
         desc = (e.get("description") or "")[:60]
         ts = (e.get("created_at") or "")[:19]
-        lines.append(f"`{repo}` {etype}\n  {desc}\n  _{ts}_")
+        lines.append(f"\U0001F534 `{repo}` *{etype}*\n  {desc}\n  _{ts}_")
     return "\n".join(lines)
 
 
