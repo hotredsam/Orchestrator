@@ -148,8 +148,8 @@ def bridge_write_inbox(text: str, source: str = "telegram"):
         if len(lines) > BRIDGE_MAX_LINES:
             with open(BRIDGE_INBOX, "w", encoding="utf-8") as f:
                 f.writelines(lines[-BRIDGE_MAX_LINES:])
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("bridge_write_inbox trim error: %s", e)
     with open(BRIDGE_INSTRUCTION, "w", encoding="utf-8") as f:
         f.write(text)
 
@@ -2666,7 +2666,10 @@ class API(BaseHTTPRequestHandler):
             return self._json(repos)
 
         # Per-repo endpoints need repo_id
-        rid = int(q.get("repo_id", [0])[0]) if "repo_id" in q else None
+        try:
+            rid = int(q.get("repo_id", [0])[0]) if "repo_id" in q else None
+        except (ValueError, TypeError, IndexError):
+            rid = None
         # Pagination params
         limit = min(int(q.get("limit", [200])[0]), 1000)
         offset = max(int(q.get("offset", [0])[0]), 0)
@@ -3474,6 +3477,8 @@ class API(BaseHTTPRequestHandler):
                     decoded = base64.b64decode(data)
                 except Exception:
                     return self._json({"error": "Invalid base64 audio data"}, 400)
+                if len(decoded) > 50 * 1024 * 1024:  # 50MB limit
+                    return self._json({"error": "Audio file too large (max 50MB)"}, 413)
                 fpath = os.path.join(AUDIO_DIR, fname)
                 with open(fpath, "wb") as fp:
                     fp.write(decoded)

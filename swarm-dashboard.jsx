@@ -138,6 +138,7 @@ function Dashboard() {
   const [costHistory, setCostHistory] = useState([]);
   const [healthScores, setHealthScores] = useState(null);
   const [compactItems, setCompactItems] = useState(false);
+  const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
   const [staleItems, setStaleItems] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
@@ -230,7 +231,8 @@ function Dashboard() {
           load();
         } catch {}
       });
-      es.onerror = () => { es.close(); setTimeout(connect, 5000); };
+      es.addEventListener("connected", () => setSseConnected(true));
+      es.onerror = () => { setSseConnected(false); es.close(); setTimeout(connect, 5000); };
     };
     connect();
     return () => { if (sseRef.current) sseRef.current.close(); };
@@ -761,6 +763,7 @@ function Dashboard() {
               ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}
             </div>
           )}
+          <div title={sseConnected ? "Live updates connected" : "Live updates disconnected — reconnecting..."} style={{ width: 10, height: 10, borderRadius: "50%", background: sseConnected ? "#4CAF50" : "#F44336", border: `2px solid ${C.darkBrown}`, animation: sseConnected ? "none" : "pulse 1.5s infinite" }} />
           <button onClick={() => setShowToastHistory(prev => !prev)} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1, position: "relative" }} title="Notification history">
             {"\uD83D\uDD14"}
             {toastHistory.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: C.red, color: C.white, borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{Math.min(toastHistory.length, 99)}</span>}
