@@ -663,6 +663,19 @@ def cmd_costs():
         pct = round(cost / max(total, 0.001) * 100)
         lines.append(f"  {'█' * bar_len}{'░' * (12 - bar_len)} `{repo}` ${cost:.4f} ({pct}%)")
     lines.append(f"\n*Total: ${total:.4f}*")
+    # Add daily cost if available
+    hist = _orch_get("/api/costs/history?days=2")
+    if isinstance(hist, dict) and hist.get("daily"):
+        daily = hist["daily"]
+        if len(daily) >= 2:
+            today = daily[-1].get("cost", 0)
+            yesterday = daily[-2].get("cost", 0)
+            if yesterday > 0:
+                change = ((today - yesterday) / yesterday) * 100
+                arrow = "\u2B06\uFE0F" if change > 0 else "\u2B07\uFE0F" if change < 0 else "\u27A1\uFE0F"
+                lines.append(f"Today: ${today:.4f} ({arrow} {abs(change):.0f}% vs yesterday)")
+            else:
+                lines.append(f"Today: ${today:.4f}")
     return "\n".join(lines)
 
 

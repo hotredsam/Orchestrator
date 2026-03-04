@@ -976,6 +976,15 @@ function Dashboard() {
               ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}
             </div>
           )}
+          {logs.length > 0 && (() => {
+            const errCount = logs.filter(l => l.error).length;
+            const errRate = Math.round(errCount / logs.length * 100);
+            return errRate > 0 ? (
+              <div title={`${errCount} errors in ${logs.length} logs`} style={{ background: errRate > 10 ? "#FFEBEE" : "#FFF3E0", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: errRate > 10 ? C.red : C.orange }}>
+                {errRate}% err
+              </div>
+            ) : null;
+          })()}
           <div title={sseConnected ? "Live updates connected" : "Live updates disconnected — reconnecting..."} style={{ width: 10, height: 10, borderRadius: "50%", background: sseConnected ? "#4CAF50" : "#F44336", border: `2px solid ${C.darkBrown}`, animation: sseConnected ? "none" : "pulse 1.5s infinite" }} />
           <button onClick={() => setShowToastHistory(prev => !prev)} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1, position: "relative" }} title="Notification history">
             {"\uD83D\uDD14"}
