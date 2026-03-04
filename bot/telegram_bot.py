@@ -632,6 +632,30 @@ def cmd_health():
     return "\n".join(lines)
 
 
+def cmd_budget(arg=""):
+    """Show or set the budget limit."""
+    arg = arg.strip()
+    if arg:
+        try:
+            limit = float(arg)
+            result = _orch_post("/api/budget", {"limit": limit})
+            if result.get("ok"):
+                return f"Budget set to *${limit:.2f}*" if limit > 0 else "Budget limit removed (unlimited)"
+            return f"Failed: {result.get('error', 'unknown')}"
+        except ValueError:
+            return "Usage: `budget [amount]` (e.g. `budget 5.00` or `budget 0` for unlimited)"
+    data = _orch_get("/api/budget")
+    if isinstance(data, dict) and "error" not in data:
+        limit = data.get("budget_limit", 0)
+        total = data.get("total_cost", 0)
+        pct = (total / limit * 100) if limit > 0 else 0
+        bar = _progress_bar(int(pct), 100) if limit > 0 else "unlimited"
+        return (f"*Budget:* ${limit:.2f}\n"
+                f"*Spent:* ${total:.2f}\n"
+                f"*Usage:* `[{bar}]` {pct:.0f}%")
+    return "Could not fetch budget info."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -661,6 +685,7 @@ def cmd_help():
 `digest` — Daily digest summary
 `costs` — Per-repo API costs
 `health` — Health scan all repos
+`budget` / `budget [amount]` — View/set budget
 `app` — Open Mini App
 `help` — This message
 
@@ -828,6 +853,8 @@ def handle_message(msg):
         reply = cmd_costs()
     elif t in ("health", "healthcheck", "health_scan"):
         reply = cmd_health()
+    elif t.startswith("budget"):
+        reply = cmd_budget(t[6:].strip())
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):
