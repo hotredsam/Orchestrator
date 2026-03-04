@@ -2317,11 +2317,23 @@ function Dashboard() {
               return (
                 <Card bg={C.white} style={{ maxWidth: 680, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
                   <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>Cost Breakdown (${totalCost.toFixed(3)} total)</div>
-                  <div style={{ display: "flex", height: 20, borderRadius: 10, overflow: "hidden", border: `2px solid ${C.darkBrown}` }}>
-                    {costed.map((s, i) => (
-                      <div key={s.id} style={{ width: `${(s.cost_usd / totalCost) * 100}%`, height: "100%", background: colors[i % colors.length], transition: "width 0.3s" }}
-                        title={`Step ${s.step_order}: $${s.cost_usd.toFixed(3)} (${Math.round(s.cost_usd/totalCost*100)}%)`} />
-                    ))}
+                  <div style={{ position: "relative" }}>
+                    <div style={{ display: "flex", height: 20, borderRadius: 10, overflow: "hidden", border: `2px solid ${C.darkBrown}` }}>
+                      {costed.map((s, i) => (
+                        <div key={s.id} style={{ width: `${(s.cost_usd / totalCost) * 100}%`, height: "100%", background: colors[i % colors.length], transition: "width 0.3s" }}
+                          title={`Step ${s.step_order}: $${s.cost_usd.toFixed(3)} (${Math.round(s.cost_usd/totalCost*100)}%)`} />
+                      ))}
+                    </div>
+                    {/* Budget line marker */}
+                    {budgetLimit > 0 && (() => {
+                      const budgetPct = Math.min((budgetLimit / (totalCost * 1.5)) * 100, 100);
+                      const overBudget = totalCost > budgetLimit;
+                      return (
+                        <div style={{ position: "absolute", left: `${budgetPct}%`, top: -4, bottom: -4, width: 2, background: overBudget ? C.red : C.green, zIndex: 2 }}>
+                          <div style={{ position: "absolute", top: -14, left: -16, fontSize: 8, fontWeight: 700, color: overBudget ? C.red : C.green, whiteSpace: "nowrap" }}>${budgetLimit} limit</div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, justifyContent: "center" }}>
                     {costed.slice(0, 8).map((s, i) => (
@@ -2397,6 +2409,29 @@ function Dashboard() {
                   </Card>
                 ))}
             </div>
+            {/* Agent Leaderboard */}
+            {agentStats?.agents?.length > 1 && (() => {
+              const sorted = [...agentStats.agents].sort((a, b) => b.completed - a.completed);
+              const medals = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
+              return (
+                <Card bg={C.white} style={{ maxWidth: 650, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, #FFF8E7 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 10, textAlign: "center" }}>Agent Leaderboard</div>
+                  {sorted.slice(0, 5).map((a, i) => {
+                    const maxCompleted = sorted[0].completed || 1;
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 18, minWidth: 28, textAlign: "center" }}>{medals[i] || `#${i+1}`}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, minWidth: 80 }}>{a.agent_type}</span>
+                        <div style={{ flex: 1, height: 16, background: `${C.darkBrown}08`, borderRadius: 8, overflow: "hidden" }}>
+                          <div style={{ height: "100%", background: `linear-gradient(90deg, ${i === 0 ? "#FFD700" : i === 1 ? "#C0C0C0" : C.teal}, ${i === 0 ? "#FFA000" : i === 1 ? "#A0A0A0" : C.green})`, width: `${(a.completed / maxCompleted) * 100}%`, borderRadius: 8, transition: "width 0.3s" }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, minWidth: 30, color: C.brown }}>{a.completed}</span>
+                      </div>
+                    );
+                  })}
+                </Card>
+              );
+            })()}
             {/* Agent Performance Stats */}
             {agentStats?.agents?.length > 0 && (
               <Card bg={C.white} style={{ maxWidth: 650, margin: "16px auto 0", padding: 14 }}>
