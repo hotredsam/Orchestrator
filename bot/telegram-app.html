@@ -631,6 +631,12 @@
           <button class="btn btn-green btn-sm" onclick="startAll()">Start All</button>
           <button class="btn btn-red btn-sm" onclick="stopAll()">Stop All</button>
           <button class="btn btn-outline btn-sm" onclick="refreshHome()">Refresh</button>
+          <select id="homeSortSelect" class="input" style="width:auto;padding:4px 8px;font-size:11px;" onchange="refreshHome()">
+            <option value="name">A-Z</option>
+            <option value="status">Status</option>
+            <option value="items">Items Done</option>
+            <option value="cost">Cost</option>
+          </select>
         </div>
         <div id="homeRepoList">
           <div class="card" style="opacity:0.6;">
@@ -1020,6 +1026,13 @@
       if (!data) return;
       repos = data;
       updateLastFetch();
+
+      // Sort repos
+      const sortBy = document.getElementById('homeSortSelect')?.value || 'name';
+      if (sortBy === 'status') repos.sort((a, b) => (b.running ? 1 : 0) - (a.running ? 1 : 0));
+      else if (sortBy === 'items') repos.sort((a, b) => (b.stats?.items_done || 0) - (a.stats?.items_done || 0));
+      else if (sortBy === 'cost') repos.sort((a, b) => (b.stats?.cost || 0) - (a.stats?.cost || 0));
+      else repos.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
       // Fetch system stats for header
       const sysData = await api('/api/system', undefined, { silent: true });

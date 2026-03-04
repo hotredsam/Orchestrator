@@ -2168,7 +2168,14 @@ function Dashboard() {
         {tab === "items" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.12)" }}>Bounty Board</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Post features and issues for the swarm to wrangle</p>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 8 }}>Post features and issues for the swarm to wrangle</p>
+            {staleItems.length > 0 && (
+              <div style={{ textAlign: "center", marginBottom: 12 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#FFF3E0", border: `2px solid ${C.orange}`, borderRadius: 12, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: C.orange }}>
+                  {"\u26A0\uFE0F"} {staleItems.length} stale item{staleItems.length !== 1 ? "s" : ""} stuck in progress
+                </span>
+              </div>
+            )}
             <Card bg={C.yellow} style={{ maxWidth: 620, margin: "0 auto 20px", background: `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` }}>
               <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>Post a Bounty</div>
               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>

@@ -58,6 +58,9 @@ _notify_prefs = {
     "digest": True,
 }
 
+# Pinned repo — default repo for commands that require one
+_pinned_repo = ""
+
 
 def queue_message(text):
     """Add a message to the buffer instead of sending immediately.
@@ -1432,6 +1435,23 @@ def cmd_batch(args):
     return "\n".join(lines)
 
 
+def cmd_pin(name: str = ""):
+    """Pin a repo as default context for commands."""
+    global _pinned_repo
+    if not name:
+        if _pinned_repo:
+            return f"\U0001F4CC Pinned repo: *{_pinned_repo}*\nUse `/pin <name>` to change or `/pin clear` to unpin."
+        return "No pinned repo. Use `/pin <name>` to set one."
+    if name in ("clear", "none", "unpin"):
+        _pinned_repo = ""
+        return "\U0001F4CC Pinned repo cleared."
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    _pinned_repo = repo["name"]
+    return f"\U0001F4CC Pinned *{repo['name']}* as default repo."
+
+
 def cmd_notify(arg: str = ""):
     """View or toggle notification preferences."""
     global _notify_prefs
@@ -1514,6 +1534,7 @@ def cmd_help():
 `active` — Show currently running repos
 `top` — Top 5 repos by items completed
 `notify` / `notify [cat]` — View/toggle notifications
+`pin [repo]` / `pin clear` — Set default repo for commands
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -1705,18 +1726,18 @@ def handle_message(msg):
         reply = cmd_add_item("issue", text[10:])
     elif t.startswith("push "):
         reply = cmd_push(t[5:])
-    elif t.startswith("items "):
-        reply = cmd_items(t[6:])
+    elif t == "items" or t.startswith("items "):
+        reply = cmd_items(t[6:].strip() or _pinned_repo or "")
     elif t.startswith("done "):
         reply = cmd_done(t[5:])
-    elif t.startswith("plan "):
-        reply = cmd_plan(t[5:])
-    elif t.startswith("logs "):
-        reply = cmd_logs(t[5:])
-    elif t.startswith("mistakes "):
-        reply = cmd_mistakes(t[9:])
-    elif t.startswith("memory "):
-        reply = cmd_memory(t[7:])
+    elif t == "plan" or t.startswith("plan "):
+        reply = cmd_plan(t[5:].strip() or _pinned_repo or "")
+    elif t == "logs" or t.startswith("logs "):
+        reply = cmd_logs(t[5:].strip() or _pinned_repo or "")
+    elif t == "mistakes" or t.startswith("mistakes "):
+        reply = cmd_mistakes(t[9:].strip() or _pinned_repo or "")
+    elif t == "memory" or t.startswith("memory "):
+        reply = cmd_memory(t[7:].strip() or _pinned_repo or "")
     elif t == "repos" or t == "list":
         reply = cmd_repos()
     elif t.startswith("add repo "):
@@ -1814,6 +1835,8 @@ def handle_message(msg):
         reply = cmd_batch(t[6:])
     elif t == "notify" or t.startswith("notify "):
         reply = cmd_notify(t[7:].strip() if t.startswith("notify ") else "")
+    elif t == "pin" or t.startswith("pin "):
+        reply = cmd_pin(t[4:].strip() if t.startswith("pin ") else "")
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         app_url = f"{public_url}/telegram-app"
