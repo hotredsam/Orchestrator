@@ -1454,6 +1454,14 @@ function Dashboard() {
                       </div>
                     )}
 
+                    {/* Cost sparkline */}
+                    {sparklines[r.id]?.length > 1 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                        <Sparkline data={sparklines[r.id]} width={80} height={12} color={C.teal} />
+                        <span style={{ fontSize: 9, color: C.brown, fontWeight: 600 }}>{sparklines[r.id].length}d activity</span>
+                      </div>
+                    )}
+
                     {/* Action buttons + state label */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {r.running
@@ -2147,6 +2155,26 @@ function Dashboard() {
                 </div>
               </Card>
             )}
+            {/* Velocity indicator */}
+            {(() => {
+              const doneItems = items.filter(i => i.status === "completed" && i.completed_at);
+              if (doneItems.length < 2) return null;
+              const dates = doneItems.map(i => new Date(i.completed_at).getTime()).sort();
+              const spanDays = Math.max(1, (dates[dates.length - 1] - dates[0]) / 86400000);
+              const velocity = (doneItems.length / spanDays).toFixed(1);
+              const pendCount = items.filter(i => i.status === "pending").length;
+              const etaDays = velocity > 0 && pendCount > 0 ? Math.ceil(pendCount / velocity) : 0;
+              return (
+                <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 8px", padding: "6px 14px", background: `linear-gradient(135deg, #E0F7FA 0%, #B2EBF2 100%)` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
+                    <span style={{ fontWeight: 700, color: C.teal }}>{"\uD83D\uDE80"} {velocity}/day</span>
+                    <span style={{ color: C.brown }}>velocity</span>
+                    {etaDays > 0 && <span style={{ color: C.brown, fontSize: 11 }}>{"\u00B7"} ~{etaDays}d to clear {pendCount} pending</span>}
+                    <span style={{ marginLeft: "auto", fontSize: 10, color: C.brown, opacity: 0.6 }}>{doneItems.length} completed over {Math.round(spanDays)}d</span>
+                  </div>
+                </Card>
+              );
+            })()}
             {items.length > 0 && (
               <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                 {["all", "pending", "in_progress", "completed", "archived"].map(f => (

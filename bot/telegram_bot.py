@@ -746,11 +746,18 @@ def cmd_trends(name):
             f"Avg cost/day: *${s.get('avg_cost_per_day', 0)}*",
             f"Avg items/day: *{s.get('avg_items_per_day', 0)}*",
         ]
-        daily = data.get("daily", [])[-3:]
+        daily = data.get("daily", [])
         if daily:
-            lines.append("\n*Recent days:*")
-            for d in daily:
-                lines.append(f"`{d['day']}` — {d['actions']} acts, {d['items_completed']} items, ${d['cost']}")
+            max_actions = max((d.get("actions", 0) for d in daily), default=1) or 1
+            lines.append("\n*Daily activity:*")
+            for d in daily[-7:]:
+                acts = d.get("actions", 0)
+                bar_len = min(int(acts / max_actions * 10), 10)
+                lines.append(
+                    f"  {'█' * bar_len}{'░' * (10 - bar_len)} "
+                    f"`{d['day'][-5:]}` {acts} acts, "
+                    f"{d['items_completed']} items, ${d['cost']}"
+                )
         return "\n".join(lines)
     return "Could not fetch trends."
 
