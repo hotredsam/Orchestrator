@@ -159,6 +159,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Execution timeline** — `/api/timeline?repo_id=N` returns state transition history for debugging
 - **Circuit breaker visibility** — `/api/circuit-breakers` endpoint exposes per-repo circuit breaker state. Health tab shows open/half-open breakers with failure counts
 - **Mobile responsive** — media queries for 700px/480px/360px breakpoints. Touch-friendly 36px min button height, compact header on small screens
+- **Telegram stale command** — `stale` shows items stuck in_progress for 2+ hours from Telegram
+- **Cost breakdown chart** — Trends tab shows per-repo cost breakdown with colored bars and percentages
 
 ## Commands
 ```bash

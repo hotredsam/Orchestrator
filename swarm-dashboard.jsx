@@ -2122,6 +2122,32 @@ function Dashboard() {
                     <div style={{ fontSize: 11, color: C.brown }}>Avg Items/Day</div>
                   </Card>
                 </div>
+                {/* Per-Repo Cost Breakdown */}
+                {Object.keys(costs).length > 0 && (
+                  <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 16px", padding: 14 }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 10 }}>Cost by Repo</div>
+                    {(() => {
+                      const totalCost = Object.values(costs).reduce((a, b) => a + b, 0) || 1;
+                      const sorted = Object.entries(costs).sort((a, b) => b[1] - a[1]).filter(([, v]) => v > 0);
+                      const barColors = [C.teal, C.orange, C.green, "#7E57C2", C.red, "#795548", "#607D8B", C.yellow];
+                      return sorted.map(([rid, cost], i) => {
+                        const repo = repos.find(r => r.id === Number(rid));
+                        const pct = Math.round(cost / totalCost * 100);
+                        return (
+                          <div key={rid} style={{ marginBottom: 6 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                              <span style={{ fontWeight: 600 }}>{repo?.name || `Repo ${rid}`}</span>
+                              <span style={{ color: C.brown }}>${cost.toFixed(3)} ({pct}%)</span>
+                            </div>
+                            <div style={{ background: C.cream, borderRadius: 6, height: 10, overflow: "hidden", border: `1px solid ${C.darkBrown}33` }}>
+                              <div style={{ height: "100%", borderRadius: 5, background: barColors[i % barColors.length], width: `${pct}%`, transition: "width .5s" }} />
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </Card>
+                )}
                 {trends.daily?.length > 0 && (
                   <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 16px", padding: 14 }}>
                     <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 10 }}>Daily Breakdown</div>

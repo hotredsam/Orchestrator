@@ -823,6 +823,23 @@ def cmd_search(query):
     return "\n".join(lines)
 
 
+def cmd_stale():
+    """Show items stuck in_progress for 2+ hours."""
+    data = _orch_get("/api/stale-items?hours=2")
+    if not isinstance(data, dict):
+        return "Could not fetch stale items."
+    items_list = data.get("stale_items", [])
+    if not items_list:
+        return "\u2705 No stale items — everything flowing smoothly!"
+    lines = [f"*\u26A0\uFE0F {len(items_list)} Stale Items* (2h+ in progress)", ""]
+    for it in items_list[:10]:
+        repo = it.get("repo_name", "?")
+        title = (it.get("title") or "")[:40]
+        since = (it.get("started_at") or "")[-8:]
+        lines.append(f"  `{repo}` {title} (since {since})")
+    return "\n".join(lines)
+
+
 def cmd_tags(text):
     """View or set repo tags. 'tags repo' to view, 'tags repo: tag1, tag2' to set."""
     if ":" in text:
@@ -898,6 +915,7 @@ def cmd_help():
 `agent-stats [repo]` — Agent performance stats
 `search [query]` — Search items/logs/mistakes across all repos
 `tags` / `tags repo` / `tags repo: tag1,tag2` — View/set tags
+`stale` — Show items stuck in_progress for 2+ hours
 `app` — Open Mini App
 `help` — This message
 
@@ -1093,6 +1111,8 @@ def handle_message(msg):
         reply = cmd_help()
     elif t.startswith("search "):
         reply = cmd_search(t[7:].strip())
+    elif t in ("stale", "stuck"):
+        reply = cmd_stale()
     elif t.startswith("tags"):
         reply = cmd_tags(t[4:].strip())
     elif t in ("app", "dashboard", "open"):
