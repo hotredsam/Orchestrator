@@ -1094,7 +1094,7 @@
         return `
           <div class="card">
             <div class="flex-between mb-8">
-              <div class="card-title">${esc(r.name)}</div>
+              <div class="card-title" style="display:flex;align-items:center;gap:4px;">${esc(r.name)} <button onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(r.name)}');haptic('light');showToast('Copied: ${esc(r.name)}','info');" style="background:none;border:none;cursor:pointer;font-size:11px;opacity:0.5;padding:0 2px;" title="Copy name">📋</button></div>
               <span class="badge ${badgeClass}">${badgeText}</span>
             </div>
             <div class="card-row">

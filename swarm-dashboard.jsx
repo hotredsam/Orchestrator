@@ -1819,14 +1819,14 @@ function Dashboard() {
                     {/* Stats row */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
                       {[
-                        { l: "Items", v: `${s.items_done||0}/${s.items_total||0}` },
+                        { l: "Items", v: `${s.items_done||0}/${s.items_total||0}`, pending: (s.items_total||0) - (s.items_done||0) },
                         { l: "Steps", v: `${s.steps_done||0}/${s.steps_total||0}` },
                         { l: "Files", v: s.file_count || "-" },
                         { l: "Cycles", v: r.cycle_count||0 },
                         { l: "Cost", v: `$${(costs[r.id] || 0).toFixed(2)}` },
                       ].map((x, i) => (
                         <div key={i} style={{ textAlign: "center", fontSize: 11 }}>
-                          <div style={{ fontWeight: 700 }}>{x.v}</div>
+                          <div style={{ fontWeight: 700 }}>{x.v}{x.pending > 0 && <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 6, background: C.orange, color: C.white, marginLeft: 3, fontWeight: 700 }}>{x.pending}</span>}</div>
                           <div style={{ fontSize: 9, color: C.brown }}>{x.l}</div>
                         </div>
                       ))}

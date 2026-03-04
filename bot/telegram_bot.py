@@ -1632,6 +1632,42 @@ def cmd_dedupe(name: str = ""):
     return f"\u2705 No duplicates found in *{repo['name']}* ({pending_after} pending items)"
 
 
+_remind_timer = None
+
+
+def cmd_remind(arg: str = "", chat_id=None):
+    """Schedule a status reminder after N minutes."""
+    global _remind_timer
+    if arg in ("cancel", "stop", "clear", "off"):
+        if _remind_timer:
+            _remind_timer.cancel()
+            _remind_timer = None
+            return "\u23F0 Reminder cancelled."
+        return "No active reminder."
+    if not arg:
+        status = "active" if _remind_timer and _remind_timer.is_alive() else "none"
+        return f"\u23F0 *Remind* — schedule a status check\n\nUsage: `/remind <minutes>`\nCancel: `/remind cancel`\n\nCurrent: {status}"
+    try:
+        mins = int(arg)
+    except ValueError:
+        return "Usage: `/remind <minutes>` (e.g. `/remind 30`)"
+    if mins < 1 or mins > 1440:
+        return "Please use 1-1440 minutes."
+    if _remind_timer:
+        _remind_timer.cancel()
+
+    def _send_reminder():
+        global _remind_timer
+        _remind_timer = None
+        status_text = cmd_status()
+        send_message(f"\u23F0 *Scheduled Reminder ({mins}m):*\n\n{status_text}", chat_id=chat_id)
+
+    _remind_timer = threading.Timer(mins * 60, _send_reminder)
+    _remind_timer.daemon = True
+    _remind_timer.start()
+    return f"\u23F0 Reminder set! You'll get a status update in *{mins} minute{'s' if mins != 1 else ''}*.\nUse `/remind cancel` to stop."
+
+
 def cmd_pin(name: str = ""):
     """Pin a repo as default context for commands."""
     global _pinned_repo
@@ -1737,6 +1773,7 @@ def cmd_help():
 `queue` — Top priority pending items across all repos
 `fastest` — Fastest completed steps across all repos
 `dedupe [repo]` — Remove duplicate pending items
+`remind <minutes>` — Schedule a status reminder
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -2029,6 +2066,8 @@ def handle_message(msg):
         reply = cmd_fastest()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
+    elif t == "remind" or t.startswith("remind "):
+        reply = cmd_remind(t[7:].strip() if t.startswith("remind ") else "", chat_id=chat_id)
     elif t in ("stale", "stuck"):
         reply = cmd_stale()
     elif t in ("breakers", "circuit-breakers", "circuit"):
@@ -2101,7 +2140,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
