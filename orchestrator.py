@@ -4044,6 +4044,18 @@ class API(BaseHTTPRequestHandler):
                 db.conn.execute("UPDATE plan_steps SET step_order=? WHERE id=?", (steps[idx]["step_order"], steps[swap_idx]["id"]))
             return self._json({"ok": True})
 
+        if path == "/api/plan/reset-step":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            step_id = b.get("step_id")
+            if not step_id: return self._json({"error": "step_id required"}, 400)
+            db.ex(
+                "UPDATE plan_steps SET status='pending', tests_written=0, tests_passed=0, "
+                "cost_usd=0, duration_sec=0, model='', completed_at=NULL WHERE id=?",
+                (step_id,))
+            return self._json({"ok": True})
+
         if path == "/api/notes":
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)

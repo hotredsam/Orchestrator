@@ -585,6 +585,10 @@ function Dashboard() {
     if (!sr) return;
     await apiAction("/api/plan/reorder", { method: "POST", body: JSON.stringify({ repo_id: sr, step_id: stepId, direction }) }, `Step moved ${direction}`);
   };
+  const resetStep = async (stepId) => {
+    if (!sr || !confirm("Reset this step to pending? It will be re-executed next cycle.")) return;
+    await apiAction("/api/plan/reset-step", { method: "POST", body: JSON.stringify({ repo_id: sr, step_id: stepId }) }, "Step reset to pending");
+  };
   const importItems = async (jsonText) => {
     if (!sr) return;
     try {
@@ -1609,11 +1613,15 @@ function Dashboard() {
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: pct === 100 ? C.green : C.orange, lineHeight: 1 }}>{pct}%</div>
                         <div style={{ fontSize: 9, color: C.brown }}>complete</div>
-                        {healthScores?.repos?.[r.id] && (
-                          <div style={{ fontFamily: "'Bangers', cursive", fontSize: 14, color: healthScores.repos[r.id].grade === "A" ? C.green : healthScores.repos[r.id].grade === "F" ? C.red : C.orange, marginTop: 2 }}>
-                            {healthScores.repos[r.id].grade}
-                          </div>
-                        )}
+                        {healthScores?.repos?.[r.id] && (() => {
+                          const g = healthScores.repos[r.id].grade;
+                          const gc = g === "A" ? C.green : g === "B" ? C.teal : g === "C" ? C.orange : g === "D" ? "#E65100" : C.red;
+                          return (
+                            <div style={{ fontFamily: "'Bangers', cursive", fontSize: 13, color: C.white, background: gc, borderRadius: 6, padding: "1px 8px", marginTop: 2, border: `2px solid ${C.darkBrown}`, letterSpacing: 1 }} title={`Health: ${healthScores.repos[r.id].score}/100`}>
+                              {g}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                     {/* Progress bar with ring */}
@@ -1684,10 +1692,10 @@ function Dashboard() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
                 <div style={{ display: "flex", gap: 16 }}>
                   {[
-                    { l: "Running", v: repos.filter(r => r.running).length, c: C.green },
-                    { l: "Idle", v: repos.filter(r => !r.running && !r.archived).length, c: C.brown },
+                    { l: "Running", v: repoStats.running, c: C.green },
+                    { l: "Idle", v: repoStats.idle, c: C.brown },
                     { l: "Total Items", v: repos.reduce((a, r) => a + (r.stats?.items_total || 0), 0), c: C.teal },
-                    { l: "Total Cost", v: "$" + Object.values(costs).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0).toFixed(2), c: C.orange },
+                    { l: "Total Cost", v: "$" + repoStats.totalCost.toFixed(2), c: C.orange },
                   ].map((s, i) => (
                     <span key={i}><span style={{ fontWeight: 700, color: s.c }}>{s.v}</span> <span style={{ color: C.brown, fontSize: 10 }}>{s.l}</span></span>
                   ))}
@@ -2200,6 +2208,7 @@ function Dashboard() {
                           {done && s.model && <span style={{ fontSize: 10, background: `${C.teal}22`, border: `2px solid ${C.teal}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600, color: C.teal }}>{"\uD83E\uDD16"} {s.model.replace("claude-","").replace("-20251001","")}</span>}
                           {done && s.cost_usd > 0 && <span style={{ fontSize: 10, background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83D\uDCB0"} ${s.cost_usd.toFixed(3)}</span>}
                           {done && s.duration_sec > 0 && <span style={{ fontSize: 10, background: C.lightTeal, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u23F1\uFE0F"} {Math.round(s.duration_sec)}s</span>}
+                          {done && <button onClick={() => resetStep(s.id)} style={{ fontSize: 9, background: C.cream, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontWeight: 600, opacity: 0.6 }} title="Reset step to pending for re-execution">{"\uD83D\uDD04"} Retry</button>}
                           {done && s.cost_usd > 0 && <div style={{ flex: "1 1 100%", height: 4, background: C.cream, borderRadius: 2, overflow: "hidden", marginTop: 4 }}><div style={{ height: "100%", background: `linear-gradient(90deg, ${C.teal}, ${s.cost_usd/maxCost > 0.7 ? C.orange : C.green})`, width: `${Math.min(100, (s.cost_usd / maxCost) * 100)}%`, borderRadius: 2, transition: "width .3s" }} /></div>}
                           {!done && avgDur > 0 && <span style={{ fontSize: 10, background: `${C.teal}22`, border: `2px solid ${C.teal}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600, color: C.teal }}>{"\u23F3"} ~{avgDur >= 60 ? `${Math.round(avgDur/60)}m` : `${Math.round(avgDur)}s`} est</span>}
                           {!done && (
