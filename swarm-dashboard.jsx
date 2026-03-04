@@ -136,6 +136,7 @@ function Dashboard() {
   const logEndRef = useRef(null);
   const [scrolledPast, setScrolledPast] = useState(false);
   const [costHistory, setCostHistory] = useState([]);
+  const [healthScores, setHealthScores] = useState(null);
   const [staleItems, setStaleItems] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -288,6 +289,7 @@ function Dashboard() {
       }
       if (full || t === "health") {
         try { const cb = await f("/api/circuit-breakers"); if(cb.ok) { const cd = await cb.json(); setCircuitBreakers(cd.circuit_breakers || []); } } catch {}
+        try { const hs = await f("/api/health/detailed"); if(hs.ok) setHealthScores(await hs.json()); } catch {}
       }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -1936,6 +1938,30 @@ function Dashboard() {
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Health Check</h2>
             <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>Scan your repos for issues and auto-fix what you can</p>
+
+            {/* Health Scores Overview */}
+            {healthScores && healthScores.repos?.length > 0 && (
+              <Card bg={C.white} style={{ maxWidth: 800, margin: "0 auto 16px", padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <span style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>Repo Health Scores</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: healthScores.average_score >= 75 ? C.green : healthScores.average_score >= 50 ? C.orange : C.red }}>
+                    Avg: {healthScores.average_score}
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {healthScores.repos.map(r => {
+                    const gc = { A: C.green, B: "#4DB6AC", C: C.orange, D: "#FF7043", F: C.red }[r.grade] || C.brown;
+                    return (
+                      <div key={r.repo_id} style={{ padding: "4px 10px", borderRadius: 8, border: `2px solid ${gc}`, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }} title={r.issues.join(", ") || "All clear"}>
+                        <span style={{ fontWeight: 700, color: gc, fontFamily: "'Bangers', cursive", fontSize: 16 }}>{r.grade}</span>
+                        <span>{r.repo}</span>
+                        <span style={{ fontSize: 9, color: C.brown }}>{r.score}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
 
             {/* Scan + Fix buttons */}
             <div style={{ textAlign: "center", marginBottom: 24, display: "flex", justifyContent: "center", gap: 14 }}>

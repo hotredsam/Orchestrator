@@ -2842,6 +2842,50 @@ class API(BaseHTTPRequestHandler):
                 results.append(report)
             return self._json(results)
 
+        if path == "/api/health/detailed":
+            repos_list = manager.master.get_repos()
+            scores = []
+            for repo in repos_list:
+                score = 100
+                issues = []
+                try:
+                    db = RepoDB(repo["db_path"]) if repo.get("db_path") and os.path.exists(repo["db_path"]) else None
+                    if not db:
+                        scores.append({"repo": repo["name"], "score": 0, "issues": ["DB not found"]})
+                        continue
+                    ic = db.fetchone("SELECT COUNT(*) c,"
+                        " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done,"
+                        " SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) prog"
+                        " FROM items")
+                    mc = db.fetchone("SELECT COUNT(*) c FROM mistakes")
+                    # Deductions
+                    if ic["c"] > 0 and (ic["done"] or 0) == 0:
+                        score -= 20; issues.append("No completed items")
+                    if (ic["prog"] or 0) > 5:
+                        score -= 15; issues.append(f"{ic['prog']} items stuck in progress")
+                    if mc["c"] > 20:
+                        score -= 15; issues.append(f"{mc['c']} mistakes (high)")
+                    elif mc["c"] > 10:
+                        score -= 5; issues.append(f"{mc['c']} mistakes")
+                    # Circuit breaker check
+                    with _cb_lock:
+                        cb = _circuit_breakers.get(repo["id"])
+                        if cb and cb.state != CircuitBreaker.CLOSED:
+                            score -= 25; issues.append(f"Circuit breaker {cb.state}")
+                    if not repo.get("running"):
+                        score -= 10; issues.append("Not running")
+                    cost = _cost_totals.get(repo["id"], 0)
+                    if cost > 5.0:
+                        score -= 10; issues.append(f"High cost: ${cost:.2f}")
+                except Exception as e:
+                    score = 0; issues.append(f"Error: {e}")
+                scores.append({"repo": repo["name"], "repo_id": repo["id"],
+                               "score": max(0, score), "issues": issues,
+                               "grade": "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"})
+            avg = sum(s["score"] for s in scores) / max(len(scores), 1)
+            return self._json({"repos": scores, "average_score": round(avg, 1),
+                               "total": len(scores)})
+
         if path == "/api/chat/history":
             return self._json(chat_history[-50:])
 
