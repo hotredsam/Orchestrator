@@ -3222,7 +3222,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "imported": imported, "skipped": skipped})
 
         if path == "/api/repos":
-            name = b.get("name","").strip()
+            name = b.get("name","").strip()[:100]
             p = b.get("path","").strip()
             if not name or not p: return self._json({"error": "name+path required"}, 400)
             os.makedirs(p, exist_ok=True)
@@ -3435,6 +3435,8 @@ class API(BaseHTTPRequestHandler):
             value = b.get("value", "")
             if not item_ids or not action:
                 return self._json({"error": "item_ids and action required"}, 400)
+            if not isinstance(item_ids, list) or not all(isinstance(i, int) for i in item_ids):
+                return self._json({"error": "item_ids must be a list of integers"}, 400)
             updated = 0
             placeholders = ",".join("?" for _ in item_ids)
             if action == "change_status" and value in ("pending", "in_progress", "completed"):
@@ -3460,9 +3462,8 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": "order must be a non-empty list of item IDs"}, 400)
             # Use created_at to set implicit ordering (earlier = higher priority)
             with db.transaction():
-                base_time = "2020-01-01 00:00:00"
                 for i, item_id in enumerate(order):
-                    ts = f"2020-01-01 00:{i:02d}:00"
+                    ts = f"2020-01-01 00:00:{i:02d}.{i:06d}"
                     db.conn.execute("UPDATE items SET created_at=? WHERE id=?", (ts, item_id))
             return self._json({"ok": True, "reordered": len(order)})
 
@@ -3657,7 +3658,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "entries_seeded": count})
 
         if path == "/api/chat":
-            message = b.get("message", "").strip()
+            message = b.get("message", "").strip()[:2000]
             if not message:
                 return self._json({"error": "message required"}, 400)
 
@@ -3758,7 +3759,7 @@ class API(BaseHTTPRequestHandler):
 
         # ─── Webhook Endpoints ─────────────────────────────────────────────
         if path == "/api/webhooks":
-            url = b.get("url", "").strip()
+            url = b.get("url", "").strip()[:2048]
             if not url:
                 return self._json({"error": "url required"}, 400)
             parsed_url = urlparse(url)
