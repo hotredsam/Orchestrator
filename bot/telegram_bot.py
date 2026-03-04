@@ -660,7 +660,8 @@ def cmd_health():
         issues = r.get("issues", [])
         bar = _progress_bar(score, 100)
         emoji = "\u2705" if score >= 80 else "\u26A0\uFE0F" if score >= 50 else "\u274C"
-        lines.append(f"{emoji} *{name}*  `[{bar}]` {score}%")
+        grade = "A+" if score >= 95 else "A" if score >= 90 else "B+" if score >= 85 else "B" if score >= 80 else "C" if score >= 65 else "D" if score >= 50 else "F"
+        lines.append(f"{emoji} *{name}*  `[{bar}]` {score}% ({grade})")
         if issues:
             for iss in issues[:3]:
                 lines.append(f"    \u2022 {iss.get('title', '?')}")

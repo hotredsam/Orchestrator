@@ -1378,6 +1378,9 @@ function Dashboard() {
                 if (repoFilter === "error") return r.state === "error" || r.state === "credits_exhausted";
                 return true;
               }).sort((a, b) => {
+                const pa = pinnedRepos.includes(a.id) ? 0 : 1;
+                const pb = pinnedRepos.includes(b.id) ? 0 : 1;
+                if (pa !== pb) return pa - pb;
                 if (repoSort === "name") return (a.name || "").localeCompare(b.name || "");
                 if (repoSort === "state") return (a.state || "").localeCompare(b.state || "");
                 if (repoSort === "items") return ((b.stats?.items_total || 0) - (a.stats?.items_total || 0));
@@ -2426,6 +2429,34 @@ function Dashboard() {
                   <div style={{ textAlign: "center", fontSize: 10, color: C.brown, marginTop: 4 }}>
                     Avg: {Math.round(durations.reduce((a,b)=>a+b,0)/durations.length)}s | Min: {Math.round(Math.min(...durations))}s | Max: {Math.round(maxDur)}s
                   </div>
+                </Card>
+              );
+            })()}
+            {/* Cost by Agent Type */}
+            {(() => {
+              const withCost = plan.filter(s => s.agent_type && s.cost_usd > 0);
+              if (withCost.length < 2) return null;
+              const costByAgent = {};
+              withCost.forEach(s => { costByAgent[s.agent_type] = (costByAgent[s.agent_type] || 0) + s.cost_usd; });
+              const agents = Object.entries(costByAgent).sort((a, b) => b[1] - a[1]);
+              const totalCost = agents.reduce((s, a) => s + a[1], 0);
+              const agentColors = [C.teal, C.orange, C.green, "#7E57C2", C.red, "#FF8F00"];
+              return (
+                <Card bg={C.white} style={{ maxWidth: 680, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>Cost by Agent Type</div>
+                  {agents.map(([agent, cost], i) => {
+                    const pct = Math.round(cost / totalCost * 100);
+                    return (
+                      <div key={agent} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, minWidth: 80, color: C.darkBrown }}>{agent}</span>
+                        <div style={{ flex: 1, height: 12, background: `${C.darkBrown}08`, borderRadius: 6, overflow: "hidden" }}>
+                          <div style={{ height: "100%", background: agentColors[i % agentColors.length], width: `${pct}%`, borderRadius: 6, transition: "width 0.3s" }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: C.brown, minWidth: 60, textAlign: "right" }}>${cost.toFixed(3)} ({pct}%)</span>
+                      </div>
+                    );
+                  })}
+                  <div style={{ textAlign: "center", fontSize: 10, color: C.brown, marginTop: 4 }}>Total: ${totalCost.toFixed(3)} across {agents.length} agent types</div>
                 </Card>
               );
             })()}
