@@ -1047,6 +1047,38 @@ def cmd_rotate_token():
     return f"API token rotated.\nNew prefix: `{token[:8]}...`\nAll open dashboard sessions need to re-authenticate."
 
 
+def cmd_recent_errors():
+    data = _orch_get("/api/errors/recent?limit=10")
+    if "error" in data:
+        return f"Error: {data['error']}"
+    errors = data.get("errors", [])
+    if not errors:
+        return "No recent errors across any repos."
+    lines = ["*Recent Errors:*\n"]
+    for e in errors[:10]:
+        repo = e.get("repo_name", "?")
+        etype = e.get("error_type", "?")
+        desc = (e.get("description") or "")[:60]
+        ts = (e.get("created_at") or "")[:19]
+        lines.append(f"`{repo}` {etype}\n  {desc}\n  _{ts}_")
+    return "\n".join(lines)
+
+
+def cmd_api_docs():
+    data = _orch_get("/api/docs")
+    if "error" in data:
+        return f"Error: {data['error']}"
+    endpoints = data.get("endpoints", [])
+    if not endpoints:
+        return "No API docs available."
+    lines = ["*API Endpoints:*\n"]
+    for ep in endpoints[:30]:
+        lines.append(f"`{ep['method']} {ep['path']}` — {ep['desc']}")
+    if len(endpoints) > 30:
+        lines.append(f"\n...and {len(endpoints) - 30} more. GET /api/docs for full list.")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -1095,6 +1127,8 @@ def cmd_help():
 `summary` — Quick one-message status overview
 `uptime` — Server uptime and version info
 `rotate-token` — Rotate API bearer token
+`errors` — Recent errors across all repos
+`docs` — List all API endpoints
 `app` — Open Mini App
 `help` — This message
 
@@ -1308,6 +1342,10 @@ def handle_message(msg):
         reply = cmd_uptime()
     elif t in ("rotate-token", "rotate token", "token"):
         reply = cmd_rotate_token()
+    elif t in ("errors", "recent-errors", "recent errors"):
+        reply = cmd_recent_errors()
+    elif t in ("docs", "api-docs", "api docs", "endpoints"):
+        reply = cmd_api_docs()
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         reply = f"Open the Swarm Town dashboard:\n{public_url}/telegram-app"

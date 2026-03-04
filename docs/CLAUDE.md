@@ -7,7 +7,7 @@ Autonomous multi-repo coding orchestrator. Combines Ruflo swarm intelligence (10
 ```
   Dashboard (localhost:6969)        Telegram Mini App (11 tabs)
        ↓ REST API + SSE                    ↓
-  Master DB (repo registry)         Telegram Bot (40+ commands)
+  Master DB (repo registry)         Telegram Bot (45+ commands)
        ↓                                   ↓
   Per-Repo DB (.swarm-agent.db in each repo)
        ↓
@@ -187,6 +187,23 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Health scores overview** — Health tab shows all repo grades with color-coded badges and average score
 - **Telegram health scores command** — `grades` shows A-F health scores for all repos with issues
 - **Compact item view** — toggle between full poster cards and one-line compact rows on Bounty Board
+- **Configurable refresh interval** — dashboard polling interval adjustable (1s/3s/5s/10s/30s) via Settings tab, persisted in localStorage
+- **API token rotation** — POST /api/token/rotate generates new bearer token. Dashboard auto-updates session, Telegram `/rotate-token` command
+- **Dynamic API URL** — dashboard detects origin automatically, supports `window.__SWARM_API_URL__` override for custom deployments
+- **SSE connection indicator** — green/red dot in header showing live update connection status with pulse animation on disconnect
+- **Silent exception logging** — replaced bare except-pass blocks with logged warnings for better debugging
+- **Safe GET parameter parsing** — try/except around repo_id int conversion in GET handler prevents ValueError crashes
+- **Audio upload size limit** — 50MB max on base64 audio uploads (returns 413 on oversized files)
+- **Bulk item ID validation** — /api/items/bulk-update validates item_ids as list of integers before SQL execution
+- **Reorder timestamp fix** — item/step reorder uses microsecond precision timestamps to prevent duplicates
+- **Input length limits** — webhook URL capped at 2048 chars, chat messages at 2000, repo names at 100
+- **Health grades in master view** — each repo card shows A-F health grade badge from healthScores data
+- **Flow tab activity timeline** — vertical timeline showing last 5 actions with color-coded dots and timestamps
+- **API documentation endpoint** — GET /api/docs returns list of all 40+ endpoints with methods and descriptions (auth-exempt)
+- **Recent errors API** — GET /api/errors/recent aggregates mistakes across all repos with repo attribution
+- **Recent errors card** — Town Square home tab shows last 5 errors with repo name, type, and timestamp
+- **Telegram uptime command** — `uptime` shows server uptime, version, running repo count
+- **Telegram rotate-token command** — `rotate-token` rotates API bearer token from Telegram
 
 ## Commands
 ```bash
@@ -258,6 +275,8 @@ GET  /api/search?q=term&scope=all  — Cross-repo search (items, logs, mistakes)
 GET  /api/stale-items?hours=2      — Items stuck in_progress across all repos
 GET  /api/circuit-breakers         — Per-repo circuit breaker states
 GET  /api/timeline?repo_id=N       — State transition history for debugging
+GET  /api/errors/recent?limit=20   — Recent mistakes across all repos
+POST /api/items/reorder            — Reorder items {repo_id, order: [id1, id2, ...]}
 
 # System
 GET  /api/status                   — Uptime, repo counts, SSE clients, total cost
@@ -265,6 +284,11 @@ GET  /api/metrics                  — Request counts, errors, rate limits, top 
 GET  /api/costs                    — Per-repo API costs and total
 GET  /api/events                   — SSE stream (state_change, log, watchdog, error_event)
 GET  /api/token                    — Current API bearer token
+POST /api/token/rotate             — Rotate API bearer token
+GET  /api/docs                     — List all API endpoints (auth-exempt)
+GET  /api/costs/history?days=30    — Daily cost totals per repo
+GET  /api/health/detailed          — Health scores (0-100) with A-F grades
+GET  /api/repos/snapshot?repo_id=N — Full repo data export
 GET  /api/digest                   — Generate daily digest on demand
 GET  /api/health-scan              — Scan all repos for health issues
 POST /api/fix-all                  — Auto-fix all detected health issues
@@ -322,6 +346,9 @@ breakers        — Circuit breaker states across all repos
 snapshot [repo] — Quick data snapshot with pending items
 cost-history    — Daily cost totals for last 7 days with chart
 grades          — Health scores (A-F) for all repos
+summary         — Quick one-message status overview
+uptime          — Server uptime, version, running repos
+rotate-token    — Rotate API bearer token
 app             — Open Mini App link
 help            — Show all commands
 ```
