@@ -6,8 +6,8 @@ Autonomous multi-repo coding orchestrator. Combines Ruflo swarm intelligence (10
 ## Architecture
 ```
   Dashboard (localhost:6969)        Telegram Mini App (11 tabs)
-       ↓ REST API + SSE                    ↓
-  Master DB (repo registry)         Telegram Bot (45+ commands)
+       ↓ REST API + SSE + gzip            ↓
+  Master DB (repo registry)         Telegram Bot (50+ commands)
        ↓                                   ↓
   Per-Repo DB (.swarm-agent.db in each repo)
        ↓
@@ -204,6 +204,25 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Recent errors card** — Town Square home tab shows last 5 errors with repo name, type, and timestamp
 - **Telegram uptime command** — `uptime` shows server uptime, version, running repo count
 - **Telegram rotate-token command** — `rotate-token` rotates API bearer token from Telegram
+- **RepoDB context manager** — `with RepoDB(path) as db:` auto-closes connection, flushing WAL
+- **DB connection cache** — Manager caches RepoDB instances per path, eliminating ~40 leaked connections per request cycle
+- **Graceful SIGTERM shutdown** — signal handler for SIGTERM/SIGBREAK triggers clean shutdown (Docker/systemd/Windows)
+- **MasterDB close** — master database explicitly closed during shutdown
+- **Watchdog Telegram notify** — stuck-repo restarts now send Telegram notification (dead-thread path already did)
+- **Mobile responsive grid** — repo grids collapse to single column below 640px viewport width
+- **Dark mode shadow fix** — Card and Button box-shadow uses proper dark shadow color instead of hardcoded #3D2B1F
+- **Batch repo API** — POST /api/repos/batch for bulk start/stop/pause/resume/push on multiple repos by ID
+- **Git clone API** — POST /api/repos/clone: git clone + auto-register in one call
+- **Clone from Git UI** — "Clone from Git" button on home tab next to "Add to Town"
+- **Flow tab repo selector** — dropdown in flow tab header for quick repo switching without returning to master view
+- **Batch select in master view** — checkboxes on master view cards with batch action bar (start/stop/pause/resume)
+- **Gzip compression** — JSON responses > 1KB auto-compressed with gzip when client supports Accept-Encoding
+- **Content-Length header** — all JSON responses now include Content-Length for better HTTP compliance
+- **Request log** — ring buffer of last 200 requests (excludes SSE). GET /api/request-log with status filter
+- **Request log viewer** — expandable section on metrics tab showing recent requests with status and latency
+- **Telegram batch command** — `batch [action] [tag:X | repo1,repo2 | all]` for bulk operations from Telegram
+- **Telegram ETA command** — `eta` shows estimated time/cost remaining per repo based on average step duration
+- **setStatusFilter bug fix** — keyboard shortcut 'C' (clear all) no longer references undefined function
 
 ## Commands
 ```bash
@@ -244,6 +263,8 @@ POST /api/stop                     — Stop repo {repo_id} or {repo_id: "all"}
 POST /api/pause                    — Pause repo {repo_id}
 POST /api/resume                   — Resume repo {repo_id}
 POST /api/push                     — Git push {repo_id, message}
+POST /api/repos/batch              — Batch action {repo_ids: [], action: start|stop|pause|resume|push}
+POST /api/repos/clone              — Git clone + register {url, name?, branch?}
 
 # Items
 GET  /api/items?repo_id=N&limit=200&offset=0&status=pending&source=audio — Issues + features (paginated, filterable by status + source)
@@ -286,6 +307,9 @@ GET  /api/events                   — SSE stream (state_change, log, watchdog, 
 GET  /api/token                    — Current API bearer token
 POST /api/token/rotate             — Rotate API bearer token
 GET  /api/docs                     — List all API endpoints (auth-exempt)
+GET  /api/request-log?limit=50&status=error — Recent request log ring buffer
+GET  /api/init                     — Batch init data (repos, costs, status in one call)
+GET  /api/comparison               — Cross-repo comparison matrix
 GET  /api/costs/history?days=30    — Daily cost totals per repo
 GET  /api/health/detailed          — Health scores (0-100) with A-F grades
 GET  /api/repos/snapshot?repo_id=N — Full repo data export
@@ -349,6 +373,10 @@ grades          — Health scores (A-F) for all repos
 summary         — Quick one-message status overview
 uptime          — Server uptime, version, running repos
 rotate-token    — Rotate API bearer token
+eta             — Estimated time/cost remaining per repo
+errors          — Recent errors across all repos
+docs            — List all API endpoints
+batch [action] [target] — Batch start/stop/push by tag or names
 app             — Open Mini App link
 help            — Show all commands
 ```

@@ -75,6 +75,36 @@ const FLOW_EDGES = [
   ["scan_repo","idle","M90,468 L50,468 L50,36 L250,36"],
 ];
 
+function RequestLog() {
+  const [entries, setEntries] = useState([]);
+  const [filter, setFilter] = useState("all");
+  useEffect(() => {
+    const url = filter === "error" ? "/api/request-log?limit=50&status=error" : "/api/request-log?limit=50";
+    f(url).then(r => r.json()).then(d => setEntries(d.requests || [])).catch(() => {});
+  }, [filter]);
+  const statusColor = (s) => s >= 500 ? "#E74C3C" : s >= 400 ? "#F7941D" : "#2ECC71";
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        {["all", "error"].map(f => (
+          <span key={f} onClick={() => setFilter(f)} style={{ cursor: "pointer", padding: "3px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: filter === f ? "#00B4D8" : "#ddd", color: filter === f ? "#fff" : "#333" }}>{f === "all" ? "All" : "Errors Only"}</span>
+        ))}
+      </div>
+      <div style={{ maxHeight: 300, overflowY: "auto", fontSize: 11 }}>
+        {entries.map((e, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, padding: "3px 6px", borderBottom: "1px solid #eee", fontFamily: "monospace" }}>
+            <span style={{ color: "#999", fontSize: 10, minWidth: 55 }}>{e.ts?.slice(11, 19) || ""}</span>
+            <span style={{ color: statusColor(e.status), fontWeight: 700, minWidth: 30 }}>{e.status}</span>
+            <span style={{ flex: 1 }}>{e.path}</span>
+            <span style={{ color: e.latency_ms > 200 ? "#E74C3C" : "#999", minWidth: 55, textAlign: "right" }}>{e.latency_ms}ms</span>
+          </div>
+        ))}
+        {entries.length === 0 && <div style={{ textAlign: "center", padding: 12, color: "#999" }}>No requests logged yet</div>}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("swarm-dark") === "1");
   const toggleDark = () => { setDarkMode(d => { const v = !d; localStorage.setItem("swarm-dark", v ? "1" : "0"); return v; }); };
@@ -2291,6 +2321,11 @@ function Dashboard() {
                     </div>
                   </Card>
                 )}
+                {/* Request Log */}
+                <details style={{ marginTop: 16 }}>
+                  <summary style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, cursor: "pointer", color: C.brown }}>Request Log (last 50)</summary>
+                  <RequestLog />
+                </details>
               </div>
             ) : (
               <Card style={{ textAlign: "center", padding: 40, maxWidth: 600, margin: "0 auto", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
