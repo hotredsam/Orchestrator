@@ -831,6 +831,12 @@
           <select class="input" id="logsRepoSelect" onchange="loadLogs()" style="flex:1;"></select>
           <button class="btn btn-outline btn-sm" onclick="loadLogs()">Refresh</button>
         </div>
+        <div class="btn-row mb-12" id="logsLevelRow" style="gap:4px;">
+          <button class="btn btn-sm" data-level="" onclick="setLogLevel('')" style="padding:2px 8px;font-size:10px;background:var(--teal);color:#fff;">All</button>
+          <button class="btn btn-outline btn-sm" data-level="error" onclick="setLogLevel('error')" style="padding:2px 8px;font-size:10px;">🔴 Errors</button>
+          <button class="btn btn-outline btn-sm" data-level="state_change" onclick="setLogLevel('state_change')" style="padding:2px 8px;font-size:10px;">🔄 States</button>
+          <button class="btn btn-outline btn-sm" data-level="execute" onclick="setLogLevel('execute')" style="padding:2px 8px;font-size:10px;">⚡ Execute</button>
+        </div>
         <div id="logsList" style="font-size:12px;">
           <div class="empty-state"><div class="empty-emoji">📜</div><p>Select a repo to view logs</p></div>
         </div>
@@ -1422,6 +1428,16 @@
     }
 
     // ─── Screen 9: Logs ─────────────────────────────────────────────────────
+    let _logLevelFilter = '';
+    function setLogLevel(level) {
+      _logLevelFilter = level;
+      document.querySelectorAll('#logsLevelRow button').forEach(b => {
+        const bl = b.getAttribute('data-level');
+        if (bl === level) { b.classList.remove('btn-outline'); b.style.background = 'var(--teal)'; b.style.color = '#fff'; }
+        else { b.classList.add('btn-outline'); b.style.background = ''; b.style.color = ''; }
+      });
+      loadLogs();
+    }
     async function loadLogs() {
       const repoId = document.getElementById('logsRepoSelect')?.value;
       const el = document.getElementById('logsList');
@@ -1436,7 +1452,11 @@
         return;
       }
 
-      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${data.length} log entries (showing ${Math.min(50, data.length)})</div>` + data.slice(0, 50).map(log => {
+      let logs = data;
+      if (_logLevelFilter === 'error') logs = logs.filter(l => l.error || l.action === 'error');
+      else if (_logLevelFilter) logs = logs.filter(l => l.action === _logLevelFilter);
+      const errCount = data.filter(l => l.error || l.action === 'error').length;
+      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${logs.length}${_logLevelFilter ? ' filtered' : ''} of ${data.length} entries${errCount > 0 ? ` (🔴 ${errCount} errors)` : ''}</div>` + logs.slice(0, 50).map(log => {
         const ago = timeAgo(log.created_at);
         const actionColors = { state_change: 'var(--teal)', error: 'var(--red)', git_push: 'var(--green)', execute: 'var(--orange)' };
         const color = actionColors[log.action] || 'var(--text-secondary)';

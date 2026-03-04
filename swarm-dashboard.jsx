@@ -3095,7 +3095,7 @@ function Dashboard() {
             )}
 
             {/* Scan + Fix buttons */}
-            <div style={{ textAlign: "center", marginBottom: 24, display: "flex", justifyContent: "center", gap: 14 }}>
+            <div style={{ textAlign: "center", marginBottom: scanning || fixing ? 8 : 24, display: "flex", justifyContent: "center", gap: 14 }}>
               <Btn onClick={scanAll} bg={scanning ? "#999" : C.teal} style={{ fontSize: 18, padding: "14px 32px", opacity: scanning ? 0.7 : 1, pointerEvents: scanning ? "none" : "auto" }}>
                 {scanning ? "\u23F3 Scanning..." : "\uD83D\uDD0D SCAN ALL REPOS"}
               </Btn>
@@ -3103,6 +3103,14 @@ function Dashboard() {
                 {fixing ? "\u23F3 Fixing..." : "\uD83D\uDD27 FIX ALL AUTO-FIXABLE"}
               </Btn>
             </div>
+            {(scanning || fixing) && (
+              <div style={{ maxWidth: 400, margin: "0 auto 20px", textAlign: "center" }}>
+                <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 10, height: 12, overflow: "hidden", marginBottom: 6 }}>
+                  <div style={{ height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${scanning ? C.teal : C.green}, ${C.orange})`, width: healthData.length > 0 ? `${Math.min(100, Math.round(healthData.length / Math.max(repos.length, 1) * 100))}%` : "15%", transition: "width .5s", animation: healthData.length === 0 ? "pulse 1.5s infinite" : "none" }} />
+                </div>
+                <div style={{ fontSize: 11, color: C.brown, fontWeight: 600 }}>{scanning ? "\uD83D\uDD0D" : "\uD83D\uDD27"} {healthData.length > 0 ? `${healthData.length}/${repos.length} repos processed` : "Starting scan..."}</div>
+              </div>
+            )}
 
             {/* Health Results */}
             {healthData.length > 0 && (

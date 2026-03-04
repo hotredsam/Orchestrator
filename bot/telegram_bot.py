@@ -1740,6 +1740,8 @@ def handle_callback_query(cbq):
         "cmd_leaderboard": cmd_leaderboard,
         "cmd_forecast": cmd_forecast,
         "cmd_summary": cmd_summary,
+        "cmd_start_all": cmd_start_all,
+        "cmd_stop_all": cmd_stop_all,
     }
     handler = cmd_map.get(data)
     if handler:
@@ -1822,7 +1824,21 @@ def handle_message(msg):
             t = t[:t.index("@")]
 
     if t == "status":
-        reply = cmd_status()
+        status_text = cmd_status()
+        repos_data = _orch_get("/api/repos") or []
+        if isinstance(repos_data, dict):
+            repos_data = []
+        running = [r for r in repos_data if r.get("running")]
+        idle = [r for r in repos_data if not r.get("running") and not r.get("archived")]
+        buttons = []
+        if idle:
+            buttons.append([{"text": "\u25B6\uFE0F Start All", "callback_data": "cmd_start_all"},
+                            {"text": "\u23F9\uFE0F Stop All", "callback_data": "cmd_stop_all"}])
+        buttons.append([{"text": "\U0001F4CA Costs", "callback_data": "cmd_costs"},
+                        {"text": "\U0001F4CB Summary", "callback_data": "cmd_summary"},
+                        {"text": "\U0001F3C6 Leader", "callback_data": "cmd_leaderboard"}])
+        send_message(status_text, chat_id=chat_id, reply_markup={"inline_keyboard": buttons} if buttons else None)
+        reply = None
     elif t in ("start all", "start_all", "startall"):
         reply = cmd_start_all()
     elif t in ("stop all", "stop_all", "stopall"):
