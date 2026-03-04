@@ -97,6 +97,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Smart polling** — dashboard only fetches data for the active tab on interval (full refresh on SSE events)
 - **Retry items** — POST /api/items/retry to re-queue completed/failed items back to pending (single or bulk)
 - **Retry UI** — per-item retry button on completed items + "Retry Done" bulk action in toolbar
+- **Metrics tab** — dashboard tab showing API request counts, error rates, latency percentiles (p50/p95/max) per endpoint
+- **Copy repo path** — clipboard button on master view repo cards for quick path copying
 
 ## Commands
 ```bash

@@ -114,6 +114,7 @@ function Dashboard() {
   const [memSearch, setMemSearch] = useState("");
   const [toasts, setToasts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [apiMetrics, setApiMetrics] = useState(null);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -225,6 +226,9 @@ function Dashboard() {
         try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
         try { const br = await f("/api/budget"); if(br.ok) { const bd = await br.json(); setBudgetLimit(bd.budget_limit || 0); } } catch {}
       }
+      if (full || t === "metrics") {
+        try { const mr = await f("/api/metrics"); if(mr.ok) setApiMetrics(await mr.json()); } catch {}
+      }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
   }, [sr]);
@@ -237,7 +241,7 @@ function Dashboard() {
     const handler = (e) => {
       // Don't handle when typing in inputs
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-      const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","settings"];
+      const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","settings"];
       if (e.key >= "1" && e.key <= "9") { e.preventDefault(); const idx = parseInt(e.key) - 1; if (TABS_LIST[idx]) setTab(TABS_LIST[idx]); }
       if (e.key === "0") { e.preventDefault(); setTab("logs"); }
       if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${repo?.running ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
@@ -483,6 +487,7 @@ function Dashboard() {
     { id: "logs", label: "📜 Logs" },
     { id: "history", label: "⏪ History" },
     { id: "health", label: "🔍 Health Check" },
+    { id: "metrics", label: "📊 Metrics" },
     { id: "settings", label: "⚙️ Settings" },
   ];
 
@@ -837,7 +842,12 @@ function Dashboard() {
                         {rst.emoji}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, lineHeight: 1.1 }}>{r.name}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, lineHeight: 1.1 }}>{r.name}</div>
+                          <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(r.path); showToast("Path copied!", "info"); }}
+                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, opacity: 0.4, padding: "0 4px" }}
+                            title={r.path}>{"\uD83D\uDCCB"}</button>
+                        </div>
                         <div style={{ fontSize: 12, color: C.brown, fontWeight: 500 }}>{rst.label} {r.running ? "-- RUNNING" : ""}</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
@@ -1523,6 +1533,78 @@ function Dashboard() {
         )}
 
         {/* ── SETTINGS ── */}
+        {/* ── METRICS ── */}
+        {tab === "metrics" && (
+          <SectionBg bg={`linear-gradient(180deg, #E3F2FD 0%, #BBDEFB 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>API Metrics</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>Request counts, error rates, and latency stats</p>
+            {apiMetrics ? (
+              <div style={{ maxWidth: 800, margin: "0 auto" }}>
+                {/* Summary cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+                  {[
+                    { label: "Total Requests", val: apiMetrics.total_requests?.toLocaleString() || "0", icon: "\uD83D\uDCE8", bg: C.lightTeal },
+                    { label: "Errors", val: apiMetrics.errors?.toLocaleString() || "0", icon: "\u274C", bg: "#FFEBEE" },
+                    { label: "Rate Limited", val: apiMetrics.rate_limited?.toLocaleString() || "0", icon: "\uD83D\uDEA6", bg: C.lightOrange },
+                    { label: "Endpoints", val: Object.keys(apiMetrics.top_endpoints || {}).length, icon: "\uD83D\uDD17", bg: C.cream },
+                  ].map((s, i) => (
+                    <Card key={i} bg={s.bg} style={{ padding: 16, textAlign: "center" }}>
+                      <div style={{ fontSize: 24, marginBottom: 4 }}>{s.icon}</div>
+                      <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, letterSpacing: 1 }}>{s.val}</div>
+                      <div style={{ fontSize: 11, color: C.brown, fontWeight: 600 }}>{s.label}</div>
+                    </Card>
+                  ))}
+                </div>
+                {/* Top endpoints */}
+                <Card bg={C.white} style={{ marginBottom: 16, padding: 18 }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>{"\uD83C\uDFC6"} Top Endpoints</div>
+                  <div style={{ fontSize: 12 }}>
+                    {Object.entries(apiMetrics.top_endpoints || {}).sort((a, b) => b[1] - a[1]).map(([ep, count]) => {
+                      const lat = apiMetrics.latency?.[ep];
+                      return (
+                        <div key={ep} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.darkBrown}11` }}>
+                          <span style={{ flex: 1, fontWeight: 600, fontFamily: "monospace", fontSize: 11 }}>{ep}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: C.teal, minWidth: 60, textAlign: "right" }}>{count.toLocaleString()}</span>
+                          {lat && <span style={{ fontSize: 10, color: C.brown, background: lat.p95_ms > 200 ? "#FFEBEE" : C.lightTeal, padding: "2px 6px", borderRadius: 4, minWidth: 60, textAlign: "center" }}>p95: {lat.p95_ms}ms</span>}
+                          {lat && <span style={{ fontSize: 10, color: C.brown, background: C.cream, padding: "2px 6px", borderRadius: 4, minWidth: 55, textAlign: "center" }}>avg: {lat.avg_ms}ms</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+                {/* Latency breakdown */}
+                {apiMetrics.latency && Object.keys(apiMetrics.latency).length > 0 && (
+                  <Card bg={C.white} style={{ padding: 18 }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>{"\u23F1\uFE0F"} Latency Breakdown</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr repeat(4, 1fr)", gap: 4, fontSize: 11 }}>
+                      <div style={{ fontWeight: 700, padding: "4px 0" }}>Endpoint</div>
+                      <div style={{ fontWeight: 700, textAlign: "center" }}>Avg</div>
+                      <div style={{ fontWeight: 700, textAlign: "center" }}>P50</div>
+                      <div style={{ fontWeight: 700, textAlign: "center" }}>P95</div>
+                      <div style={{ fontWeight: 700, textAlign: "center" }}>Max</div>
+                      {Object.entries(apiMetrics.latency).sort((a, b) => b[1].p95_ms - a[1].p95_ms).map(([ep, lat]) => (
+                        <React.Fragment key={ep}>
+                          <div style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ep}</div>
+                          <div style={{ textAlign: "center", padding: "3px 0" }}>{lat.avg_ms}ms</div>
+                          <div style={{ textAlign: "center", padding: "3px 0" }}>{lat.p50_ms}ms</div>
+                          <div style={{ textAlign: "center", padding: "3px 0", color: lat.p95_ms > 500 ? C.red : lat.p95_ms > 200 ? C.orange : C.green, fontWeight: 700 }}>{lat.p95_ms}ms</div>
+                          <div style={{ textAlign: "center", padding: "3px 0", color: lat.max_ms > 1000 ? C.red : C.brown }}>{lat.max_ms}ms</div>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+              </div>
+            ) : (
+              <Card style={{ textAlign: "center", padding: 40, maxWidth: 600, margin: "0 auto", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83D\uDCCA"}</div>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>No metrics data yet</div>
+                <div style={{ fontSize: 12, color: C.brown }}>Metrics appear after the API serves some requests.</div>
+              </Card>
+            )}
+          </SectionBg>
+        )}
+
         {tab === "settings" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.sand} 0%, #E8C84E 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Ruflo Settings</h2>
