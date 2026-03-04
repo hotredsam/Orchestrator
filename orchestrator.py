@@ -2830,6 +2830,31 @@ class API(BaseHTTPRequestHandler):
                 f"SELECT * FROM items{where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 tuple(params)))
 
+        if path == "/api/items/stats" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json({"total": 0, "pending": 0, "in_progress": 0, "completed": 0, "by_priority": {}, "by_type": {}})
+            row = db.fetchone(
+                "SELECT COUNT(*) t,"
+                " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pend,"
+                " SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) prog,"
+                " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done"
+                " FROM items")
+            by_priority = {}
+            for pr in db.fetchall("SELECT priority, COUNT(*) c FROM items GROUP BY priority"):
+                by_priority[pr["priority"]] = pr["c"]
+            by_type = {}
+            for tp in db.fetchall("SELECT type, COUNT(*) c FROM items GROUP BY type"):
+                by_type[tp["type"]] = tp["c"]
+            return self._json({
+                "total": row["t"] if row else 0,
+                "pending": row["pend"] if row else 0,
+                "in_progress": row["prog"] if row else 0,
+                "completed": row["done"] if row else 0,
+                "by_priority": by_priority,
+                "by_type": by_type,
+            })
+
         if path == "/api/plan" and rid:
             db = manager.get_repo_db(rid)
             return self._json(db.all_steps() if db else [])
@@ -3210,6 +3235,40 @@ class API(BaseHTTPRequestHandler):
                 "memory_mb": mem_mb,
                 "pid": os.getpid(),
                 "version": "3.0",
+            })
+
+        if path == "/api/system":
+            repos = manager.master.get_repos()
+            costs = get_costs()
+            total_items = 0
+            done_items = 0
+            total_steps = 0
+            done_steps = 0
+            total_agents = 0
+            total_cycles = 0
+            total_mistakes = 0
+            for r in repos:
+                s = r.get("stats", {}) or {}
+                total_items += s.get("items_total", 0)
+                done_items += s.get("items_done", 0)
+                total_steps += s.get("steps_total", 0)
+                done_steps += s.get("steps_done", 0)
+                total_agents += s.get("agents", 0)
+                total_cycles += r.get("cycle_count", 0)
+                total_mistakes += s.get("mistakes", 0)
+            return self._json({
+                "repos": len(repos),
+                "running": sum(1 for r in repos if r.get("running")),
+                "paused": sum(1 for r in repos if r.get("paused")),
+                "total_items": total_items,
+                "done_items": done_items,
+                "total_steps": total_steps,
+                "done_steps": done_steps,
+                "total_agents": total_agents,
+                "total_cycles": total_cycles,
+                "total_mistakes": total_mistakes,
+                "total_cost": sum(costs.values()),
+                "cost_by_repo": costs,
             })
 
         if path == "/api/init":
