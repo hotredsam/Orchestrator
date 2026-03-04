@@ -79,6 +79,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Priority auto-escalation** — items pending for 2+ hours auto-escalate (low→medium, medium→high)
 - **Log search** — dashboard logs tab has search/filter bar for finding specific actions
 - **Memory search** — dashboard memory tab has inline search for filtering entries
+- **Budget limits** — configurable cost budget via `AGENT_BUDGET_LIMIT` env var or API. Auto-pauses repos when exceeded
+- **Budget UI** — dashboard Settings has budget limit input with real-time enforcement
+- **Master view cost** — repo cards in master view show per-repo cost alongside items/steps/cycles
 
 ## Commands
 ```bash
@@ -154,6 +157,10 @@ POST /api/rollback                 — Git rollback {repo_id, commit_hash}
 GET  /api/webhooks                 — List registered webhooks
 POST /api/webhooks                 — Register webhook {url, events?: ["*"], secret?}
 POST /api/webhooks/delete          — Remove webhook {id}
+
+# Budget
+GET  /api/budget                   — Current budget limit and cost totals
+POST /api/budget                   — Set budget limit {limit: float} (0 = unlimited)
 ```
 
 ## Telegram Bot Commands
@@ -213,6 +220,7 @@ AGENT_AUDIO_DIR=~/swarm-audio  AGENT_MASTER_DB=~/swarm-master.db
 AGENT_POLL=5  AGENT_MIN=10  AGENT_MAX=15  RALPH_ITERS=50
 INTAKE_FOLDER=~/Desktop/intake
 RATE_LIMIT_RPM=120     DIGEST_HOUR=9
+AGENT_BUDGET_LIMIT=0   # Max API cost per repo (0 = unlimited)
 PUBLIC_URL=             # ngrok or tunnel URL for Telegram Mini App
 TELEGRAM_BOT_TOKEN=     # From BotFather
 TELEGRAM_CHAT_ID=       # Your chat ID

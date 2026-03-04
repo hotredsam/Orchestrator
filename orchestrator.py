@@ -54,6 +54,7 @@ CLAUDE_MODEL = os.environ.get("AGENT_MODEL", "sonnet")
 INTAKE_FOLDER = os.environ.get("INTAKE_FOLDER", os.path.expanduser("~/Desktop/intake"))
 
 TELEGRAM_ENABLED = os.environ.get("TELEGRAM_ENABLED", "0") == "1"
+BUDGET_LIMIT = float(os.environ.get("AGENT_BUDGET_LIMIT", "0"))  # 0 = unlimited
 
 # Public URL override — set when using ngrok or other tunnel
 # Used by the Telegram Mini App and bot for external-facing URLs
@@ -1522,6 +1523,18 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                     time.sleep(1)
                 if self.stop_event.is_set():
                     break
+                # Budget check — pause if cost exceeded
+                if BUDGET_LIMIT > 0 and self.state.current_state != State.IDLE:
+                    repo_cost = get_costs().get(self.repo["id"], 0)
+                    if repo_cost >= BUDGET_LIMIT:
+                        log.warning(f"💰 [{self.repo['name']}] Budget limit ${BUDGET_LIMIT:.2f} exceeded (${repo_cost:.2f}), pausing")
+                        sse_broadcast("budget_exceeded", {
+                            "repo": self.repo["name"], "repo_id": self.repo["id"],
+                            "cost": repo_cost, "budget": BUDGET_LIMIT,
+                        })
+                        self.pause_event.set()
+                        continue
+
                 old_state = self.state.current_state
                 handler_name = self.HANDLERS.get(self.state.current_state, "h_idle")
                 handler = getattr(self, handler_name, None)
@@ -2656,6 +2669,11 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/webhooks":
             return self._json({"webhooks": webhook_list()})
 
+        if path == "/api/budget":
+            return self._json({"budget_limit": BUDGET_LIMIT,
+                               "total_cost": sum(get_costs().values()),
+                               "costs": get_costs()})
+
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):
@@ -3058,6 +3076,16 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": "id required"}, 400)
             removed = webhook_remove(int(wh_id))
             return self._json({"ok": True, "removed": removed})
+
+        # ─── Budget ────────────────────────────────────────────────────────────
+        if path == "/api/budget":
+            global BUDGET_LIMIT
+            limit = b.get("limit")
+            if limit is not None:
+                BUDGET_LIMIT = float(limit)
+            return self._json({"ok": True, "budget_limit": BUDGET_LIMIT,
+                               "total_cost": sum(get_costs().values()),
+                               "costs": get_costs()})
 
         # ─── Chat Bridge Endpoints ────────────────────────────────────────────
         if path == "/api/bridge/inbox":

@@ -107,6 +107,7 @@ function Dashboard() {
   const [itemFilter, setItemFilter] = useState("all");
   const [webhooks, setWebhooks] = useState([]);
   const [newWebhook, setNewWebhook] = useState({ url: "", events: "*" });
+  const [budgetLimit, setBudgetLimit] = useState(0);
   const [repoSort, setRepoSort] = useState("name");
   const [repoFilter, setRepoFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
@@ -178,6 +179,13 @@ function Dashboard() {
           load();
         } catch {}
       });
+      es.addEventListener("budget_exceeded", (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          showToast(`${d.repo || "Repo"} paused: budget $${d.budget?.toFixed(2)} exceeded ($${d.cost?.toFixed(2)} spent)`, "warning");
+          load();
+        } catch {}
+      });
       es.onerror = () => { es.close(); setTimeout(connect, 5000); };
     };
     connect();
@@ -205,6 +213,7 @@ function Dashboard() {
       // Fetch costs + webhooks
       try { const cr = await f("/api/costs"); if(cr.ok) { const cd = await cr.json(); if(cd.costs) setCosts(cd.costs); } } catch {}
       try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
+      try { const br = await f("/api/budget"); if(br.ok) { const bd = await br.json(); setBudgetLimit(bd.budget_limit || 0); } } catch {}
     } catch(err) { console.warn("Data fetch error:", err.message); }
   }, [sr]);
 
@@ -795,11 +804,12 @@ function Dashboard() {
                       <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, transition: "width .5s" }} />
                     </div>
                     {/* Stats row */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
                       {[
                         { l: "Items", v: `${s.items_done||0}/${s.items_total||0}` },
                         { l: "Steps", v: `${s.steps_done||0}/${s.steps_total||0}` },
                         { l: "Cycles", v: r.cycle_count||0 },
+                        { l: "Cost", v: `$${(costs[r.id] || 0).toFixed(2)}` },
                       ].map((x, i) => (
                         <div key={i} style={{ textAlign: "center", fontSize: 11 }}>
                           <div style={{ fontWeight: 700 }}>{x.v}</div>
@@ -1556,6 +1566,26 @@ function Dashboard() {
                 </Card>
               )}
 
+              {/* ── Budget Limit ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\uD83D\uDCB8"} Budget Limit</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Set a max API cost. Repos auto-pause when exceeded. Set to 0 for unlimited.</p>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>$</span>
+                  <Inp type="number" min="0" step="0.50" placeholder="0 = unlimited" defaultValue={budgetLimit || ""}
+                    style={{ maxWidth: 140, fontSize: 14, padding: "8px 12px" }}
+                    onKeyDown={async e => {
+                      if (e.key === "Enter") {
+                        const val = parseFloat(e.target.value) || 0;
+                        const ok = await apiAction("/api/budget", { method: "POST", body: JSON.stringify({ limit: val }) },
+                          val > 0 ? `Budget set to $${val.toFixed(2)}` : "Budget limit removed");
+                        if (ok) setBudgetLimit(val);
+                      }
+                    }} />
+                  <span style={{ fontSize: 11, color: C.brown }}>Press Enter to save</span>
+                </div>
+              </Card>
+
               {/* ── Export / Import ── */}
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)` }}>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>{"\uD83D\uDCBE"} Backup & Restore</div>
@@ -1599,6 +1629,7 @@ function Dashboard() {
                     <option value="*">All Events</option>
                     <option value="state_change">State Changes</option>
                     <option value="cycle_complete">Cycle Complete</option>
+                    <option value="budget_exceeded">Budget Exceeded</option>
                     <option value="log">Logs</option>
                     <option value="error_event">Errors</option>
                     <option value="watchdog">Watchdog</option>
