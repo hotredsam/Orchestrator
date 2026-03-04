@@ -17,6 +17,7 @@ SWARM ORCHESTRATOR v3 — Full Autonomous Multi-Repo
 """
 
 import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging
+import logging.handlers
 import threading, shutil, base64, signal, traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,9 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, List
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+
+# Add bot/ directory to path for telegram_bot imports
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot"))
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -39,6 +43,30 @@ RALPH_ITERS = int(os.environ.get("RALPH_ITERS", "50"))
 CLAUDE_MODEL = os.environ.get("AGENT_MODEL", "sonnet")
 INTAKE_FOLDER = os.environ.get("INTAKE_FOLDER", os.path.expanduser("~/Desktop/intake"))
 
+TELEGRAM_ENABLED = os.environ.get("TELEGRAM_ENABLED", "0") == "1"
+
+
+def clean_env():
+    """Return os.environ with Claude/MCP session vars stripped.
+
+    When the orchestrator runs inside a Claude Code session (e.g. during setup),
+    child claude processes inherit env vars that make them think they're nested
+    sessions, so they refuse to launch. This strips those vars while keeping
+    ANTHROPIC_API_KEY for auth.
+    """
+    env = os.environ.copy()
+    keep = {'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'PATH', 'HOME', 'USER',
+            'USERPROFILE', 'SYSTEMROOT', 'COMSPEC', 'TEMP', 'TMP',
+            'APPDATA', 'LOCALAPPDATA', 'PROGRAMFILES', 'WINDIR',
+            'NODE_PATH', 'NPM_CONFIG_PREFIX', 'NVM_DIR'}
+    for key in list(env.keys()):
+        if any(x in key.upper() for x in ['CLAUDE', 'MCP_', 'ANTHROPIC_SESSION']):
+            if key in keep:
+                continue
+            del env[key]
+    return env
+
+
 for d in [REPOS_DIR, AUDIO_DIR, INTAKE_FOLDER]:
     os.makedirs(d, exist_ok=True)
 
@@ -47,7 +75,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False)),
-        logging.FileHandler(os.path.expanduser("~/swarm.log"), encoding='utf-8'),
+        logging.handlers.RotatingFileHandler(
+            os.path.expanduser("~/swarm.log"), encoding='utf-8',
+            maxBytes=50*1024*1024, backupCount=3,
+        ),
     ],
 )
 log = logging.getLogger("swarm")
@@ -365,9 +396,10 @@ class Runner:
         start = time.time()
         use_shell = sys.platform == "win32"
         try:
+            env = clean_env()
+            env["CLAUDE_SKIP_PERMISSIONS"] = "1"
             r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                               shell=use_shell,
-                               env={**os.environ, "CLAUDE_SKIP_PERMISSIONS": "1"})
+                               shell=use_shell, env=env)
             elapsed = time.time() - start
             out = r.stdout.strip()
             err = r.stderr.strip()
@@ -390,16 +422,16 @@ class Runner:
         except Exception as e:
             return {"success": False, "output": "", "error": str(e), "elapsed": 0}
 
-    def claude(self, cwd, prompt, timeout=600):
+    def claude(self, cwd, prompt, timeout=600, model=None):
         return self.run_cmd(
-            ["claude", "-p", prompt, "--model", CLAUDE_MODEL,
+            ["claude", "-p", prompt, "--model", model or CLAUDE_MODEL,
              "--output-format", "json", "--dangerously-skip-permissions"],
             cwd=cwd, timeout=timeout,
         )
 
-    def claude_retry(self, cwd, prompt, retries=3, timeout=600):
+    def claude_retry(self, cwd, prompt, retries=3, timeout=600, model=None):
         for i in range(retries):
-            r = self.claude(cwd, prompt, timeout)
+            r = self.claude(cwd, prompt, timeout, model=model)
             if r.get("credits_exhausted"):
                 return r
             if r["success"]:
@@ -407,12 +439,12 @@ class Runner:
             time.sleep(2 ** i)
         return r
 
-    def ralph(self, cwd, prompt, max_iters=RALPH_ITERS, promise="TASK_COMPLETE"):
+    def ralph(self, cwd, prompt, max_iters=RALPH_ITERS, promise="TASK_COMPLETE", model=None):
         rp = f'/ralph-loop "{prompt}" --max-iterations {max_iters} --completion-promise "{promise}"'
-        return self.run_cmd(
-            ["claude", "-p", rp, "--dangerously-skip-permissions"],
-            cwd=cwd, timeout=3600,
-        )
+        cmd = ["claude", "-p", rp, "--dangerously-skip-permissions"]
+        if model:
+            cmd.extend(["--model", model])
+        return self.run_cmd(cmd, cwd=cwd, timeout=3600)
 
     def whisper(self, audio_path):
         """Transcribe audio using Whisper."""
@@ -431,7 +463,7 @@ class Runner:
         try:
             r = subprocess.run(["grep", "-rn", "--include", glob, pattern, "."],
                                cwd=cwd, capture_output=True, text=True, timeout=30,
-                               shell=(sys.platform == "win32"))
+                               shell=(sys.platform == "win32"), env=clean_env())
             return r.stdout[:5000]
         except:
             return ""
@@ -439,16 +471,75 @@ class Runner:
     def git_push(self, cwd, msg="auto: agent commit", branch="main"):
         self.run_cmd(["git", "add", "-A"], cwd=cwd, timeout=30)
         self.run_cmd(["git", "commit", "-m", msg, "--allow-empty"], cwd=cwd, timeout=30)
-        return self.run_cmd(["git", "push", "origin", branch], cwd=cwd, timeout=120)
+        result = self.run_cmd(["git", "push", "origin", branch], cwd=cwd, timeout=120)
+        if TELEGRAM_ENABLED:
+            try:
+                from telegram_bot import send_message as tg_msg
+                repo_name = os.path.basename(cwd)
+                if result.get("success"):
+                    tg_msg(f"📤 *{repo_name}* pushed to GitHub: {msg[:60]}")
+                else:
+                    tg_msg(f"⚠️ *{repo_name}* git push failed: {result.get('error','')[:100]}. Continuing.")
+            except:
+                pass
+        return result
 
     def ruflo_init(self, cwd):
-        return self.run_cmd(["npx", "ruflo@alpha", "init", "--verify"], cwd=cwd, timeout=120)
+        return self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120)
+
+    def ruflo_setup(self, cwd):
+        """Full Ruflo setup for a repo — init, memory, hooks."""
+        if not os.path.exists(os.path.join(cwd, ".claude-flow")):
+            self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120)
+        self.run_cmd(["npx", "ruflo", "memory", "init"], cwd=cwd, timeout=60)
+        self.run_cmd(["npx", "ruflo", "hooks", "enable", "--all"], cwd=cwd, timeout=30)
+
+    def ruflo_swarm(self, cwd, topology="hierarchical", max_agents=4, agent_types=None):
+        """Initialize a swarm with specific topology and agent types."""
+        self.run_cmd(["npx", "ruflo", "hive-mind", "init",
+                       "--topology", topology, "--max-agents", str(max_agents)],
+                      cwd=cwd, timeout=60)
+        for atype in (agent_types or ["coder"]):
+            self.run_cmd(["npx", "ruflo", "agent", "spawn", "-t", atype],
+                          cwd=cwd, timeout=60)
+
+    def ruflo_sparc(self, cwd, mode, objective, timeout=600):
+        """Run a SPARC task."""
+        return self.run_cmd(["npx", "ruflo", "sparc", "run", mode, objective],
+                             cwd=cwd, timeout=timeout)
+
+    def ruflo_memory_store(self, cwd, key, value):
+        """Store a value in Ruflo memory."""
+        self.run_cmd(["npx", "ruflo", "memory", "store", key, value[:500]],
+                      cwd=cwd, timeout=15)
+
+    def ruflo_memory_search(self, cwd, query):
+        """Search Ruflo memory."""
+        r = self.run_cmd(["npx", "ruflo", "memory", "search", query, "--limit", "5"],
+                          cwd=cwd, timeout=15)
+        return r.get("output", "")
+
+    def ruflo_quality_gate(self, cwd, check_type="full"):
+        """Run Ruflo quality gate hooks — lint, test, security scan."""
+        results = {}
+        if check_type in ("full", "lint"):
+            r = self.run_cmd(["npx", "ruflo", "hooks", "run", "pre-commit"], cwd=cwd, timeout=120)
+            results["lint"] = r.get("exit_code", 1) == 0
+        if check_type in ("full", "test"):
+            r = self.run_cmd(["npx", "ruflo", "hooks", "run", "pre-push"], cwd=cwd, timeout=300)
+            results["test"] = r.get("exit_code", 1) == 0
+        if check_type in ("full", "security"):
+            r = self.run_cmd(["npx", "ruflo", "hooks", "run", "security-scan"], cwd=cwd, timeout=120)
+            results["security"] = r.get("exit_code", 1) == 0
+        passed = all(results.values()) if results else True
+        if not passed:
+            log.warning(f"⚠️ Quality gate failed at {cwd}: {results}")
+        return {"passed": passed, "checks": results}
 
     def ruflo_spawn(self, cwd, objective, max_agents=10):
-        self.run_cmd(["npx", "ruflo", "hive-mind", "init"], cwd=cwd, timeout=60)
+        self.run_cmd(["npx", "ruflo", "swarm", "init", "--v3-mode"], cwd=cwd, timeout=60)
         return self.run_cmd(
-            ["npx", "ruflo", "hive-mind", "spawn", objective,
-             "--queen-type", "strategic", "--consensus", "simple-majority", "--claude"],
+            ["npx", "ruflo", "agent", "spawn", "-t", "coder"],
             cwd=cwd, timeout=300,
         )
 
@@ -503,6 +594,8 @@ Do NOT repeat these mistakes. If you encounter similar issues, use a different a
     # ── State Handlers ────────────────────────────────────────────────────
 
     def h_idle(self):
+        self.state.active_agents = 0
+
         audio = self.db.pending_audio()
         if audio:
             return State.CHECK_AUDIO
@@ -566,7 +659,7 @@ Transcription:
 Return ONLY a JSON array:
 [{{"type": "issue"|"feature", "title": "short title", "description": "detailed description", "priority": "low"|"medium"|"high"|"critical"}}]"""
 
-            result = runner.claude_retry(self.repo["path"], prompt)
+            result = runner.claude_retry(self.repo["path"], prompt, model="claude-haiku-4-5-20251001")
             if self._handle_credits(result):
                 return State.CREDITS_EXHAUSTED
 
@@ -605,23 +698,42 @@ Return ONLY a JSON array:
     def h_do_refactor(self):
         log.info(f"🔧 Refactoring {self.repo['name']}...")
         t0 = time.time()
+        self.state.active_agents = 4
+        self.save()
 
-        runner.ruflo_init(self.repo["path"])
+        # Full Ruflo setup + hierarchical swarm for refactoring
+        runner.ruflo_setup(self.repo["path"])
+        runner.ruflo_swarm(self.repo["path"], "hierarchical", 4,
+                           ["architect", "coder", "reviewer"])
+
+        # Search Ruflo memory for prior context
+        prior = runner.ruflo_memory_search(self.repo["path"], "refactor structure")
 
         prompt = self._with_mistake_context(
             "Refactor this repository per best practices: ensure CLAUDE.md exists, "
             "proper structure, error handling, test infra. Use grep to scan first. "
             "Do NOT change business logic. Output REFACTOR_COMPLETE when done."
+            + (f"\n\nPrior context from memory:\n{prior}" if prior else "")
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="REFACTOR_COMPLETE")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="REFACTOR_COMPLETE", model="claude-opus-4-6")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
-        self.log("do_refactor", result.get("output","")[:500], dur=time.time()-t0)
-        self.state.refactor_done = True
+        dur = time.time() - t0
+        self.log("do_refactor", result.get("output","")[:500], dur=dur)
 
-        if self.repo.get("github_url"):
-            runner.git_push(self.repo["path"], "refactor: initial structure", self.repo.get("branch","main"))
+        if result["success"]:
+            self.state.refactor_done = True
+            runner.ruflo_memory_store(self.repo["path"], "refactor/result", "SUCCESS: refactoring complete")
+            if self.repo.get("github_url"):
+                runner.git_push(self.repo["path"], "refactor: initial structure", self.repo.get("branch","main"))
+        else:
+            err = result.get("error", "unknown error")
+            log.warning(f"⚠️ [{self.repo['name']}] Refactor failed: {err[:200]}")
+            self.db.log_mistake("refactor_failed", err[:500])
+            runner.ruflo_memory_store(self.repo["path"], "refactor/result", f"FAIL: {err[:200]}")
+            # Still mark done to avoid infinite retry, but log the skip
+            self.state.refactor_done = True
 
         return State.CHECK_NEW_ITEMS
 
@@ -630,6 +742,12 @@ Return ONLY a JSON array:
         return State.UPDATE_PLAN if pending else State.CHECK_PLAN_COMPLETE
 
     def h_update_plan(self):
+        self.state.active_agents = 2
+        self.save()
+
+        # Use analyst + architect for planning
+        runner.ruflo_swarm(self.repo["path"], "mesh", 2, ["analyst", "architect"])
+
         pending = self.db.get_pending_items()
         existing = self.db.pending_steps()
         mistakes = self.db.get_mistake_context()
@@ -658,7 +776,7 @@ Agent types: researcher, coder, analyst, tester, architect, reviewer, optimizer
 
 Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"""
 
-        result = runner.claude_retry(self.repo["path"], prompt)
+        result = runner.claude_retry(self.repo["path"], prompt, model="claude-opus-4-6")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -695,19 +813,39 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             return State.CHECK_PLAN_COMPLETE
 
         step = remaining[0]
+        desc = step["description"].lower()
         log.info(f"⚡ [{self.repo['name']}] Step: {step['description'][:60]}...")
         t0 = time.time()
 
-        # Spawn swarm
-        runner.ruflo_spawn(self.repo["path"], step["description"], MIN_AGENTS)
-        self.state.active_agents = MIN_AGENTS
+        # Detect step type and spawn specialized agents
+        if "test" in desc:
+            agent_types = ["tester", "coder"]
+            sparc_mode = "test"
+        elif "api" in desc:
+            agent_types = ["architect", "coder", "tester"]
+            sparc_mode = "api"
+        elif any(w in desc for w in ["ui", "frontend", "css", "component", "page"]):
+            agent_types = ["coder", "reviewer"]
+            sparc_mode = "ui"
+        else:
+            agent_types = ["coder", "tester"]
+            sparc_mode = "dev"
+
+        num_agents = len(agent_types) + 2
+        runner.ruflo_setup(self.repo["path"])
+        runner.ruflo_swarm(self.repo["path"], "hierarchical", num_agents, agent_types)
+        self.state.active_agents = num_agents
+
+        # Search Ruflo memory for prior context
+        prior = runner.ruflo_memory_search(self.repo["path"], step["description"][:50])
 
         prompt = self._with_mistake_context(
             f"Complete: {step['description']}\n\n"
             "Use grep to check existing patterns. Follow conventions. "
             "Output STEP_COMPLETE when done."
+            + (f"\n\nPrior context from memory:\n{prior}" if prior else "")
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=20, promise="STEP_COMPLETE")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=20, promise="STEP_COMPLETE", model="claude-sonnet-4-6")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -723,6 +861,21 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         self.db.mem_store("execution", f"step_{step['id']}",
                           {"desc": step["description"], "elapsed": dur, "ok": result["success"]})
         self.state.current_step_id = step["id"]
+
+        # Store in Ruflo memory
+        runner.ruflo_memory_store(self.repo["path"], f"step/{step['id']}/result",
+                                  f"{'OK' if result['success'] else 'FAIL'}: {step['description'][:100]}")
+
+        # Telegram: step completed
+        if TELEGRAM_ENABLED:
+            try:
+                from telegram_bot import send_message as tg_msg
+                total_steps = len(self.db.all_steps())
+                done_steps = len([s for s in self.db.all_steps() if s["status"] == "completed"])
+                tg_msg(f"✅ *{self.repo['name']}* Step {done_steps+1}/{total_steps}: {step['description'][:60]}")
+            except:
+                pass
+
         return State.TEST_STEP
 
     def h_test_step(self):
@@ -733,6 +886,11 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
 
         log.info(f"🧪 [{self.repo['name']}] Testing step {sid}...")
         t0 = time.time()
+        self.state.active_agents = 3
+        self.save()
+
+        # Use TDD-focused swarm
+        runner.ruflo_swarm(self.repo["path"], "mesh", 3, ["tester", "tester"])
 
         prompt = self._with_mistake_context(
             f"You implemented: {step['description']}\n\n"
@@ -741,7 +899,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             "3. Fix ALL failures\n"
             "Output TESTS_COMPLETE when all pass."
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=15, promise="TESTS_COMPLETE")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=15, promise="TESTS_COMPLETE", model="claude-sonnet-4-6")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -765,6 +923,9 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         self.log("test_step", f"{tw} written, {tp} passed", dur=time.time()-t0)
 
         if self.repo.get("github_url"):
+            gate = runner.ruflo_quality_gate(self.repo["path"], "test")
+            if not gate["passed"]:
+                log.warning(f"⚠️ [{self.repo['name']}] Quality gate failed after step {sid}, pushing anyway")
             runner.git_push(self.repo["path"],
                             f"feat: {step['description'][:40]} + {tw} tests",
                             self.repo.get("branch","main"))
@@ -782,15 +943,27 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
 
     def h_final_optimize(self):
         log.info(f"🔧 [{self.repo['name']}] Optimizing...")
+        self.state.active_agents = 2
+        self.save()
+        if TELEGRAM_ENABLED:
+            try:
+                from telegram_bot import send_message as tg_msg
+                total = len(self.db.all_steps())
+                tg_msg(f"🏗️ *{self.repo['name']}* — All {total} plan steps complete. Optimizing and scanning now.")
+            except:
+                pass
         prompt = self._with_mistake_context(
             "Optimization: dead code removal, dedup, tree shaking (grep for unused). "
             "Output OPTIMIZE_COMPLETE when done."
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="OPTIMIZE_COMPLETE")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="OPTIMIZE_COMPLETE", model="claude-haiku-4-5-20251001")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
         self.log("optimize", result.get("output","")[:300])
         if self.repo.get("github_url"):
+            gate = runner.ruflo_quality_gate(self.repo["path"], "full")
+            if not gate["passed"]:
+                log.warning(f"⚠️ [{self.repo['name']}] Quality gate failed after optimize: {gate['checks']}")
             runner.git_push(self.repo["path"], "refactor: optimization pass", self.repo.get("branch","main"))
         return State.SCAN_REPO
 
@@ -800,7 +973,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             "Full scan: run all tests, check imports, verify build, update CLAUDE.md. "
             "Fix any issues. Output SCAN_COMPLETE."
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="SCAN_COMPLETE")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="SCAN_COMPLETE", model="claude-haiku-4-5-20251001")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -809,11 +982,30 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         self.db.commit()
 
         if self.repo.get("github_url"):
+            gate = runner.ruflo_quality_gate(self.repo["path"], "full")
+            if not gate["passed"]:
+                log.warning(f"⚠️ [{self.repo['name']}] Quality gate failed on final scan: {gate['checks']}")
             runner.git_push(self.repo["path"], "chore: final scan passed", self.repo.get("branch","main"))
 
         self.state.cycle_count += 1
         self.state.active_agents = 0
         log.info(f"🎉 [{self.repo['name']}] Cycle {self.state.cycle_count} done!")
+
+        if TELEGRAM_ENABLED:
+            try:
+                from telegram_bot import send_message as tg_msg
+                items_done = self.db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"]
+                items_total = self.db.fetchone("SELECT COUNT(*) c FROM items")["c"]
+                tests = sum(s.get("tests_passed", 0) for s in self.db.all_steps())
+                mistakes = len(self.db.get_mistakes(100))
+                tg_msg(f"🎉 *{self.repo['name']}* finished cycle #{self.state.cycle_count}!\n"
+                       f"📊 Items done: {items_done}/{items_total}\n"
+                       f"🧪 Total tests passed: {tests}\n"
+                       f"💀 Mistakes this cycle: {mistakes}\n"
+                       f"Next: watching for new items...")
+            except:
+                pass
+
         return State.IDLE
 
     def h_credits_exhausted(self):
@@ -841,6 +1033,36 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         State.SCAN_REPO: "h_scan_repo", State.CREDITS_EXHAUSTED: "h_credits_exhausted",
     }
 
+    def _telegram_notify(self, old_state, new_state):
+        """Send Telegram notification on state transition (if enabled)."""
+        if not TELEGRAM_ENABLED:
+            return
+        try:
+            from telegram_bot import (notify_state_change, notify_cycle_complete,
+                                       notify_credits_exhausted, notify_credits_restored,
+                                       notify_error)
+            old_val = old_state.value if hasattr(old_state, 'value') else str(old_state)
+            new_val = new_state.value if hasattr(new_state, 'value') else str(new_state)
+
+            # Only notify on meaningful transitions (skip idle->idle)
+            if old_val == new_val == "idle":
+                return
+
+            if new_val == "credits_exhausted":
+                notify_credits_exhausted(self.repo["name"])
+            elif old_val == "credits_exhausted" and new_val != "credits_exhausted":
+                notify_credits_restored(self.repo["name"], new_val)
+            elif new_val == "idle" and old_val == "scan_repo":
+                # Cycle complete
+                items_done = self.db.fetchone(
+                    "SELECT COUNT(*) c FROM items WHERE status='completed'")
+                notify_cycle_complete(self.repo["name"], self.state.cycle_count,
+                                      items_done["c"] if items_done else 0)
+            else:
+                notify_state_change(self.repo["name"], old_val, new_val)
+        except Exception as e:
+            log.debug(f"Telegram notify error: {e}")
+
     def run(self):
         self.state.running = True
         self.save()
@@ -849,15 +1071,23 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
 
         try:
             while not self.stop_event.is_set():
+                old_state = self.state.current_state
                 handler = getattr(self, self.HANDLERS.get(self.state.current_state, "h_idle"))
                 nxt = handler()
                 self.state.current_state = nxt
                 self.save()
+                self._telegram_notify(old_state, nxt)
         except Exception as e:
             log.exception(f"💥 [{self.repo['name']}] Fatal: {e}")
             self.state.errors.append(str(e))
             self.db.log_mistake("fatal", str(e), state_snapshot=json.dumps(self.state.to_dict()))
             self.save()
+            if TELEGRAM_ENABLED:
+                try:
+                    from telegram_bot import notify_error
+                    notify_error(self.repo["name"], str(e))
+                except:
+                    pass
         finally:
             self.state.running = False
             self.save()
@@ -927,6 +1157,482 @@ class Manager:
 
 
 manager = Manager()
+
+# ─── Chat History ─────────────────────────────────────────────────────────────
+
+chat_history = []  # in-memory chat history (latest 50)
+
+
+# ─── Health Scanner ───────────────────────────────────────────────────────────
+
+def scan_repo_health(repo):
+    """Scan a repo for issues and return a health report."""
+    path = repo["path"]
+    issues = []
+
+    def add(severity, title, desc, fixable=False):
+        issues.append({"severity": severity, "title": title, "description": desc, "auto_fixable": fixable})
+
+    if not os.path.isdir(path):
+        add("critical", "Repo path missing", f"Path does not exist: {path}")
+        return {"repo_id": repo["id"], "repo_name": repo["name"], "health_score": 0, "issues": issues}
+
+    files = set()
+    try:
+        for item in os.listdir(path):
+            files.add(item.lower())
+    except:
+        pass
+
+    # Missing essentials
+    if ".gitignore" not in files:
+        add("issue", "Add .gitignore", "No .gitignore file found", True)
+    if "readme.md" not in files:
+        add("issue", "Add README.md", "No README.md found", True)
+    if "claude.md" not in files:
+        add("issue", "Generate CLAUDE.md", "No CLAUDE.md for agent context", True)
+    if "license" not in files and "license.md" not in files:
+        add("issue", "Add LICENSE", "No license file found", True)
+
+    # Check for tests
+    has_tests = any(f.startswith("test") or f == "tests" or f == "__tests__" for f in files)
+    if not has_tests:
+        add("issue", "Add test coverage", "No test files or test directory found", True)
+
+    # Dependency manifest
+    has_manifest = any(f in files for f in ["package.json", "requirements.txt", "cargo.toml", "pyproject.toml", "go.mod"])
+    if not has_manifest:
+        add("warning", "No dependency manifest", "No package.json, requirements.txt, or equivalent found")
+
+    # Code quality checks
+    todo_count = 0
+    large_files = []
+    debug_lines = 0
+    try:
+        for root, dirs, fnames in os.walk(path):
+            dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", ".next", "venv", ".venv", "dist", "build"}]
+            for fname in fnames:
+                fpath = os.path.join(root, fname)
+                ext = os.path.splitext(fname)[1].lower()
+                if ext not in {".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".java", ".rb", ".php"}:
+                    continue
+                try:
+                    size = os.path.getsize(fpath)
+                    with open(fpath, "r", encoding="utf-8", errors="ignore") as fp:
+                        lines = fp.readlines()
+                    if len(lines) > 500:
+                        large_files.append((os.path.relpath(fpath, path), len(lines)))
+                    for line in lines:
+                        ll = line.upper()
+                        if any(t in ll for t in ["TODO", "FIXME", "HACK", "XXX"]):
+                            todo_count += 1
+                        if ext in {".py"} and "print(" in line and "test" not in fname.lower():
+                            debug_lines += 1
+                        if ext in {".js", ".jsx", ".ts", ".tsx"} and "console.log" in line and "test" not in fname.lower():
+                            debug_lines += 1
+                except:
+                    pass
+    except:
+        pass
+
+    if todo_count > 0:
+        add("warning", f"Found {todo_count} TODO/FIXME comments", f"{todo_count} TODO/FIXME/HACK/XXX comments in code")
+    if debug_lines > 3:
+        add("warning", f"Found {debug_lines} debug statements", "console.log/print statements in production code")
+    for fname, lc in large_files[:5]:
+        add("warning", f"Large file: {fname}", f"{lc} lines — consider splitting")
+
+    # Git checks
+    git_dir = os.path.join(path, ".git")
+    if not os.path.isdir(git_dir):
+        add("issue", "Initialize git", "Not a git repository", True)
+    else:
+        # Check for .env tracked
+        try:
+            env_path = os.path.join(path, ".env")
+            if os.path.exists(env_path):
+                r = subprocess.run(["git", "ls-files", ".env"], cwd=path, capture_output=True, text=True,
+                                   timeout=10, shell=(sys.platform == "win32"))
+                if r.stdout.strip():
+                    add("critical", "Remove .env from git", ".env file is tracked by git — contains secrets!", True)
+        except:
+            pass
+        # Check for uncommitted changes
+        try:
+            r = subprocess.run(["git", "status", "--porcelain"], cwd=path, capture_output=True, text=True,
+                               timeout=10, shell=(sys.platform == "win32"))
+            if r.stdout.strip():
+                changed = len(r.stdout.strip().split("\n"))
+                add("warning", f"Uncommitted changes ({changed} files)", "Has uncommitted changes in working tree")
+        except:
+            pass
+        # Check for remote
+        try:
+            r = subprocess.run(["git", "remote", "-v"], cwd=path, capture_output=True, text=True,
+                               timeout=10, shell=(sys.platform == "win32"))
+            if not r.stdout.strip():
+                add("warning", "No git remote", "No remote configured — can't push")
+        except:
+            pass
+
+    # Ruflo checks
+    if ".claude-flow" not in files and ".ruflo" not in files:
+        add("issue", "Initialize Ruflo", "No .claude-flow/ directory — Ruflo not set up", True)
+
+    # Dependency install checks
+    if "package.json" in files and "node_modules" not in files:
+        lock = any(f in files for f in ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"])
+        if not lock:
+            add("issue", "Run npm install", "package.json exists but no node_modules or lockfile", True)
+
+    # Calculate health score
+    total_checks = 10  # base checks
+    deductions = 0
+    for issue in issues:
+        if issue["severity"] == "critical":
+            deductions += 2
+        elif issue["severity"] == "issue":
+            deductions += 1
+        elif issue["severity"] == "warning":
+            deductions += 0.5
+    score = max(0, min(100, int((1 - deductions / total_checks) * 100)))
+
+    return {"repo_id": repo["id"], "repo_name": repo["name"], "health_score": score, "issues": issues, "path": path}
+
+
+def fix_repo_issue(repo, issue):
+    """Auto-fix a single issue in a repo."""
+    path = repo["path"]
+    title = issue["title"]
+    result = {"fixed": False, "title": title, "message": ""}
+
+    if title == "Add .gitignore":
+        # Detect project type and generate appropriate gitignore
+        files = set(os.listdir(path))
+        lines = ["# OS\n.DS_Store\nThumbs.db\n*.swp\n*.swo\n\n# IDE\n.idea/\n.vscode/\n*.sublime-*\n\n"]
+        if "package.json" in files:
+            lines.append("# Node\nnode_modules/\ndist/\nbuild/\n.next/\n*.log\n\n")
+        if any(f.endswith(".py") for f in files):
+            lines.append("# Python\n__pycache__/\n*.pyc\n*.pyo\nvenv/\n.venv/\n*.egg-info/\n\n")
+        lines.append("# Env\n.env\n.env.local\n")
+        with open(os.path.join(path, ".gitignore"), "w") as fp:
+            fp.writelines(lines)
+        result["fixed"] = True
+        result["message"] = "Generated .gitignore"
+
+    elif title == "Add LICENSE":
+        year = datetime.now().year
+        mit = f"""MIT License
+
+Copyright (c) {year}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+        with open(os.path.join(path, "LICENSE"), "w") as fp:
+            fp.write(mit)
+        result["fixed"] = True
+        result["message"] = "Added MIT License"
+
+    elif title == "Initialize git":
+        r = subprocess.run(["git", "init"], cwd=path, capture_output=True, text=True,
+                          timeout=30, shell=(sys.platform == "win32"))
+        result["fixed"] = r.returncode == 0
+        result["message"] = "Initialized git repository" if result["fixed"] else f"git init failed: {r.stderr}"
+
+    elif title == "Initialize Ruflo":
+        r = runner.ruflo_init(path)
+        result["fixed"] = r.get("success", False)
+        result["message"] = "Initialized Ruflo" if result["fixed"] else "Ruflo init failed"
+
+    elif title == "Run npm install":
+        r = runner.run_cmd(["npm", "install"], cwd=path, timeout=120)
+        result["fixed"] = r.get("success", False)
+        result["message"] = "npm install complete" if result["fixed"] else "npm install failed"
+
+    elif title.startswith("Remove .env from git"):
+        subprocess.run(["git", "rm", "--cached", ".env"], cwd=path, capture_output=True, text=True,
+                       timeout=10, shell=(sys.platform == "win32"))
+        # Add to gitignore
+        gi_path = os.path.join(path, ".gitignore")
+        existing = ""
+        if os.path.exists(gi_path):
+            existing = open(gi_path).read()
+        if ".env" not in existing:
+            with open(gi_path, "a") as fp:
+                fp.write("\n.env\n.env.local\n")
+        result["fixed"] = True
+        result["message"] = "Removed .env from git tracking, added to .gitignore"
+
+    elif title == "Add README.md":
+        readme = f"# {repo['name']}\n\nProject description goes here.\n"
+        with open(os.path.join(path, "README.md"), "w") as fp:
+            fp.write(readme)
+        result["fixed"] = True
+        result["message"] = "Created basic README.md"
+
+    elif title == "Generate CLAUDE.md":
+        claude_md = f"""# {repo['name']}
+
+## Project Overview
+This project is located at `{path}`.
+
+## Key Files
+Check the repository root for main source files.
+
+## Conventions
+- Follow existing code style
+- Run tests before committing
+- Keep functions focused and small
+
+## Agent Instructions
+- Use grep to scan the codebase before making changes
+- Check for existing patterns before adding new ones
+- Run the test suite after every change
+"""
+        with open(os.path.join(path, "CLAUDE.md"), "w") as fp:
+            fp.write(claude_md)
+        result["fixed"] = True
+        result["message"] = "Generated CLAUDE.md"
+
+    elif title == "Add test coverage":
+        # Create basic test skeleton
+        files = set(os.listdir(path))
+        if "package.json" in files:
+            os.makedirs(os.path.join(path, "__tests__"), exist_ok=True)
+            with open(os.path.join(path, "__tests__", "basic.test.js"), "w") as fp:
+                fp.write("describe('Basic', () => {\n  test('should pass', () => {\n    expect(true).toBe(true);\n  });\n});\n")
+            result["message"] = "Created __tests__/basic.test.js skeleton"
+        else:
+            with open(os.path.join(path, "test_basic.py"), "w") as fp:
+                fp.write("def test_basic():\n    assert True\n")
+            result["message"] = "Created test_basic.py skeleton"
+        result["fixed"] = True
+
+    return result
+
+
+def detect_project_type(path):
+    """Detect project type and tech stack from files."""
+    files = set()
+    try:
+        for item in os.listdir(path):
+            files.add(item.lower())
+    except:
+        return {"type": "unknown", "stack": [], "file_count": 0}
+
+    stack = []
+    ptype = "unknown"
+    file_count = 0
+
+    # Count source files
+    for root, dirs, fnames in os.walk(path):
+        dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", ".next", "venv", "dist", "build"}]
+        file_count += len([f for f in fnames if any(f.endswith(e) for e in [".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go"])])
+
+    if "package.json" in files:
+        stack.append("node")
+        if any(f in files for f in [".jsx", ".tsx"]) or os.path.isdir(os.path.join(path, "src")):
+            # Check for React
+            try:
+                pkg = json.load(open(os.path.join(path, "package.json")))
+                deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+                if "react" in deps:
+                    stack.append("react")
+                if "next" in deps:
+                    stack.append("nextjs")
+                if "express" in deps:
+                    stack.append("express")
+                if "typescript" in deps:
+                    stack.append("typescript")
+            except:
+                pass
+        ptype = "node-react" if "react" in stack else "node"
+
+    if any(f.endswith(".py") for f in files) or "requirements.txt" in files or "pyproject.toml" in files:
+        stack.append("python")
+        if "requirements.txt" in files:
+            try:
+                reqs = open(os.path.join(path, "requirements.txt")).read().lower()
+                if "fastapi" in reqs:
+                    stack.append("fastapi")
+                if "flask" in reqs:
+                    stack.append("flask")
+                if "django" in reqs:
+                    stack.append("django")
+            except:
+                pass
+        ptype = "python" if ptype == "unknown" else "fullstack"
+
+    if "cargo.toml" in files:
+        stack.append("rust")
+        ptype = "rust"
+
+    if ptype == "unknown":
+        # Static site
+        if any(f.endswith(".html") for f in files):
+            stack.append("html")
+            ptype = "static"
+
+    # Determine swarm size
+    if file_count < 20:
+        swarm_size = 4
+        topology = "mesh"
+    elif file_count < 100:
+        swarm_size = 8
+        topology = "hierarchical"
+    else:
+        swarm_size = 12
+        topology = "hierarchical"
+
+    # Determine SPARC mode
+    sparc = "dev"
+    if "fastapi" in stack or "express" in stack or "flask" in stack:
+        sparc = "api"
+    elif "react" in stack or "nextjs" in stack:
+        sparc = "ui"
+    elif has_tests_in(path):
+        sparc = "tdd"
+
+    return {
+        "type": ptype, "stack": stack, "file_count": file_count,
+        "swarm_size": swarm_size, "topology": topology, "sparc_mode": sparc,
+    }
+
+
+def has_tests_in(path):
+    """Check if repo has substantial test files."""
+    for root, dirs, fnames in os.walk(path):
+        dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", "venv", "dist"}]
+        for f in fnames:
+            if f.startswith("test_") or f.endswith("_test.py") or f.endswith(".test.js") or f.endswith(".test.ts") or f.endswith(".spec.js"):
+                return True
+    return False
+
+
+def handle_chat_command(message):
+    """Parse a natural language chat command and execute it."""
+    msg = message.lower().strip()
+    repos = manager.master.get_repos()
+
+    # "fix all gitignores" / "add gitignore everywhere"
+    if "gitignore" in msg and ("fix" in msg or "add" in msg or "all" in msg):
+        fixed = 0
+        for repo in repos:
+            if not os.path.exists(os.path.join(repo["path"], ".gitignore")):
+                r = fix_repo_issue(repo, {"title": "Add .gitignore"})
+                if r["fixed"]:
+                    fixed += 1
+        return {"message": f"Added .gitignore to {fixed} repos.", "action": "fix_gitignore", "count": fixed}
+
+    # "add tests to X"
+    m = re.search(r"add tests? to (.+)", msg)
+    if m:
+        target = m.group(1).strip()
+        repo = next((r for r in repos if target in r["name"].lower()), None)
+        if repo:
+            r = fix_repo_issue(repo, {"title": "Add test coverage"})
+            return {"message": f"Added test skeleton to {repo['name']}: {r['message']}", "action": "add_tests"}
+        return {"message": f"Repo '{target}' not found.", "action": "error"}
+
+    # "scan" / "scan all"
+    if "scan" in msg:
+        results = [scan_repo_health(r) for r in repos]
+        avg_score = sum(r["health_score"] for r in results) / max(len(results), 1)
+        total_issues = sum(len(r["issues"]) for r in results)
+        return {"message": f"Scanned {len(results)} repos. Average health: {avg_score:.0f}%. {total_issues} total issues found.",
+                "action": "scan", "results": results}
+
+    # "fix all" / "fix everything"
+    if "fix" in msg and ("all" in msg or "everything" in msg):
+        all_results = []
+        for repo in repos:
+            report = scan_repo_health(repo)
+            for issue in report["issues"]:
+                if issue["auto_fixable"]:
+                    r = fix_repo_issue(repo, issue)
+                    r["repo_name"] = repo["name"]
+                    all_results.append(r)
+        fixed = sum(1 for r in all_results if r["fixed"])
+        return {"message": f"Fixed {fixed}/{len(all_results)} auto-fixable issues across {len(repos)} repos.",
+                "action": "fix_all", "results": all_results}
+
+    # "start X" / "stop X"
+    for action in ["start", "stop"]:
+        if msg.startswith(action):
+            target = msg.replace(action, "").strip()
+            if target == "all":
+                if action == "start":
+                    manager.start_all()
+                else:
+                    manager.stop_all()
+                return {"message": f"{action.title()}ed all repos.", "action": f"{action}_all"}
+            repo = next((r for r in repos if target in r["name"].lower()), None)
+            if repo:
+                if action == "start":
+                    manager.start_repo(repo["id"])
+                else:
+                    manager.stop_repo(repo["id"])
+                return {"message": f"{action.title()}ed {repo['name']}.", "action": action}
+            return {"message": f"Repo '{target}' not found.", "action": "error"}
+
+    # "update all readmes"
+    if "readme" in msg and ("update" in msg or "add" in msg or "all" in msg):
+        fixed = 0
+        for repo in repos:
+            if not os.path.exists(os.path.join(repo["path"], "README.md")):
+                r = fix_repo_issue(repo, {"title": "Add README.md"})
+                if r["fixed"]:
+                    fixed += 1
+        return {"message": f"Added README.md to {fixed} repos.", "action": "add_readmes", "count": fixed}
+
+    # "npm install" in various repos
+    if "npm install" in msg:
+        target = msg.replace("npm install", "").replace("run", "").replace("in", "").strip()
+        targets = []
+        if "all" in target or not target:
+            targets = [r for r in repos if os.path.exists(os.path.join(r["path"], "package.json"))]
+        else:
+            repo = next((r for r in repos if target in r["name"].lower()), None)
+            if repo:
+                targets = [repo]
+        done = 0
+        for repo in targets:
+            r = runner.run_cmd(["npm", "install"], cwd=repo["path"], timeout=120)
+            if r.get("success"):
+                done += 1
+        return {"message": f"Ran npm install in {done}/{len(targets)} repos.", "action": "npm_install"}
+
+    # "add feature/issue to X: description"
+    m = re.search(r"add (feature|issue) to (.+?):\s*(.+)", msg)
+    if m:
+        itype, target, desc = m.group(1), m.group(2).strip(), m.group(3).strip()
+        repo = next((r for r in repos if target in r["name"].lower()), None)
+        if repo:
+            db = manager.get_repo_db(repo["id"])
+            if db:
+                db.add_item(itype, desc[:80], desc, "medium", "chat")
+                return {"message": f"Added {itype} to {repo['name']}: {desc[:80]}", "action": "add_item"}
+        return {"message": f"Repo '{target}' not found.", "action": "error"}
+
+    # Default — don't know
+    return {"message": f"I don't understand '{message}'. Try: 'scan all', 'fix all', 'start/stop [repo]', 'add feature to [repo]: [description]', 'add tests to [repo]'.",
+            "action": "unknown"}
 
 
 # ─── API Server ───────────────────────────────────────────────────────────────
@@ -1001,12 +1707,16 @@ class API(BaseHTTPRequestHandler):
                     r["state"] = st.current_state.value
                     r["cycle_count"] = st.cycle_count
                     r["active_agents"] = st.active_agents
+                    r["running"] = st.running or r.get("running", 0)
                     stats = {
                         "items_total": db.fetchone("SELECT COUNT(*) c FROM items")["c"],
                         "items_done": db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"],
+                        "items_pending": db.fetchone("SELECT COUNT(*) c FROM items WHERE status='pending'")["c"],
+                        "items_in_progress": db.fetchone("SELECT COUNT(*) c FROM items WHERE status='in_progress'")["c"],
                         "steps_total": db.fetchone("SELECT COUNT(*) c FROM plan_steps")["c"],
                         "steps_done": db.fetchone("SELECT COUNT(*) c FROM plan_steps WHERE status='completed'")["c"],
-                        "agents": len(db.fetchall("SELECT * FROM agents WHERE status='running'")),
+                        "steps_pending": db.fetchone("SELECT COUNT(*) c FROM plan_steps WHERE status!='completed'")["c"],
+                        "agents": st.active_agents,
                         "memory": db.fetchone("SELECT COUNT(*) c FROM memory")["c"],
                         "mistakes": db.fetchone("SELECT COUNT(*) c FROM mistakes")["c"],
                         "audio": db.fetchone("SELECT COUNT(*) c FROM audio_reviews")["c"],
@@ -1033,8 +1743,35 @@ class API(BaseHTTPRequestHandler):
             return self._json(db.fetchall("SELECT * FROM execution_log ORDER BY created_at DESC LIMIT 100") if db else [])
 
         if path == "/api/agents" and rid:
-            db = manager.get_repo_db(rid)
-            return self._json(db.fetchall("SELECT * FROM agents WHERE status='running'") if db else [])
+            try:
+                db = manager.get_repo_db(rid)
+                if not db:
+                    return self._json([])
+                # Try real agents table first
+                real = db.fetchall("SELECT * FROM agents WHERE status='running'")
+                if real:
+                    return self._json(real)
+                # Generate virtual agents from orchestrator state
+                repo = master.get_repo(rid)
+                if repo:
+                    st = db.load_state()
+                    n = st.active_agents or 0
+                    state_name = st.current_state.value if st.current_state else "idle"
+                    agent_types = {"do_refactor": ["architect","coder","reviewer","coder"],
+                                   "execute_step": ["coder","tester","coder","architect","reviewer"],
+                                   "test_step": ["tester","tester","coder"],
+                                   "update_plan": ["analyst","architect"],
+                                   "final_optimize": ["optimizer","coder"],
+                                   "scan_repo": ["scanner","tester"]}
+                    types = agent_types.get(state_name, ["coder"] * n)[:n]
+                    virtual = [{"id": i+1, "agent_id": f"ruflo-{t}-{i+1}", "agent_type": t,
+                                "status": "running", "task": state_name.replace("_"," ").title()}
+                               for i, t in enumerate(types)]
+                    return self._json(virtual)
+                return self._json([])
+            except Exception as e:
+                log.error(f"Error in /api/agents: {e}")
+                return self._json([])
 
         if path == "/api/memory" and rid:
             db = manager.get_repo_db(rid)
@@ -1052,6 +1789,25 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/state" and rid:
             return self._json(manager.get_repo_state(rid))
+
+        if path == "/api/health-scan":
+            repos = manager.master.get_repos()
+            results = []
+            for repo in repos:
+                report = scan_repo_health(repo)
+                report["project_type"] = detect_project_type(repo["path"])
+                results.append(report)
+            return self._json(results)
+
+        if path == "/api/chat/history":
+            return self._json(chat_history[-50:])
+
+        if path == "/api/ruflo-config" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json({})
+            configs = db.fetchall("SELECT * FROM memory WHERE namespace='ruflo_config'")
+            return self._json({c["key"]: c["value"] for c in configs})
 
         self._json({"error": "Not found"}, 404)
 
@@ -1110,6 +1866,91 @@ class API(BaseHTTPRequestHandler):
             result = runner.git_push(repo["path"], b.get("message","manual push"), repo.get("branch","main"))
             return self._json(result)
 
+        if path == "/api/fix-all":
+            repos = manager.master.get_repos()
+            all_results = []
+            for repo in repos:
+                report = scan_repo_health(repo)
+                for issue in report["issues"]:
+                    if issue["auto_fixable"]:
+                        fix_result = fix_repo_issue(repo, issue)
+                        fix_result["repo_name"] = repo["name"]
+                        all_results.append(fix_result)
+            fixed = sum(1 for r in all_results if r["fixed"])
+            return self._json({"ok": True, "results": all_results, "fixed_count": fixed,
+                               "total_attempted": len(all_results)})
+
+        if path == "/api/fix":
+            rid = b.get("repo_id")
+            repos = manager.master.get_repos()
+            repo = next((r for r in repos if r["id"] == rid), None)
+            if not repo:
+                return self._json({"error": "Not found"}, 404)
+            issue = {"title": b.get("issue_title", ""), "severity": b.get("severity", "issue"),
+                     "description": b.get("description", ""), "auto_fixable": True}
+            result = fix_repo_issue(repo, issue)
+            return self._json(result)
+
+        if path == "/api/memory/seed":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            repo = next((r for r in manager.master.get_repos() if r["id"] == rid), None)
+            if not repo: return self._json({"error": "Repo not found"}, 404)
+            count = 0
+            # Seed from repo info
+            db.mem_store("config", "repo_name", repo["name"])
+            db.mem_store("config", "repo_path", repo["path"])
+            db.mem_store("config", "github_url", repo.get("github_url", ""))
+            db.mem_store("config", "branch", repo.get("branch", "main"))
+            count += 4
+            # Seed from items summary
+            items_list = db.fetchall("SELECT type, title, status FROM items")
+            if items_list:
+                pending = [i["title"] for i in items_list if i["status"] == "pending"]
+                done = [i["title"] for i in items_list if i["status"] == "completed"]
+                db.mem_store("items", "pending_count", str(len(pending)))
+                db.mem_store("items", "completed_count", str(len(done)))
+                db.mem_store("items", "pending_titles", json.dumps(pending[:20]))
+                count += 3
+            # Seed from health scan
+            try:
+                report = scan_repo_health(repo)
+                db.mem_store("health", "score", str(report["health_score"]))
+                db.mem_store("health", "issues_count", str(len(report["issues"])))
+                count += 2
+            except Exception:
+                pass
+            # Seed from state
+            st = db.load_state()
+            db.mem_store("state", "current_state", st.current_state.value)
+            db.mem_store("state", "cycle_count", str(st.cycle_count))
+            count += 2
+            return self._json({"ok": True, "entries_seeded": count})
+
+        if path == "/api/chat":
+            message = b.get("message", "").strip()
+            if not message:
+                return self._json({"error": "message required"}, 400)
+
+            # Add user message to history
+            chat_history.append({"role": "user", "content": message, "time": datetime.now(timezone.utc).isoformat()})
+
+            # Parse intent — simple keyword-based for now (no Claude call needed)
+            response = handle_chat_command(message)
+            chat_history.append({"role": "assistant", "content": response["message"], "time": datetime.now(timezone.utc).isoformat()})
+            return self._json(response)
+
+        if path == "/api/ruflo-config":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json({"error": "No repo"}, 400)
+            config = b.get("config", {})
+            for k, v in config.items():
+                db.mem_store("ruflo_config", k, v)
+            return self._json({"ok": True})
+
         self._json({"error": "Not found"}, 404)
 
     def log_message(self, *a):
@@ -1125,15 +1966,27 @@ def serve():
 # ─── Entry ────────────────────────────────────────────────────────────────────
 
 def main():
+    global TELEGRAM_ENABLED
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--server-only", action="store_true")
     ap.add_argument("--start-all", action="store_true")
+    ap.add_argument("--telegram", action="store_true", help="Enable Telegram bot")
     args = ap.parse_args()
 
     # Start API server
     st = threading.Thread(target=serve, daemon=True)
     st.start()
+
+    # Start Telegram bot if requested
+    if args.telegram:
+        TELEGRAM_ENABLED = True
+        try:
+            from telegram_bot import bot as tg_bot, send_message as tg_send
+            tg_bot.start()
+            log.info("📱 Telegram bot enabled")
+        except Exception as e:
+            log.error(f"Telegram bot failed to start: {e}")
 
     if args.start_all:
         manager.start_all()

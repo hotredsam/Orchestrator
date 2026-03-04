@@ -3,11 +3,19 @@
 # Double-click this file in Finder to start
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_DIR"
 
 echo "◈ Swarm Orchestrator starting..."
 
-python3 orchestrator.py --start-all &
+# Check if already running
+if curl -s http://localhost:6969/api/repos > /dev/null 2>&1; then
+    echo "✅ Server already running! Opening dashboard..."
+    open "http://localhost:6969"
+    exit 0
+fi
+
+PYTHONIOENCODING=utf-8 python3 orchestrator.py --start-all &
 PID=$!
 
 # Wait for ready

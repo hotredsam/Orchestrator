@@ -80,6 +80,12 @@ function Dashboard() {
   const [connected, setCon] = useState(false);
   const [ni, setNI] = useState({ type: "feature", title: "", description: "", priority: "medium" });
   const [nr, setNR] = useState({ name: "", path: "", github_url: "", branch: "main" });
+  const [healthData, setHealthData] = useState([]);
+  const [scanning, setScanning] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [chatMsg, setChatMsg] = useState("");
+  const [chatHistory, setChatHistory] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
   const [recording, setRec] = useState(false);
   const [recTime, setRecTime] = useState(0);
   const mRec = useRef(null);
@@ -129,6 +135,31 @@ function Dashboard() {
   const startAll = async () => { await f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }); load(); };
   const pushGH = async () => { if(sr) await f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: sr, message: "manual push" }) }); };
 
+  const scanAll = async () => {
+    setScanning(true);
+    try { const r = await f("/api/health-scan"); if(r.ok) setHealthData(await r.json()); } catch {}
+    setScanning(false);
+  };
+  const fixAll = async () => {
+    setFixing(true);
+    try { await f("/api/fix-all", { method: "POST", body: JSON.stringify({}) }); await scanAll(); } catch {}
+    setFixing(false);
+  };
+  const sendChat = async () => {
+    if (!chatMsg.trim()) return;
+    const msg = chatMsg.trim();
+    setChatHistory(h => [...h, { role: "user", content: msg, time: new Date().toLocaleTimeString() }]);
+    setChatMsg(""); setChatLoading(true);
+    try {
+      const r = await f("/api/chat", { method: "POST", body: JSON.stringify({ message: msg }) });
+      if (r.ok) {
+        const d = await r.json();
+        setChatHistory(h => [...h, { role: "assistant", content: d.message, time: new Date().toLocaleTimeString() }]);
+      }
+    } catch {}
+    setChatLoading(false);
+  };
+
   const startRecording = async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -171,15 +202,15 @@ function Dashboard() {
     lightOrange: "#FFD699", lightTeal: "#B2EBF2",
   };
 
-  const Card = ({ children, bg = C.white, style, ...p }) => (
-    <div style={{ background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 16, padding: 16, boxShadow: "4px 4px 0 #3D2B1F", ...style }} {...p}>{children}</div>
+  const Card = ({ children, bg = C.white, style, className, ...p }) => (
+    <div className={className} style={{ background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 16, padding: 16, boxShadow: "4px 4px 0 #3D2B1F", ...style }} {...p}>{children}</div>
   );
   const Inp = ({ style, ...p }) => (
     <input style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka', sans-serif", boxSizing: "border-box", outline: "none", ...style }} {...p} />
   );
   const Btn = ({ children, bg = C.orange, color = C.white, style, ...p }) => (
-    <button style={{ padding: "10px 20px", background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, color, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1.5, boxShadow: "3px 3px 0 #3D2B1F", transition: "transform .1s", ...style }}
-      onMouseDown={e => e.target.style.transform = "translate(2px,2px)"}
+    <button className="hover-pop" style={{ padding: "10px 20px", background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, color, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1.5, boxShadow: "3px 3px 0 #3D2B1F", transition: "transform .15s, filter .15s, box-shadow .15s", ...style }}
+      onMouseDown={e => e.target.style.transform = "translate(2px,2px) scale(0.97)"}
       onMouseUp={e => e.target.style.transform = ""} onMouseOut={e => e.target.style.transform = ""} {...p}>{children}</button>
   );
 
@@ -189,6 +220,7 @@ function Dashboard() {
 
   const TABS = [
     { id: "home", label: "🏠 Town Square" },
+    { id: "master", label: "🌐 View All" },
     { id: "flow", label: "🗺️ Road Map" },
     { id: "items", label: "📋 Bounty Board" },
     { id: "plan", label: "⚡ Build Plan" },
@@ -197,6 +229,7 @@ function Dashboard() {
     { id: "memory", label: "🧠 Memory" },
     { id: "mistakes", label: "💀 Mistakes" },
     { id: "logs", label: "📜 Logs" },
+    { id: "health", label: "🔍 Health Check" },
   ];
 
   return (
@@ -210,33 +243,77 @@ function Dashboard() {
         @keyframes wiggle{0%,100%{transform:rotate(0)}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
         @keyframes rec{0%,100%{opacity:1}50%{opacity:.2}}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes sway{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+        @keyframes sunPulse{0%,100%{filter:drop-shadow(0 0 8px #FFE066)}50%{filter:drop-shadow(0 0 20px #FFE066)}}
+        @keyframes tumble{0%{transform:translateX(-40px) rotate(0)}100%{transform:translateX(calc(100vw + 40px)) rotate(720deg)}}
+        @keyframes sparkle{0%,100%{opacity:0;transform:scale(0)}50%{opacity:1;transform:scale(1)}}
+        @keyframes cloudDrift{0%{transform:translateX(-200px)}100%{transform:translateX(calc(100vw + 200px))}}
         textarea,select{font-family:'Fredoka',sans-serif}
         select option{background:${C.cream};color:${C.darkBrown}}
+        @media(max-width:700px){.cactus-right{display:none!important}}
+        .hover-lift:hover{transform:translateY(-4px) scale(1.02)!important;box-shadow:6px 6px 0 #3D2B1F!important}
+        .hover-glow:hover{box-shadow:0 0 12px rgba(247,148,29,0.4), 4px 4px 0 #3D2B1F!important}
+        .hover-pop:hover{transform:scale(1.05)!important;filter:brightness(1.1)}
+        .nav-tab:hover{background:rgba(255,255,255,0.2)!important}
+        .stat-card:hover{transform:translateY(-3px)!important;box-shadow:5px 5px 0 #3D2B1F!important}
       `}</style>
 
       {/* ═══ HEADER — Desert Banner ═══ */}
-      <div style={{ background: `linear-gradient(180deg, ${C.sky} 0%, ${C.orange} 100%)`, padding: "16px 20px 10px", textAlign: "center", borderBottom: `4px solid ${C.darkBrown}`, position: "relative", overflow: "hidden" }}>
-        {/* Desert hills */}
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 30, background: C.sand, borderRadius: "50% 50% 0 0", transform: "scaleX(1.5)" }} />
-        <div style={{ position: "absolute", bottom: 0, left: "20%", width: 60, height: 50, background: C.green, borderRadius: "30px 30px 0 0", border: `2px solid ${C.darkBrown}`, borderBottom: "none" }} />
-        <div style={{ position: "absolute", bottom: 0, right: "15%", width: 40, height: 70, background: C.green, borderRadius: "20px 20px 0 0", border: `2px solid ${C.darkBrown}`, borderBottom: "none" }} />
+      <div style={{ background: `linear-gradient(180deg, ${C.orange} 0%, #F4D35E 70%, ${C.sand} 100%)`, padding: "18px 20px 14px", textAlign: "center", borderBottom: `4px solid ${C.darkBrown}`, position: "relative", overflow: "hidden", minHeight: 110 }}>
 
-        <div style={{ position: "relative", zIndex: 1 }}>
-          <h1 style={{ fontFamily: "'Bangers', cursive", fontSize: 48, letterSpacing: 4, color: C.white, textShadow: `3px 3px 0 ${C.darkBrown}, -1px -1px 0 ${C.darkBrown}, 1px -1px 0 ${C.darkBrown}, -1px 1px 0 ${C.darkBrown}`, margin: 0 }}>
+        {/* Desert hills */}
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 30, zIndex: 0 }}>
+          <svg width="100%" height="30" viewBox="0 0 800 30" preserveAspectRatio="none" style={{ position: "absolute", bottom: 0 }}>
+            <path d="M0,25 Q200,5 400,20 Q600,5 800,22 L800,30 L0,30Z" fill="#F4D35E" opacity="0.6" />
+          </svg>
+        </div>
+
+        {/* Cactus Left — simple saguaro */}
+        <div style={{ position: "absolute", bottom: 0, left: "8%", zIndex: 1, animation: "sway 5s ease-in-out infinite", transformOrigin: "bottom center" }}>
+          <svg width="40" height="70" viewBox="0 0 40 70">
+            <rect x="15" y="8" width="10" height="62" rx="5" fill="#2D8B46" stroke="#1a5c2e" strokeWidth="1.5" />
+            <path d="M15,30 Q4,30 4,18" fill="none" stroke="#2D8B46" strokeWidth="8" strokeLinecap="round" />
+            <path d="M25,22 Q36,22 36,12" fill="none" stroke="#2D8B46" strokeWidth="7" strokeLinecap="round" />
+            <circle cx="20" cy="10" r="5" fill="#2D8B46" stroke="#1a5c2e" strokeWidth="1" />
+          </svg>
+        </div>
+
+        {/* Cactus Right — only on wide screens */}
+        <div className="cactus-right" style={{ position: "absolute", bottom: 0, right: "8%", zIndex: 1, animation: "sway 6s ease-in-out infinite", animationDelay: "1s", transformOrigin: "bottom center" }}>
+          <svg width="35" height="60" viewBox="0 0 35 60">
+            <rect x="12" y="5" width="10" height="55" rx="5" fill="#228B3E" stroke="#145c27" strokeWidth="1.5" />
+            <path d="M12,25 Q2,25 2,15" fill="none" stroke="#228B3E" strokeWidth="7" strokeLinecap="round" />
+            <path d="M22,18 Q32,18 32,10" fill="none" stroke="#228B3E" strokeWidth="6" strokeLinecap="round" />
+            <circle cx="17" cy="7" r="5" fill="#228B3E" stroke="#145c27" strokeWidth="1" />
+          </svg>
+        </div>
+
+        {/* Small barrel cactus */}
+        <div style={{ position: "absolute", bottom: 2, right: "25%", zIndex: 1, animation: "float 4s ease-in-out infinite" }}>
+          <svg width="18" height="22" viewBox="0 0 18 22">
+            <ellipse cx="9" cy="13" rx="8" ry="9" fill="#3BA55C" stroke="#1a5c2e" strokeWidth="1" />
+            <circle cx="9" cy="5" r="2.5" fill="#FF6B9D" stroke="#c94070" strokeWidth="0.6" />
+          </svg>
+        </div>
+
+        {/* Title */}
+        <div style={{ position: "relative", zIndex: 2 }}>
+          <h1 style={{ fontFamily: "'Bangers', cursive", fontSize: 48, letterSpacing: 5, color: C.white, textShadow: `3px 3px 0 ${C.darkBrown}, -1px -1px 0 ${C.darkBrown}, 1px -1px 0 ${C.darkBrown}, -1px 1px 0 ${C.darkBrown}`, margin: 0 }}>
             SWARM TOWN
           </h1>
-          <p style={{ fontFamily: "'Bangers', cursive", fontSize: 16, color: C.cream, letterSpacing: 3, textShadow: `1px 1px 0 ${C.darkBrown}` }}>
+          <p style={{ fontFamily: "'Bangers', cursive", fontSize: 16, color: C.cream, letterSpacing: 3, textShadow: `1px 1px 0 ${C.darkBrown}`, marginTop: 2 }}>
             AUTONOMOUS MULTI-AGENT ORCHESTRATOR
           </p>
         </div>
 
         {/* Status pill + Global repo selector */}
-        <div style={{ position: "absolute", top: 12, right: 16, display: "flex", alignItems: "center", gap: 8, zIndex: 2 }}>
+        <div style={{ position: "absolute", top: 12, right: 16, display: "flex", alignItems: "center", gap: 8, zIndex: 3 }}>
           {repos.length > 0 && <select value={sr||""} onChange={e => setSR(Number(e.target.value))}
             style={{ padding: "5px 10px", background: C.yellow, border: `3px solid ${C.darkBrown}`, borderRadius: 12, fontSize: 13, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 180 }}>
             {repos.map(r => <option key={r.id} value={r.id}>{r.name} [{r.state || "idle"}]</option>)}
           </select>}
-          <div style={{ background: connected ? C.green : C.red, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: C.white }}>
+          <div style={{ background: connected ? C.green : C.red, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: C.white, animation: connected ? "none" : "pulse 1s infinite" }}>
             {connected ? "● LIVE" : "● OFFLINE"}
           </div>
         </div>
@@ -245,13 +322,13 @@ function Dashboard() {
       {/* ═══ NAV TABS ═══ */}
       <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: `3px solid ${C.darkBrown}`, gap: 0 }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
+          <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
             padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
             border: "none", borderRight: `2px solid ${C.darkBrown}`,
             borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
             color: tab === t.id ? C.darkBrown : C.white, cursor: "pointer",
             fontSize: 13, fontFamily: "'Bangers', cursive", letterSpacing: 1.5,
-            whiteSpace: "nowrap", fontWeight: 700,
+            whiteSpace: "nowrap", fontWeight: 700, transition: "background 0.2s, transform 0.15s",
           }}>{t.label}</button>
         ))}
       </div>
@@ -278,7 +355,7 @@ function Dashboard() {
                 { emoji: "✅", label: "Done", val: repos.reduce((s,r)=>(s+(r.stats?.items_done||0)),0), bg: C.lightTeal },
                 { emoji: "🤠", label: "Agents", val: repos.reduce((s,r)=>(s+(r.stats?.agents||0)),0), bg: C.lightOrange },
               ].map((s,i) => (
-                <div key={i} style={{ background: s.bg, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "10px 18px", textAlign: "center", boxShadow: "3px 3px 0 #3D2B1F", minWidth: 90 }}>
+                <div key={i} className="stat-card" style={{ background: s.bg, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "10px 18px", textAlign: "center", boxShadow: "3px 3px 0 #3D2B1F", minWidth: 90, transition: "transform 0.2s, box-shadow 0.2s", cursor: "default" }}>
                   <div style={{ fontSize: 24 }}>{s.emoji}</div>
                   <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, letterSpacing: 1 }}>{s.val}</div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: C.brown }}>{s.label}</div>
@@ -298,13 +375,14 @@ function Dashboard() {
                 const s = r.stats || {};
                 return (
                   <Card key={r.id} bg={sr === r.id ? C.yellow : C.white}
-                    style={{ cursor: "pointer", transition: "transform .15s", position: "relative", overflow: "hidden" }}
+                    className="hover-lift"
+                    style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", position: "relative", overflow: "hidden" }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
                     {/* Running indicator */}
                     {r.running && <div style={{ position: "absolute", top: -2, right: -2, background: C.green, border: `2px solid ${C.darkBrown}`, borderRadius: "0 12px 0 10px", padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.white }}>RUNNING</div>}
 
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: rst.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, animation: r.running ? "bounce 1.5s infinite" : "none" }}>
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: rst.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, transition: "transform 0.3s ease, background 0.3s ease", animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none" }}>
                         {rst.emoji}
                       </div>
                       <div style={{ flex: 1 }}>
@@ -332,14 +410,20 @@ function Dashboard() {
                       <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${s.steps_total ? (s.steps_done/s.steps_total*100) : 0}%`, transition: "width .5s" }} />
                     </div>
 
-                    {/* Action buttons */}
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    {/* Health badge + action buttons */}
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
                       {r.running
                         ? <Btn bg={C.red} onClick={e => { e.stopPropagation(); stopRepo(r.id); }} style={{ fontSize: 12, padding: "5px 12px" }}>⏹ Stop</Btn>
                         : <Btn bg={C.green} onClick={e => { e.stopPropagation(); startRepo(r.id); }} style={{ fontSize: 12, padding: "5px 12px" }}>▶ Start</Btn>}
-                      <div style={{ fontSize: 11, color: C.brown, display: "flex", alignItems: "center", gap: 4 }}>
+                      <div style={{ fontSize: 11, color: C.brown, display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
                         {rst.emoji} {rst.label}
                       </div>
+                      {healthData.length > 0 ? (() => {
+                        const h = healthData.find(hd => hd.repo_id === r.id);
+                        if (!h) return null;
+                        const sc = h.health_score >= 80 ? C.green : h.health_score >= 50 ? C.orange : C.red;
+                        return <div style={{ background: sc, color: C.white, borderRadius: 8, padding: "2px 8px", fontSize: 10, fontWeight: 700, border: `2px solid ${C.darkBrown}` }}>{h.health_score}%</div>;
+                      })() : null}
                     </div>
                   </Card>
                 );
@@ -375,6 +459,45 @@ function Dashboard() {
             </div>
           </SectionBg>
         </>)}
+
+        {/* ── MASTER / VIEW ALL ── */}
+        {tab === "master" && (
+          <SectionBg bg={C.cream}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 16, letterSpacing: 2 }}>🌐 All Repos — Master View</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+              {repos.map(r => {
+                const rst = STATES[r.state] || STATES.idle;
+                const s = r.stats || {};
+                const pct = s.steps_total ? Math.round(s.steps_done / s.steps_total * 100) : 0;
+                return (
+                  <Card key={r.id} className="hover-lift" bg={C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s" }}
+                    onClick={() => { setSR(r.id); setTab("flow"); }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: "50%", background: rst.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none" }}>
+                        {rst.emoji}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>{r.name}</div>
+                        <div style={{ fontSize: 11, color: C.brown }}>{rst.label} {r.running ? "— RUNNING" : ""}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 24, color: pct === 100 ? C.green : C.orange }}>{pct}%</div>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 12, overflow: "hidden", marginBottom: 8 }}>
+                      <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, transition: "width .5s" }} />
+                    </div>
+                    {/* Mini roadmap: show plan steps */}
+                    <div style={{ fontSize: 11, color: C.brown }}>
+                      Items: {s.items_done||0}/{s.items_total||0} | Steps: {s.steps_done||0}/{s.steps_total||0} | Cycles: {r.cycle_count||0}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </SectionBg>
+        )}
 
         {/* ── FLOW / ROAD MAP ── */}
         {tab === "flow" && (
@@ -546,10 +669,17 @@ function Dashboard() {
         {tab === "memory" && (
           <SectionBg bg={C.lightTeal}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>🧠 Agent Memory</h2>
+            <p style={{ textAlign: "center", fontSize: 12, color: C.brown, marginBottom: 12 }}>Ruflo memory — stores plans, execution results, configs. Populated as repos run through the orchestrator.</p>
+            <div style={{ textAlign: "center", marginBottom: 12 }}>
+              <Btn bg={C.teal} onClick={async () => { await f("/api/memory/seed", { method: "POST", body: JSON.stringify({ repo_id: sr }) }); load(); }} style={{ fontSize: 12, padding: "6px 14px" }}>🔄 Seed Memory from Repo State</Btn>
+            </div>
             <div style={{ maxWidth: 700, margin: "0 auto" }}>
-              {memory.length===0 ? <Card style={{ textAlign: "center" }}>Empty memory banks</Card> :
+              {memory.length===0 ? <Card style={{ textAlign: "center", padding: 20 }}>
+                <div style={{ fontSize: 16, marginBottom: 6 }}>No memory entries yet</div>
+                <div style={{ fontSize: 12, color: C.brown }}>Start a repo to generate plans, track executions, and build Ruflo memory. You can also click "Seed Memory" above to populate from current repo state.</div>
+              </Card> :
                 memory.map(m => (
-                  <div key={m.id} style={{ display: "flex", gap: 6, padding: "6px 10px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 3, fontSize: 12 }}>
+                  <div key={m.id} className="hover-glow" style={{ display: "flex", gap: 6, padding: "6px 10px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 3, fontSize: 12, transition: "box-shadow 0.2s" }}>
                     <span style={{ background: C.orange, color: C.white, borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{m.namespace}</span>
                     <span style={{ fontWeight: 700, minWidth: 80 }}>{m.key}</span>
                     <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.value?.slice(0,80)}</span>
@@ -598,6 +728,122 @@ function Dashboard() {
                   </div>
                 ))}
             </div>
+          </SectionBg>
+        )}
+
+        {/* ── HEALTH CHECK ── */}
+        {tab === "health" && (
+          <SectionBg bg={C.cream}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 16, letterSpacing: 2 }}>🔍 Health Check</h2>
+
+            {/* Scan + Fix buttons */}
+            <div style={{ textAlign: "center", marginBottom: 20, display: "flex", justifyContent: "center", gap: 12 }}>
+              <Btn onClick={scanAll} bg={C.teal} style={{ fontSize: 18, padding: "12px 30px" }}>
+                {scanning ? "⏳ Scanning..." : "🔍 SCAN ALL REPOS"}
+              </Btn>
+              <Btn onClick={fixAll} bg={C.green} style={{ fontSize: 18, padding: "12px 30px" }}>
+                {fixing ? "⏳ Fixing..." : "🔧 FIX ALL AUTO-FIXABLE"}
+              </Btn>
+            </div>
+
+            {/* Health Results */}
+            {healthData.length > 0 && (
+              <div style={{ maxWidth: 800, margin: "0 auto 20px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 12 }}>
+                  {healthData.map(h => {
+                    const scoreColor = h.health_score >= 80 ? C.green : h.health_score >= 50 ? C.orange : C.red;
+                    const pt = h.project_type || {};
+                    return (
+                      <Card key={h.repo_id} bg={C.white}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                          <div style={{ width: 50, height: 50, borderRadius: "50%", background: scoreColor, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", color: C.white, fontFamily: "'Bangers',cursive", fontSize: 20 }}>
+                            {h.health_score}%
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>{h.repo_name}</div>
+                            {pt.type && <div style={{ fontSize: 10, color: C.brown }}>{pt.type} • {pt.file_count} files • {pt.swarm_size} agents • {pt.sparc_mode} mode</div>}
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 12, overflow: "hidden", marginBottom: 8 }}>
+                          <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${scoreColor}, ${C.green})`, width: `${h.health_score}%`, transition: "width .5s" }} />
+                        </div>
+                        {/* Issues */}
+                        {h.issues.length === 0 ? (
+                          <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✅ All checks passed!</div>
+                        ) : h.issues.map((issue, i) => {
+                          const sevColor = { critical: C.red, issue: C.orange, warning: "#DAA520" }[issue.severity] || "#ccc";
+                          return (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", fontSize: 11, borderBottom: `1px solid ${C.cream}` }}>
+                              <span style={{ background: sevColor, color: C.white, borderRadius: 4, padding: "1px 6px", fontSize: 9, fontWeight: 700, minWidth: 50, textAlign: "center" }}>{issue.severity}</span>
+                              <span style={{ fontWeight: 600 }}>{issue.title}</span>
+                              {issue.auto_fixable && <span style={{ fontSize: 9, color: C.teal }}>🔧 auto-fix</span>}
+                            </div>
+                          );
+                        })}
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Chat Interface */}
+            <Card bg={C.yellow} style={{ maxWidth: 700, margin: "0 auto" }}>
+              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5, textAlign: "center" }}>💬 Command Center</div>
+              <div style={{ fontSize: 11, color: C.brown, marginBottom: 10, padding: "8px 12px", background: C.cream, borderRadius: 10, border: `2px solid ${C.darkBrown}` }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, textAlign: "center" }}>Available Commands:</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 12px" }}>
+                  {[
+                    ["scan all / scan [repo]", "Run health check on repos"],
+                    ["fix all / fix [repo]", "Auto-fix common issues"],
+                    ["start all / start [repo]", "Start orchestration"],
+                    ["stop all / stop [repo]", "Stop orchestration"],
+                    ["push [repo]", "Git push to GitHub"],
+                    ["status", "Show all repo statuses"],
+                    ["add feature to [repo]: [desc]", "Add a feature item"],
+                    ["add issue to [repo]: [desc]", "Add a bug/issue item"],
+                    ["add tests to [repo]", "Generate test files"],
+                    ["list repos", "Show all registered repos"],
+                  ].map(([cmd, desc], i) => (
+                    <div key={i} style={{ display: "flex", gap: 4 }}>
+                      <code style={{ background: C.lightOrange, borderRadius: 4, padding: "0 4px", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{cmd}</code>
+                      <span style={{ fontSize: 10, color: C.brown }}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Chat History */}
+              <div style={{ maxHeight: 250, overflow: "auto", marginBottom: 10, padding: 4 }}>
+                {chatHistory.map((m, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 6 }}>
+                    <div style={{
+                      maxWidth: "80%", padding: "8px 12px", borderRadius: 12,
+                      background: m.role === "user" ? C.orange : C.white,
+                      color: m.role === "user" ? C.white : C.darkBrown,
+                      border: `2px solid ${C.darkBrown}`, fontSize: 12,
+                    }}>
+                      {m.content}
+                      <div style={{ fontSize: 9, color: m.role === "user" ? C.cream : C.brown, marginTop: 2 }}>{m.time}</div>
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 6 }}>
+                    <div style={{ padding: "8px 12px", borderRadius: 12, background: C.white, border: `2px solid ${C.darkBrown}`, fontSize: 12 }}>
+                      <span style={{ animation: "pulse 1s infinite" }}>🤔 Thinking...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Chat Input */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <Inp value={chatMsg} onChange={e => setChatMsg(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && sendChat()}
+                  placeholder="Type a command..." style={{ flex: 1 }} />
+                <Btn onClick={sendChat} bg={C.teal}>Send</Btn>
+              </div>
+            </Card>
           </SectionBg>
         )}
 

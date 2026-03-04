@@ -5,6 +5,7 @@
 # ═══════════════════════════════════════════════════════════
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PORT=6969
 URL="http://localhost:$PORT"
 
@@ -12,9 +13,22 @@ echo "◈ Starting Swarm Orchestrator..."
 echo "  Dashboard: $URL"
 echo ""
 
+# Check if already running
+if curl -s "$URL/api/repos" > /dev/null 2>&1; then
+    echo "  ✅ Server already running! Opening dashboard..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        open "$URL"
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+        start "$URL"
+    else
+        xdg-open "$URL" 2>/dev/null || echo "  Open $URL in your browser"
+    fi
+    exit 0
+fi
+
 # Start orchestrator in background
-cd "$SCRIPT_DIR"
-python3 orchestrator.py --start-all &
+cd "$PROJECT_DIR"
+PYTHONIOENCODING=utf-8 python3 orchestrator.py --start-all &
 ORCH_PID=$!
 echo "  Orchestrator PID: $ORCH_PID"
 

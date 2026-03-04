@@ -29,12 +29,17 @@ from urllib.error import URLError
 WIN = sys.platform == "win32"
 SHELL = WIN  # Use shell=True on Windows for .cmd/.ps1 wrappers
 
+# Add project root and bot/ to path for imports
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _PROJECT_ROOT)
+sys.path.insert(0, os.path.join(_PROJECT_ROOT, "bot"))
+
 
 # ─── FIXTURES ─────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
 def project_dir():
-    return os.path.dirname(os.path.abspath(__file__))
+    return _PROJECT_ROOT
 
 @pytest.fixture
 def temp_repo(tmp_path):
@@ -771,3 +776,274 @@ class TestMultiRepo:
         perms = temp_db.get_permissions()
         assert len(perms) >= 1
         assert perms[0]["access_type"] == "read"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GROUP 11: TELEGRAM BOT (Tests 101–110)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestTelegramBot:
+    """Test Telegram bot message handling, batching, and digest."""
+
+    def test_101_send_message_function_exists(self):
+        from telegram_bot import send_message
+        assert callable(send_message)
+
+    def test_102_queue_message_function_exists(self):
+        from telegram_bot import queue_message
+        assert callable(queue_message)
+
+    def test_103_daily_digest_function_exists(self):
+        from telegram_bot import send_daily_digest
+        assert callable(send_daily_digest)
+
+    def test_104_cmd_status_returns_string(self):
+        from telegram_bot import cmd_status
+        result = cmd_status()
+        assert isinstance(result, str)
+
+    def test_105_cmd_help_contains_commands(self):
+        from telegram_bot import cmd_help
+        result = cmd_help()
+        assert "status" in result.lower()
+        assert "start" in result.lower()
+        assert "help" in result.lower()
+
+    def test_106_handle_message_ignores_unknown_chat(self):
+        from telegram_bot import handle_message
+        # Should not raise even for unknown chat
+        handle_message({"chat": {"id": 9999}, "text": "status"})
+
+    def test_107_message_buffer_exists(self):
+        from telegram_bot import _message_buffer, _buffer_lock
+        assert isinstance(_message_buffer, list)
+
+    def test_108_bot_class_exists(self):
+        from telegram_bot import TelegramBot
+        bot = TelegramBot()
+        assert hasattr(bot, "start")
+        assert hasattr(bot, "stop")
+        assert hasattr(bot, "start_digest_timer")
+
+    def test_109_find_repo_returns_none_for_nonexistent(self):
+        from telegram_bot import _find_repo
+        # Will fail to connect to API but should not crash
+        result = _find_repo("nonexistent-repo-xyz")
+        # Either None or a repo
+        assert result is None or isinstance(result, dict)
+
+    def test_110_notify_functions_exist(self):
+        from telegram_bot import (notify_state_change, notify_cycle_complete,
+                                   notify_credits_exhausted, notify_error)
+        assert callable(notify_state_change)
+        assert callable(notify_cycle_complete)
+        assert callable(notify_credits_exhausted)
+        assert callable(notify_error)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GROUP 12: HEALTH CHECK SYSTEM (Tests 111–120)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestHealthCheck:
+    """Test health scanning, fixing, and chat commands."""
+
+    def test_111_scan_repo_health_function(self):
+        from orchestrator import scan_repo_health
+        assert callable(scan_repo_health)
+
+    def test_112_scan_returns_health_score(self, temp_repo):
+        from orchestrator import scan_repo_health
+        result = scan_repo_health({"id": 0, "path": temp_repo, "name": "test"})
+        assert "health_score" in result
+        assert 0 <= result["health_score"] <= 100
+
+    def test_113_scan_returns_issues_list(self, temp_repo):
+        from orchestrator import scan_repo_health
+        result = scan_repo_health({"id": 0, "path": temp_repo, "name": "test"})
+        assert "issues" in result
+        assert isinstance(result["issues"], list)
+
+    def test_114_fix_repo_issue_function(self):
+        from orchestrator import fix_repo_issue
+        assert callable(fix_repo_issue)
+
+    def test_115_detect_project_type_function(self, temp_repo):
+        from orchestrator import detect_project_type
+        result = detect_project_type(temp_repo)
+        assert "type" in result
+        assert "stack" in result
+        assert "file_count" in result
+
+    def test_116_detect_python_project(self, tmp_path):
+        from orchestrator import detect_project_type
+        (tmp_path / "main.py").write_text("print('hello')")
+        (tmp_path / "requirements.txt").write_text("flask")
+        result = detect_project_type(str(tmp_path))
+        assert result["type"] == "python"
+
+    def test_117_detect_node_project(self, tmp_path):
+        from orchestrator import detect_project_type
+        (tmp_path / "index.js").write_text("console.log('hi')")
+        (tmp_path / "package.json").write_text('{"name":"test","dependencies":{}}')
+        result = detect_project_type(str(tmp_path))
+        assert result["type"] in ("node", "react")
+
+    def test_118_handle_chat_command_function(self):
+        from orchestrator import handle_chat_command
+        assert callable(handle_chat_command)
+
+    def test_119_chat_history_exists(self):
+        from orchestrator import chat_history
+        assert isinstance(chat_history, list)
+
+    def test_120_fix_creates_gitignore(self, tmp_path):
+        from orchestrator import fix_repo_issue
+        repo = {"path": str(tmp_path), "name": "test"}
+        issue = {"type": "missing_gitignore", "title": "Missing .gitignore", "file": ".gitignore", "severity": "warning"}
+        result = fix_repo_issue(repo, issue)
+        assert isinstance(result, dict)
+        assert "title" in result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GROUP 13: MODEL ROUTING & QUALITY GATES (Tests 121–130)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestModelRouting:
+    """Test model routing and quality gate hooks."""
+
+    def test_121_runner_ralph_accepts_model(self, mock_runner):
+        """Runner.ralph accepts a model parameter."""
+        import inspect
+        sig = inspect.signature(mock_runner.ralph)
+        assert "model" in sig.parameters
+
+    def test_122_runner_claude_accepts_model(self, mock_runner):
+        """Runner.claude accepts a model parameter."""
+        import inspect
+        sig = inspect.signature(mock_runner.claude)
+        assert "model" in sig.parameters
+
+    def test_123_runner_claude_retry_accepts_model(self, mock_runner):
+        """Runner.claude_retry accepts a model parameter."""
+        import inspect
+        sig = inspect.signature(mock_runner.claude_retry)
+        assert "model" in sig.parameters
+
+    def test_124_quality_gate_method_exists(self, mock_runner):
+        assert hasattr(mock_runner, "ruflo_quality_gate")
+        assert callable(mock_runner.ruflo_quality_gate)
+
+    def test_125_ruflo_setup_method_exists(self, mock_runner):
+        assert hasattr(mock_runner, "ruflo_setup")
+        assert callable(mock_runner.ruflo_setup)
+
+    def test_126_ruflo_swarm_method_exists(self, mock_runner):
+        assert hasattr(mock_runner, "ruflo_swarm")
+        assert callable(mock_runner.ruflo_swarm)
+
+    def test_127_ruflo_sparc_method_exists(self, mock_runner):
+        assert hasattr(mock_runner, "ruflo_sparc")
+        assert callable(mock_runner.ruflo_sparc)
+
+    def test_128_ruflo_memory_store_method_exists(self, mock_runner):
+        assert hasattr(mock_runner, "ruflo_memory_store")
+
+    def test_129_ruflo_memory_search_method_exists(self, mock_runner):
+        assert hasattr(mock_runner, "ruflo_memory_search")
+
+    def test_130_quality_gate_returns_dict(self, mock_runner):
+        """Quality gate with mocked run_cmd returns proper structure."""
+        with patch.object(mock_runner, "run_cmd", return_value={"exit_code": 0, "success": True}):
+            result = mock_runner.ruflo_quality_gate("/tmp/fake", "full")
+            assert "passed" in result
+            assert "checks" in result
+            assert isinstance(result["checks"], dict)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GROUP 14: API ENDPOINTS (Tests 131–140)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAPIEndpoints:
+    """Test new API endpoints (health-scan, chat, ruflo-config, fix)."""
+
+    @pytest.fixture(autouse=True)
+    def _require_server(self):
+        """Skip if server is not running."""
+        try:
+            urlopen("http://localhost:6969/api/repos", timeout=2)
+        except Exception:
+            pytest.skip("Server not running on port 6969")
+
+    def test_131_health_scan_endpoint(self):
+        r = urlopen("http://localhost:6969/api/health-scan")
+        data = json.loads(r.read())
+        assert isinstance(data, list)
+
+    def test_132_chat_history_endpoint(self):
+        r = urlopen("http://localhost:6969/api/chat/history")
+        data = json.loads(r.read())
+        assert isinstance(data, list)
+
+    def test_133_chat_post_endpoint(self):
+        body = json.dumps({"message": "scan all"}).encode()
+        req = Request("http://localhost:6969/api/chat",
+                      data=body, headers={"Content-Type": "application/json"})
+        r = urlopen(req)
+        data = json.loads(r.read())
+        assert "message" in data or "response" in data
+
+    def test_134_repos_have_stats(self):
+        r = urlopen("http://localhost:6969/api/repos")
+        repos = json.loads(r.read())
+        if repos:
+            assert "stats" in repos[0]
+            stats = repos[0]["stats"]
+            assert "items_total" in stats
+            assert "steps_total" in stats
+
+    def test_135_repos_have_active_agents(self):
+        r = urlopen("http://localhost:6969/api/repos")
+        repos = json.loads(r.read())
+        if repos:
+            assert "active_agents" in repos[0]
+
+    def test_136_state_endpoint(self):
+        r = urlopen("http://localhost:6969/api/repos")
+        repos = json.loads(r.read())
+        if repos:
+            rid = repos[0]["id"]
+            r2 = urlopen(f"http://localhost:6969/api/state?repo_id={rid}")
+            data = json.loads(r2.read())
+            assert isinstance(data, dict)
+
+    def test_137_items_endpoint(self):
+        r = urlopen("http://localhost:6969/api/repos")
+        repos = json.loads(r.read())
+        if repos:
+            rid = repos[0]["id"]
+            r2 = urlopen(f"http://localhost:6969/api/items?repo_id={rid}")
+            data = json.loads(r2.read())
+            assert isinstance(data, list)
+
+    def test_138_plan_endpoint(self):
+        r = urlopen("http://localhost:6969/api/repos")
+        repos = json.loads(r.read())
+        if repos:
+            rid = repos[0]["id"]
+            r2 = urlopen(f"http://localhost:6969/api/plan?repo_id={rid}")
+            data = json.loads(r2.read())
+            assert isinstance(data, list)
+
+    def test_139_dashboard_serves_html(self):
+        r = urlopen("http://localhost:6969/")
+        html = r.read().decode()
+        assert "react" in html.lower()
+        assert "swarm-dashboard.jsx" in html
+
+    def test_140_dashboard_serves_jsx(self):
+        r = urlopen("http://localhost:6969/swarm-dashboard.jsx")
+        jsx = r.read().decode()
+        assert "Dashboard" in jsx or "function" in jsx
