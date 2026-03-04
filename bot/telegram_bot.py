@@ -823,6 +823,41 @@ def cmd_search(query):
     return "\n".join(lines)
 
 
+def cmd_tags(text):
+    """View or set repo tags. 'tags repo' to view, 'tags repo: tag1, tag2' to set."""
+    if ":" in text:
+        parts = text.split(":", 1)
+        name = parts[0].strip()
+        tags = parts[1].strip()
+        rid = _resolve_repo(name)
+        if not rid:
+            return f"Repo not found: {name}"
+        result = _orch_post("/api/repos/tags", {"repo_id": rid, "tags": tags})
+        if isinstance(result, dict) and result.get("ok"):
+            return f"\U0001F3F7\uFE0F Tags updated for *{name}*: {result.get('tags', tags)}"
+        return f"Failed to update tags for {name}."
+    else:
+        name = text.strip()
+        if not name:
+            # Show all repos with tags
+            repos = _orch_get("/api/repos")
+            if not isinstance(repos, list):
+                return "Could not fetch repos."
+            lines = ["*Repo Tags:*", ""]
+            for r in repos:
+                tags = r.get("tags", "")
+                if tags:
+                    lines.append(f"  *{r['name']}*: {tags}")
+            return "\n".join(lines) if len(lines) > 2 else "No repos have tags set."
+        rid = _resolve_repo(name)
+        if not rid:
+            return f"Repo not found: {name}"
+        repos = _orch_get("/api/repos")
+        repo = next((r for r in repos if r["id"] == rid), None)
+        tags = repo.get("tags", "") if repo else ""
+        return f"\U0001F3F7\uFE0F *{name}* tags: {tags}" if tags else f"No tags for *{name}*. Use `tags {name}: tag1, tag2` to set."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -862,6 +897,7 @@ def cmd_help():
 `add note repo: text` — Add a note
 `agent-stats [repo]` — Agent performance stats
 `search [query]` — Search items/logs/mistakes across all repos
+`tags` / `tags repo` / `tags repo: tag1,tag2` — View/set tags
 `app` — Open Mini App
 `help` — This message
 
@@ -1057,6 +1093,8 @@ def handle_message(msg):
         reply = cmd_help()
     elif t.startswith("search "):
         reply = cmd_search(t[7:].strip())
+    elif t.startswith("tags"):
+        reply = cmd_tags(t[4:].strip())
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         reply = f"Open the Swarm Town dashboard:\n{public_url}/telegram-app"

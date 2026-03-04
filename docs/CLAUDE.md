@@ -153,6 +153,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Command palette** — Ctrl+K opens command palette for quick navigation, actions, search. Chip suggestions for common commands
 - **Toast history** — notification bell in header shows past 50 toasts with timestamps, color-coded by type, clearable
 - **Notification badge** — bell icon shows unread count badge
+- **Telegram tags command** — `tags` to list all, `tags repo` to view, `tags repo: tag1,tag2` to set
+- **Batch start/stop by tag** — `/api/start` and `/api/stop` accept `{tag: "tagname"}` to operate on all repos with that tag
 - **Stale item detection** — `/api/stale-items?hours=2` finds items stuck in_progress across all repos, warning banner on Town Square
 - **Execution timeline** — `/api/timeline?repo_id=N` returns state transition history for debugging
 
@@ -283,6 +285,7 @@ notes [repo]    — View repo notes
 add note repo: text — Add a note
 agent-stats [repo] — Agent performance stats
 search [query]  — Cross-repo search (items, logs, mistakes)
+tags / tags repo / tags repo: t1,t2 — View/set repo tags
 app             — Open Mini App link
 help            — Show all commands
 ```

@@ -3088,8 +3088,19 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/start":
             rid = b.get("repo_id")
+            tag = b.get("tag")
             if rid == "all":
                 return self._json(manager.start_all())
+            if tag:
+                # Start all repos with this tag
+                repos = manager.master.get_repos()
+                started = []
+                for r in repos:
+                    if tag in (r.get("tags") or "").split(","):
+                        res = manager.start_repo(r["id"])
+                        if res.get("ok"):
+                            started.append(r["name"])
+                return self._json({"ok": True, "started": started, "tag": tag})
             rid_int = self._safe_int(rid)
             if rid_int is None:
                 return self._json({"error": "repo_id required (integer or 'all')"}, 400)
@@ -3097,9 +3108,18 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/stop":
             rid = b.get("repo_id")
+            tag = b.get("tag")
             if rid == "all":
                 manager.stop_all()
                 return self._json({"ok": True})
+            if tag:
+                repos = manager.master.get_repos()
+                stopped = []
+                for r in repos:
+                    if tag in (r.get("tags") or "").split(","):
+                        manager.stop_repo(r["id"])
+                        stopped.append(r["name"])
+                return self._json({"ok": True, "stopped": stopped, "tag": tag})
             rid_int = self._safe_int(rid)
             if rid_int is None:
                 return self._json({"error": "repo_id required (integer or 'all')"}, 400)
