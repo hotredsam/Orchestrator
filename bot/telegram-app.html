@@ -800,6 +800,13 @@
         <div class="input-group mb-12" style="display:flex;gap:6px;">
           <input type="text" class="input" id="itemsSearchInput" placeholder="Search items..." style="flex:1;" oninput="clearTimeout(window._itemSearchDebounce); window._itemSearchDebounce=setTimeout(loadItems, 300)">
         </div>
+        <div class="btn-row mb-12" id="itemsPrioRow" style="gap:4px;flex-wrap:wrap;">
+          <button class="btn btn-sm" data-prio="" onclick="setItemPrio('')" style="padding:2px 8px;font-size:10px;background:var(--teal);color:#fff;">All</button>
+          <button class="btn btn-outline btn-sm" data-prio="critical" onclick="setItemPrio('critical')" style="padding:2px 8px;font-size:10px;">⛔ Critical</button>
+          <button class="btn btn-outline btn-sm" data-prio="high" onclick="setItemPrio('high')" style="padding:2px 8px;font-size:10px;">🔴 High</button>
+          <button class="btn btn-outline btn-sm" data-prio="medium" onclick="setItemPrio('medium')" style="padding:2px 8px;font-size:10px;">🟡 Med</button>
+          <button class="btn btn-outline btn-sm" data-prio="low" onclick="setItemPrio('low')" style="padding:2px 8px;font-size:10px;">🟢 Low</button>
+        </div>
         <div id="itemsList">
           <div class="empty-state"><div class="empty-emoji">📦</div><p>Select a repo to view items</p></div>
         </div>
@@ -1271,6 +1278,16 @@
     }
 
     // ─── Screen 7: Items List ───────────────────────────────────────────────
+    let _itemPrioFilter = '';
+    function setItemPrio(p) {
+      _itemPrioFilter = p;
+      document.querySelectorAll('#itemsPrioRow button').forEach(b => {
+        const bp = b.getAttribute('data-prio');
+        if (bp === p) { b.classList.remove('btn-outline'); b.style.background = 'var(--teal)'; b.style.color = '#fff'; }
+        else { b.classList.add('btn-outline'); b.style.background = ''; b.style.color = ''; }
+      });
+      loadItems();
+    }
     async function loadItems() {
       const repoId = document.getElementById('itemsRepoSelect')?.value;
       const filter = document.getElementById('itemsFilter')?.value;
@@ -1288,10 +1305,11 @@
 
       let items = data;
       if (filter) items = items.filter(i => i.status === filter);
+      if (_itemPrioFilter) items = items.filter(i => (i.priority || 'medium') === _itemPrioFilter);
       const itemSearch = (document.getElementById('itemsSearchInput')?.value || '').toLowerCase();
       if (itemSearch) items = items.filter(i => (i.title || '').toLowerCase().includes(itemSearch) || (i.description || '').toLowerCase().includes(itemSearch));
 
-      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${items.length}${itemSearch ? ' matched' : ''} items${filter ? ` (${filter})` : ''}${itemSearch ? ` for "${esc(itemSearch)}"` : ''}</div>` + items.map(item => {
+      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${items.length}${itemSearch ? ' matched' : ''} items${filter ? ` (${filter})` : ''}${_itemPrioFilter ? ` [${_itemPrioFilter}]` : ''}${itemSearch ? ` for "${esc(itemSearch)}"` : ''}</div>` + items.map(item => {
         const statusColors = { pending: 'var(--orange)', in_progress: 'var(--teal)', completed: 'var(--green)' };
         const typeEmoji = item.type === 'issue' ? '🐛' : '✨';
         const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢', critical: '⛔' };
@@ -1659,6 +1677,7 @@
             <div class="card-row"><span class="card-label">Items</span><span class="card-value">${s.items_done || 0}/${s.items_total || 0}</span></div>
             <div class="card-row"><span class="card-label">Steps</span><span class="card-value">${s.steps_done || 0}/${s.steps_total || 0}</span></div>
             <div class="card-row"><span class="card-label">Cost</span><span class="card-value" style="color:var(--red);font-weight:700;">$${(typeof rCost === 'number' ? rCost : 0).toFixed(4)}</span></div>
+            ${(s.items_done || 0) > 0 ? `<div class="card-row"><span class="card-label">Cost/Item</span><span class="card-value" style="color:${((typeof rCost === 'number' ? rCost : 0) / (s.items_done || 1)) < 0.10 ? 'var(--green)' : ((typeof rCost === 'number' ? rCost : 0) / (s.items_done || 1)) < 0.50 ? 'var(--orange)' : 'var(--red)'};font-weight:700;">$${((typeof rCost === 'number' ? rCost : 0) / (s.items_done || 1)).toFixed(4)}</span></div>` : ''}
             <div class="card-row"><span class="card-label">Agents</span><span class="card-value">${s.agents || 0}</span></div>
             <div class="card-row"><span class="card-label">Mistakes</span><span class="card-value">${s.mistakes || 0}</span></div>
             <div class="card-row"><span class="card-label">Memory</span><span class="card-value">${s.memory || 0}</span></div>

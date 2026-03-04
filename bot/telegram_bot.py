@@ -1463,6 +1463,42 @@ def cmd_changelog(name: str = ""):
         return f"Error: {e}"
 
 
+def cmd_timeline(name: str = ""):
+    """Show execution timeline with state transitions for a repo."""
+    repo = _find_repo(name) if name else None
+    if not repo:
+        return f"Repo '{name}' not found. Usage: `/timeline <repo>`" if name else "Usage: `/timeline <repo>`"
+    rid = repo["id"]
+    data = _get(f"/api/timeline?repo_id={rid}&limit=15")
+    if not data:
+        return f"No timeline data for *{repo['name']}*."
+    lines = [f"\U0001F554 *Timeline — {repo['name']}* (last {len(data)}):\n"]
+    state_emoji = {"idle": "\U0001F4A4", "planning": "\U0001F4D0", "executing": "\u26A1", "testing": "\U0001F9EA",
+                   "pushing": "\U0001F680", "paused": "\u23F8\uFE0F", "error": "\U0001F534"}
+    total_cost = 0
+    total_dur = 0
+    err_count = 0
+    for entry in data:
+        st = entry.get("state", "idle")
+        act = entry.get("action", "")
+        ts_raw = entry.get("created_at", "")
+        cost = entry.get("cost_usd") or 0
+        dur = entry.get("duration_sec") or 0
+        err = entry.get("error") or ""
+        total_cost += cost
+        total_dur += dur
+        if err:
+            err_count += 1
+        emoji = state_emoji.get(st, "\u25AA\uFE0F")
+        ts_short = ts_raw[11:19] if len(ts_raw) > 19 else ts_raw[:19]
+        cost_str = f" ${cost:.4f}" if cost else ""
+        dur_str = f" {dur:.0f}s" if dur else ""
+        err_str = " \u274C" if err else ""
+        lines.append(f"  {emoji} `{ts_short}` {st}{' → ' + act if act else ''}{cost_str}{dur_str}{err_str}")
+    lines.append(f"\n\U0001F4CA *Totals:* ${total_cost:.4f} | {total_dur:.0f}s | {err_count} errors")
+    return "\n".join(lines)
+
+
 def cmd_pin(name: str = ""):
     """Pin a repo as default context for commands."""
     global _pinned_repo
@@ -1564,6 +1600,7 @@ def cmd_help():
 `notify` / `notify [cat]` — View/toggle notifications
 `pin [repo]` / `pin clear` — Set default repo for commands
 `changelog [repo]` — Recent git commits
+`timeline [repo]` — Execution state transition timeline
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -1868,6 +1905,8 @@ def handle_message(msg):
         reply = cmd_pin(t[4:].strip() if t.startswith("pin ") else "")
     elif t == "changelog" or t.startswith("changelog "):
         reply = cmd_changelog(t[10:].strip() if t.startswith("changelog ") else _pinned_repo)
+    elif t == "timeline" or t.startswith("timeline "):
+        reply = cmd_timeline(t[9:].strip() if t.startswith("timeline ") else _pinned_repo)
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         app_url = f"{public_url}/telegram-app"
