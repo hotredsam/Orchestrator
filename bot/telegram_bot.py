@@ -691,6 +691,35 @@ def cmd_metrics():
     return "Could not fetch metrics."
 
 
+def cmd_trends(name):
+    """Show trend summary for a repo."""
+    name = name.strip()
+    if not name:
+        return "Usage: `trends [repo]` — Show 7-day performance trends"
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    data = _orch_get(f"/api/trends?repo_id={repo['id']}&days=7")
+    if isinstance(data, dict) and "summary" in data:
+        s = data["summary"]
+        lines = [
+            f"*Trends for {repo['name']}* (7 days)",
+            f"Total cost: *${s.get('total_cost', 0)}*",
+            f"Items completed: *{s.get('total_items_completed', 0)}*",
+            f"Actions: *{s.get('total_actions', 0)}*",
+            f"Error rate: *{s.get('error_rate', 0)}%*",
+            f"Avg cost/day: *${s.get('avg_cost_per_day', 0)}*",
+            f"Avg items/day: *{s.get('avg_items_per_day', 0)}*",
+        ]
+        daily = data.get("daily", [])[-3:]
+        if daily:
+            lines.append("\n*Recent days:*")
+            for d in daily:
+                lines.append(f"`{d['day']}` — {d['actions']} acts, {d['items_completed']} items, ${d['cost']}")
+        return "\n".join(lines)
+    return "Could not fetch trends."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -723,6 +752,7 @@ def cmd_help():
 `retry [repo]` — Re-queue completed items
 `budget` / `budget [amount]` — View/set budget
 `metrics` — API request/latency stats
+`trends [repo]` — 7-day performance trends
 `app` — Open Mini App
 `help` — This message
 
@@ -896,6 +926,8 @@ def handle_message(msg):
         reply = cmd_retry(t[5:].strip())
     elif t in ("metrics", "stats"):
         reply = cmd_metrics()
+    elif t.startswith("trends"):
+        reply = cmd_trends(t[6:].strip())
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):

@@ -123,6 +123,7 @@ function Dashboard() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [mistakeAnalysis, setMistakeAnalysis] = useState(null);
   const [selectedItems, setSelectedItems] = useState(new Set());
+  const [trends, setTrends] = useState(null);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -250,6 +251,9 @@ function Dashboard() {
       if (full || t === "metrics") {
         try { const mr = await f("/api/metrics"); if(mr.ok) setApiMetrics(await mr.json()); } catch {}
       }
+      if (full || t === "trends") {
+        try { const tr = await f(`/api/trends?repo_id=${sr}&days=14`); if(tr.ok) setTrends(await tr.json()); } catch {}
+      }
       try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); } } catch {}
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -263,7 +267,7 @@ function Dashboard() {
     const handler = (e) => {
       // Don't handle when typing in inputs
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-      const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","settings"];
+      const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","trends","settings"];
       if (e.key >= "1" && e.key <= "9") { e.preventDefault(); const idx = parseInt(e.key) - 1; if (TABS_LIST[idx]) setTab(TABS_LIST[idx]); }
       if (e.key === "0") { e.preventDefault(); setTab("logs"); }
       if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${repo?.running ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
@@ -529,6 +533,7 @@ function Dashboard() {
     { id: "history", label: "⏪ History" },
     { id: "health", label: "🔍 Health Check" },
     { id: "metrics", label: "📊 Metrics" },
+    { id: "trends", label: "📈 Trends" },
     { id: "settings", label: "⚙️ Settings" },
   ];
 
@@ -1755,6 +1760,100 @@ function Dashboard() {
                 <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83D\uDCCA"}</div>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>No metrics data yet</div>
                 <div style={{ fontSize: 12, color: C.brown }}>Metrics appear after the API serves some requests.</div>
+              </Card>
+            )}
+          </SectionBg>
+        )}
+
+        {/* ── TRENDS ── */}
+        {tab === "trends" && (
+          <SectionBg bg={`linear-gradient(180deg, #E8F5E9 0%, #C8E6C9 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Trend Analysis</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Performance trends over the last 14 days</p>
+            {trends && trends.summary ? (
+              <>
+                <div style={{ maxWidth: 620, margin: "0 auto 16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+                  <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: C.teal }}>${trends.summary.total_cost}</div>
+                    <div style={{ fontSize: 11, color: C.brown }}>Total Cost</div>
+                  </Card>
+                  <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: C.green }}>{trends.summary.total_items_completed}</div>
+                    <div style={{ fontSize: 11, color: C.brown }}>Items Completed</div>
+                  </Card>
+                  <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: C.orange }}>{trends.summary.total_actions}</div>
+                    <div style={{ fontSize: 11, color: C.brown }}>Total Actions</div>
+                  </Card>
+                  <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: trends.summary.error_rate > 20 ? C.red : C.teal }}>{trends.summary.error_rate}%</div>
+                    <div style={{ fontSize: 11, color: C.brown }}>Error Rate</div>
+                  </Card>
+                </div>
+                <div style={{ maxWidth: 620, margin: "0 auto 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, color: C.brown }}>${trends.summary.avg_cost_per_day}</div>
+                    <div style={{ fontSize: 11, color: C.brown }}>Avg Cost/Day</div>
+                  </Card>
+                  <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, color: C.brown }}>{trends.summary.avg_items_per_day}</div>
+                    <div style={{ fontSize: 11, color: C.brown }}>Avg Items/Day</div>
+                  </Card>
+                </div>
+                {trends.daily?.length > 0 && (
+                  <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 16px", padding: 14 }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 10 }}>Daily Breakdown</div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ borderBottom: `2px solid ${C.darkBrown}` }}>
+                            <th style={{ padding: "6px 8px", textAlign: "left" }}>Day</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>Actions</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>Items</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>Cost</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>Errors</th>
+                            <th style={{ padding: "6px 8px", textAlign: "right" }}>Avg Dur</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {trends.daily.map((d, i) => (
+                            <tr key={i} style={{ borderBottom: `1px solid ${C.darkBrown}22` }}>
+                              <td style={{ padding: "6px 8px", fontWeight: 600 }}>{d.day}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right" }}>{d.actions}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right", color: C.green, fontWeight: 700 }}>{d.items_completed}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right" }}>${d.cost}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right", color: d.errors > 0 ? C.red : C.green }}>{d.errors}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right" }}>{d.avg_duration}s</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                )}
+                {trends.daily?.length > 0 && (
+                  <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto", padding: 14 }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 10 }}>Cost Trend</div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 100 }}>
+                      {trends.daily.map((d, i) => {
+                        const maxCost = Math.max(...trends.daily.map(x => x.cost), 0.001);
+                        const h = Math.max(4, (d.cost / maxCost) * 90);
+                        return (
+                          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                            <div style={{ width: "100%", height: h, background: d.errors > 0 ? C.red : C.teal, borderRadius: "4px 4px 0 0", minWidth: 8 }} title={`${d.day}: $${d.cost}`} />
+                            <span style={{ fontSize: 8, color: C.brown, transform: "rotate(-45deg)", whiteSpace: "nowrap" }}>{d.day.slice(5)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto", textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83D\uDCC8"}</div>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>No trend data yet</div>
+                <div style={{ fontSize: 13, color: C.brown }}>Trends appear after the swarm starts executing steps.</div>
               </Card>
             )}
           </SectionBg>

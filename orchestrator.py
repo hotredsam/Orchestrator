@@ -2776,6 +2776,52 @@ class API(BaseHTTPRequestHandler):
                                "total_cost": sum(get_costs().values()),
                                "costs": get_costs()})
 
+        if path == "/api/trends" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json({"daily": [], "summary": {}})
+            period = int(q.get("days", [7])[0])
+            # Aggregate execution_log by day
+            rows = db.fetchall(
+                "SELECT date(created_at) as day, COUNT(*) as actions, "
+                "SUM(cost_usd) as cost, SUM(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) as errors, "
+                "AVG(duration_sec) as avg_duration "
+                "FROM execution_log WHERE created_at >= datetime('now', ?) GROUP BY date(created_at) ORDER BY day",
+                (f"-{period} days",))
+            # Item velocity — items completed by day
+            item_rows = db.fetchall(
+                "SELECT date(updated_at) as day, COUNT(*) as completed "
+                "FROM items WHERE status='completed' AND updated_at >= datetime('now', ?) "
+                "GROUP BY date(updated_at) ORDER BY day",
+                (f"-{period} days",))
+            item_map = {r["day"]: r["completed"] for r in item_rows}
+            daily = []
+            for r in rows:
+                daily.append({
+                    "day": r["day"], "actions": r["actions"],
+                    "cost": round(r["cost"] or 0, 4), "errors": r["errors"] or 0,
+                    "avg_duration": round(r["avg_duration"] or 0, 1),
+                    "items_completed": item_map.get(r["day"], 0),
+                })
+            # Summary stats
+            total_cost = sum(d["cost"] for d in daily)
+            total_actions = sum(d["actions"] for d in daily)
+            total_errors = sum(d["errors"] for d in daily)
+            total_items = sum(d["items_completed"] for d in daily)
+            return self._json({
+                "daily": daily,
+                "period_days": period,
+                "summary": {
+                    "total_cost": round(total_cost, 4),
+                    "total_actions": total_actions,
+                    "total_errors": total_errors,
+                    "error_rate": round(total_errors / total_actions * 100, 1) if total_actions else 0,
+                    "total_items_completed": total_items,
+                    "avg_cost_per_day": round(total_cost / max(len(daily), 1), 4),
+                    "avg_items_per_day": round(total_items / max(len(daily), 1), 1),
+                },
+            })
+
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):

@@ -115,6 +115,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Source filter** — bounty board items filterable by source (Manual/Audio/Error) alongside status filter. API supports `?source=` param
 - **Bulk item operations** — `/api/items/bulk-update` for batch change_priority, change_status, or delete. Dashboard has select/deselect all + bulk action toolbar
 - **Item selection** — checkboxes on bounty board items for multi-select, with bulk priority/re-queue/delete actions
+- **Trend analysis** — `/api/trends` endpoint with daily cost/actions/items/errors aggregation, configurable period
+- **Trends dashboard tab** — 15th tab showing summary cards, daily breakdown table, cost trend bar chart
+- **Telegram trends command** — `trends [repo]` shows 7-day performance summary with recent daily breakdown
 
 ## Commands
 ```bash
