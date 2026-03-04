@@ -2465,13 +2465,22 @@ def _record_metric(path, status_code=200, latency_ms=0):
 # Simple in-memory response cache (TTL-based)
 _response_cache = {}
 _cache_lock = threading.Lock()
-CACHE_TTL = 3  # seconds
+CACHE_TTL = 3  # default seconds
+# Per-endpoint TTL overrides (longer for expensive/stable endpoints)
+_CACHE_TTL_MAP = {
+    "/api/sparklines": 30,
+    "/api/eta": 15,
+    "/api/repo-graph": 60,
+    "/api/health/detailed": 15,
+    "/api/comparison": 30,
+    "/api/docs": 300,
+}
 
 
-def _cache_get(key):
+def _cache_get(key, ttl=None):
     with _cache_lock:
         entry = _response_cache.get(key)
-        if entry and time.time() - entry["ts"] < CACHE_TTL:
+        if entry and time.time() - entry["ts"] < (ttl or CACHE_TTL):
             return entry["data"]
     return None
 
@@ -3222,6 +3231,10 @@ class API(BaseHTTPRequestHandler):
                                "costs": get_costs()})
 
         if path == "/api/eta":
+            ttl = _CACHE_TTL_MAP.get("/api/eta", CACHE_TTL)
+            cached = _cache_get("eta_all", ttl)
+            if cached:
+                return self._json(cached)
             # ETA estimates for all repos with remaining plan steps
             etas = {}
             for repo in manager.master.get_repos():
@@ -3249,7 +3262,9 @@ class API(BaseHTTPRequestHandler):
                                             "remaining": remaining, "eta_min": None, "est_cost": None, "complete": False}
                 except Exception:
                     pass
-            return self._json({"etas": etas})
+            result = {"etas": etas}
+            _cache_set("eta_all", result)
+            return self._json(result)
 
         if path == "/api/repo-graph":
             # Return repo dependency graph for visualization
@@ -3271,6 +3286,10 @@ class API(BaseHTTPRequestHandler):
             return self._json({"nodes": nodes, "edges": edges})
 
         if path == "/api/sparklines":
+            ttl = _CACHE_TTL_MAP.get("/api/sparklines", CACHE_TTL)
+            cached = _cache_get("sparklines_all", ttl)
+            if cached:
+                return self._json(cached)
             # Return 7-day action counts for all repos (lightweight for master view)
             result = {}
             for repo in manager.master.get_repos():
@@ -3285,7 +3304,9 @@ class API(BaseHTTPRequestHandler):
                     result[repo["id"]] = [r["cnt"] for r in rows]
                 except Exception:
                     result[repo["id"]] = []
-            return self._json({"sparklines": result})
+            data = {"sparklines": result}
+            _cache_set("sparklines_all", data)
+            return self._json(data)
 
         if path == "/api/trends" and rid:
             db = manager.get_repo_db(rid)

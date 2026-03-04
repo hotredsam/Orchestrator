@@ -3023,6 +3023,8 @@ function Dashboard() {
                 ["F", "Focus search/filter input"],
                 ["C", "Clear all filters"],
                 ["[ / ]", "Previous / Next tab"],
+                ["J / K", "Navigate repos in Master view"],
+                ["Enter", "Open focused repo (Master view)"],
                 ["?", "Toggle this help"],
                 ["Esc", "Close overlays / deselect"],
               ].map(([key, desc]) => (
