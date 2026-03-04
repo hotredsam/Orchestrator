@@ -85,6 +85,10 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Input validation** — title required on item add/bulk, budget limit validated as non-negative number, base64 audio validated
 - **Bridge inbox trim** — inbox.jsonl auto-trimmed to BRIDGE_MAX_LINES (default 200) to prevent unbounded growth
 - **Digest hour clamp** — DIGEST_HOUR env var clamped to 0-23 range
+- **Request body limit** — 50MB max body size on POST requests to prevent memory exhaustion
+- **Safe int parsing** — all repo_id parameters validated with safe int conversion, returns 400 on bad input
+- **Path sanitization** — repo import rejects paths outside home directory
+- **Field length limits** — item titles capped at 200 chars, descriptions at 5000 chars
 
 ## Commands
 ```bash

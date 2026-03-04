@@ -2356,9 +2356,21 @@ class API(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data, indent=2, default=str).encode())
 
+    MAX_BODY_SIZE = 50 * 1024 * 1024  # 50 MB
+
+    @staticmethod
+    def _safe_int(val, default=None):
+        """Safely convert value to int, return default on failure."""
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+
     def _body(self):
         n = int(self.headers.get("Content-Length", 0))
         if not n:
+            return {}
+        if n > self.MAX_BODY_SIZE:
             return {}
         try:
             return json.loads(self.rfile.read(n))
@@ -2716,6 +2728,12 @@ class API(BaseHTTPRequestHandler):
                 if not name or not rpath:
                     skipped += 1
                     continue
+                # Sanitize: resolve to absolute, reject paths with ..
+                rpath = os.path.abspath(rpath)
+                if ".." in os.path.relpath(rpath, os.path.expanduser("~")):
+                    log.warning(f"Import repo '{name}' rejected: path outside home dir")
+                    skipped += 1
+                    continue
                 try:
                     os.makedirs(rpath, exist_ok=True)
                     manager.master.add_repo(name, rpath, rd.get("github_url", ""), rd.get("branch", "main"))
@@ -2736,10 +2754,9 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "repo": repo}, 201)
 
         if path == "/api/repos/delete":
-            rid = b.get("repo_id")
-            if not rid:
-                return self._json({"error": "repo_id required"}, 400)
-            rid = int(rid)
+            rid = self._safe_int(b.get("repo_id"))
+            if rid is None:
+                return self._json({"error": "repo_id required (integer)"}, 400)
             # Stop the repo if running
             if rid in manager.orchestrators:
                 manager.stop_repo(rid)
@@ -2756,32 +2773,39 @@ class API(BaseHTTPRequestHandler):
             rid = b.get("repo_id")
             if rid == "all":
                 return self._json(manager.start_all())
-            return self._json(manager.start_repo(int(rid)))
+            rid_int = self._safe_int(rid)
+            if rid_int is None:
+                return self._json({"error": "repo_id required (integer or 'all')"}, 400)
+            return self._json(manager.start_repo(rid_int))
 
         if path == "/api/stop":
             rid = b.get("repo_id")
             if rid == "all":
                 manager.stop_all()
                 return self._json({"ok": True})
-            return self._json(manager.stop_repo(int(rid)))
+            rid_int = self._safe_int(rid)
+            if rid_int is None:
+                return self._json({"error": "repo_id required (integer or 'all')"}, 400)
+            return self._json(manager.stop_repo(rid_int))
 
         if path == "/api/pause":
-            rid = b.get("repo_id")
-            if not rid: return self._json({"error": "repo_id required"}, 400)
-            return self._json(manager.pause_repo(int(rid)))
+            rid = self._safe_int(b.get("repo_id"))
+            if rid is None: return self._json({"error": "repo_id required (integer)"}, 400)
+            return self._json(manager.pause_repo(rid))
 
         if path == "/api/resume":
-            rid = b.get("repo_id")
-            if not rid: return self._json({"error": "repo_id required"}, 400)
-            return self._json(manager.resume_repo(int(rid)))
+            rid = self._safe_int(b.get("repo_id"))
+            if rid is None: return self._json({"error": "repo_id required (integer)"}, 400)
+            return self._json(manager.resume_repo(rid))
 
         if path == "/api/items":
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
-            title = (b.get("title") or "").strip()
+            title = (b.get("title") or "").strip()[:200]
             if not title: return self._json({"error": "title required"}, 400)
-            db.add_item(b.get("type","feature"), title, b.get("description",""),
+            desc = (b.get("description") or "")[:5000]
+            db.add_item(b.get("type","feature"), title, desc,
                         b.get("priority","medium"), b.get("source","manual"))
             return self._json({"ok": True}, 201)
 
@@ -2794,12 +2818,13 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": "items must be a list"}, 400)
             added, skipped = 0, 0
             for item in items:
-                title = (item.get("title") or "").strip()
+                title = (item.get("title") or "").strip()[:200]
                 if not title:
                     skipped += 1
                     continue
+                desc = (item.get("description") or "")[:5000]
                 db.add_item(item.get("type","feature"), title,
-                            item.get("description",""), item.get("priority","medium"),
+                            desc, item.get("priority","medium"),
                             item.get("source","manual"))
                 added += 1
             return self._json({"ok": True, "added": added, "skipped": skipped}, 201)
