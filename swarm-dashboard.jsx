@@ -888,6 +888,23 @@ function Dashboard() {
                 </div>
               ))}
             </div>
+            {/* Overall Progress */}
+            {(() => {
+              const totalItems = repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0);
+              const doneItems = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
+              const overallPct = totalItems > 0 ? Math.round(doneItems / totalItems * 100) : 0;
+              return totalItems > 0 && (
+                <div style={{ maxWidth: 500, margin: "0 auto 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                    <span>Overall Swarm Progress</span>
+                    <span>{doneItems}/{totalItems} items ({overallPct}%)</span>
+                  </div>
+                  <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 10, height: 18, overflow: "hidden", position: "relative" }}>
+                    <div style={{ height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${overallPct}%`, transition: "width .5s" }} />
+                  </div>
+                </div>
+              );
+            })()}
             {/* Running Repos Strip */}
             {repos.filter(r => r.running).length > 0 && (
               <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginBottom: 16 }}>

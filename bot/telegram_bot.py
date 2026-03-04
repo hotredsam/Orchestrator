@@ -988,6 +988,46 @@ def cmd_summary():
     return "\n".join(lines)
 
 
+def cmd_eta():
+    """Estimated time remaining for all repos with plan steps."""
+    repos = _orch_get("/api/repos")
+    if isinstance(repos, dict) and "error" in repos:
+        return f"Error: {repos['error']}"
+    if not isinstance(repos, list):
+        repos = repos.get("repos", []) if isinstance(repos, dict) else []
+    lines = ["*ETA Estimates:*\n"]
+    has_data = False
+    for r in repos:
+        rid = r.get("id")
+        plan = _orch_get(f"/api/plan?repo_id={rid}")
+        if not isinstance(plan, list) or len(plan) == 0:
+            continue
+        done = sum(1 for s in plan if s.get("status") == "completed")
+        total = len(plan)
+        remaining = total - done
+        if remaining == 0:
+            lines.append(f"`{r['name']}` — All {total} steps complete!")
+            has_data = True
+            continue
+        total_dur = sum(s.get("duration_sec", 0) for s in plan if s.get("status") == "completed")
+        total_cost = sum(s.get("cost_usd", 0) for s in plan if s.get("status") == "completed")
+        if done > 0:
+            avg_dur = total_dur / done
+            avg_cost = total_cost / done
+            eta_min = round((remaining * avg_dur) / 60)
+            est_cost = remaining * avg_cost
+            lines.append(
+                f"`{r['name']}` — {done}/{total} steps\n"
+                f"  ~{eta_min}m remaining, ~${est_cost:.2f} est. cost"
+            )
+        else:
+            lines.append(f"`{r['name']}` — 0/{total} steps (no data yet)")
+        has_data = True
+    if not has_data:
+        return "No repos with plan steps found."
+    return "\n".join(lines)
+
+
 def cmd_tags(text):
     """View or set repo tags. 'tags repo' to view, 'tags repo: tag1, tag2' to set."""
     if ":" in text:
@@ -1127,6 +1167,7 @@ def cmd_help():
 `summary` — Quick one-message status overview
 `uptime` — Server uptime and version info
 `rotate-token` — Rotate API bearer token
+`eta` — Estimated time and cost remaining per repo
 `errors` — Recent errors across all repos
 `docs` — List all API endpoints
 `app` — Open Mini App
@@ -1342,6 +1383,8 @@ def handle_message(msg):
         reply = cmd_uptime()
     elif t in ("rotate-token", "rotate token", "token"):
         reply = cmd_rotate_token()
+    elif t in ("eta", "estimate", "remaining"):
+        reply = cmd_eta()
     elif t in ("errors", "recent-errors", "recent errors"):
         reply = cmd_recent_errors()
     elif t in ("docs", "api-docs", "api docs", "endpoints"):
