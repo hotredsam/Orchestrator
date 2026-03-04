@@ -673,11 +673,11 @@
         </div>
         <div class="input-group">
           <label class="input-label">Title</label>
-          <input type="text" class="input" id="addTitle" placeholder="Short descriptive title...">
+          <input type="text" class="input" id="addTitle" placeholder="Short descriptive title..." onkeydown="if(event.key==='Enter'){event.preventDefault();submitItem();}">
         </div>
         <div class="input-group">
           <label class="input-label">Description</label>
-          <textarea id="addDesc" placeholder="Detailed description..."></textarea>
+          <textarea id="addDesc" placeholder="Detailed description..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitItem();}"></textarea>
         </div>
         <div class="input-group">
           <label class="input-label">Priority</label>

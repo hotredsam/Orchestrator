@@ -1955,10 +1955,22 @@ def handle_message(msg):
         )
         reply = None  # Already sent
     else:
-        # Not a known command — forward to the bridge inbox so Claude Code
-        # sessions can read it as a user instruction.
-        bridge_append_inbox(text)
-        reply = "Message forwarded to Claude Code bridge."
+        # Try fuzzy command matching before forwarding to bridge
+        import difflib
+        known_cmds = ["status", "start", "stop", "items", "logs", "mistakes", "memory",
+                       "plan", "snapshot", "batch", "tags", "eta", "forecast", "health",
+                       "costs", "push", "digest", "budget", "metrics", "trends", "compare",
+                       "activity", "notes", "search", "stale", "breakers", "grades",
+                       "summary", "active", "top", "notify", "pin", "changelog", "timeline",
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos"]
+        first_word = t.split()[0] if t.split() else ""
+        matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
+        if matches:
+            reply = f"\u2753 Unknown command `{first_word}`. Did you mean:\n" + "\n".join(f"  \u27A1\uFE0F `/{m}`" for m in matches)
+        else:
+            # Forward to the bridge inbox so Claude Code sessions can read it
+            bridge_append_inbox(text)
+            reply = "Message forwarded to Claude Code bridge."
 
     if reply:
         send_message(reply, chat_id=chat_id)

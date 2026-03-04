@@ -849,6 +849,7 @@ function Dashboard() {
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
         @keyframes wiggle{0%,100%{transform:rotate(0)}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
+        @keyframes pulse-error{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.7)}50%{box-shadow:0 0 0 8px rgba(231,76,60,0)}}
         @keyframes rec{0%,100%{opacity:1}50%{opacity:.2}}
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes sway{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
@@ -1735,7 +1736,7 @@ function Dashboard() {
                   <Card key={r.id} className="hover-lift master-card" bg={batchSelected.has(r.id) ? C.yellow : isFocused ? C.lightTeal : C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", outline: isFocused ? `3px solid ${C.teal}` : "none", outlineOffset: -1, background: batchSelected.has(r.id) ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` : isFocused ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                      <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
+                      <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : r.state === "error" ? "pulse-error 1.5s ease-in-out infinite" : "none", boxShadow: r.state === "error" ? `0 0 12px ${C.red}88` : `0 2px 8px ${rst.color}44` }}>
                         {rst.emoji}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
