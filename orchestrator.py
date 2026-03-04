@@ -2935,6 +2935,33 @@ class API(BaseHTTPRequestHandler):
             } for r in rows]
             return self._json({"agents": agents})
 
+        if path == "/api/stale-items":
+            hours = int(q.get("hours", [2])[0])
+            repos = manager.master.get_repos()
+            stale = []
+            for r in repos:
+                db = manager.get_repo_db(r["id"])
+                if not db:
+                    continue
+                items_list = db.fetchall(
+                    "SELECT * FROM items WHERE status='in_progress' AND started_at < datetime('now', ?)",
+                    (f"-{hours} hours",))
+                for it in items_list:
+                    it["repo_name"] = r["name"]
+                    it["repo_id"] = r["id"]
+                    stale.append(it)
+            return self._json({"stale_items": stale, "hours_threshold": hours, "count": len(stale)})
+
+        if path == "/api/timeline" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json([])
+            limit = min(int(q.get("limit", [100])[0]), 500)
+            rows = db.fetchall(
+                "SELECT id, state, action, created_at, cost_usd, duration_sec, error "
+                "FROM execution_log ORDER BY created_at DESC LIMIT ?", (limit,))
+            return self._json(rows)
+
         if path == "/api/comparison":
             repos = manager.master.get_repos()
             costs = get_costs()

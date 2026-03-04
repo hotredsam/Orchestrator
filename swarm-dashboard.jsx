@@ -132,6 +132,7 @@ function Dashboard() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [globalResults, setGlobalResults] = useState(null);
   const [logLevelFilter, setLogLevelFilter] = useState("all");
+  const [staleItems, setStaleItems] = useState([]);
   const [newNote, setNewNote] = useState("");
   const mRec = useRef(null);
   const chnk = useRef([]);
@@ -271,6 +272,9 @@ function Dashboard() {
         try { const cr = await f("/api/comparison"); if(cr.ok) setComparison(await cr.json()); } catch {}
       }
       try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); } } catch {}
+      if (full || t === "home") {
+        try { const sl = await f("/api/stale-items?hours=2"); if(sl.ok) { const sd = await sl.json(); setStaleItems(sd.stale_items || []); } } catch {}
+      }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
   }, [sr]);
@@ -789,6 +793,19 @@ function Dashboard() {
                 </div>
               ))}
             </div>
+            {/* Stale Items Warning */}
+            {staleItems.length > 0 && (
+              <Card bg="#FFF3E0" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.orange}` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1, marginBottom: 6, color: C.orange }}>{"\u26A0\uFE0F"} {staleItems.length} Stale Item{staleItems.length > 1 ? "s" : ""} (2h+ in progress)</div>
+                {staleItems.slice(0, 5).map((it, i) => (
+                  <div key={i} style={{ fontSize: 11, padding: "2px 0", display: "flex", gap: 8 }}>
+                    <span style={{ fontWeight: 600, color: C.teal, minWidth: 80 }}>{it.repo_name}</span>
+                    <span>{it.title?.slice(0, 50)}</span>
+                    <span style={{ color: C.brown, fontSize: 10 }}>since {it.started_at?.slice(11, 19)}</span>
+                  </div>
+                ))}
+              </Card>
+            )}
             {/* Recent Activity Feed */}
             {logs.length > 0 && (
               <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto", padding: 14 }}>

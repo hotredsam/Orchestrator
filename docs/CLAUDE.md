@@ -150,6 +150,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Repo tags** — repos table has `tags` column (comma-separated), tag editor in Settings, tag badges on master view cards
 - **Tag filter** — master view has tag filter chips auto-populated from all repos' tags
 - **Tags API** — `/api/repos/tags` POST to set repo tags, auto-migration adds column to existing DBs
+- **Stale item detection** — `/api/stale-items?hours=2` finds items stuck in_progress across all repos, warning banner on Town Square
+- **Execution timeline** — `/api/timeline?repo_id=N` returns state transition history for debugging
 
 ## Commands
 ```bash
@@ -218,6 +220,8 @@ GET  /api/history?repo_id=N        — Combined DB + git history
 GET  /api/notes?repo_id=N          — Repo notes/annotations
 POST /api/notes                    — Add/delete note {repo_id, action, text/note_key}
 GET  /api/search?q=term&scope=all  — Cross-repo search (items, logs, mistakes)
+GET  /api/stale-items?hours=2      — Items stuck in_progress across all repos
+GET  /api/timeline?repo_id=N       — State transition history for debugging
 
 # System
 GET  /api/status                   — Uptime, repo counts, SSE clients, total cost
