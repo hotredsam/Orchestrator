@@ -557,6 +557,15 @@ class RepoDB:
             );
         """)
         self.conn.commit()
+        # Indexes for search/filter performance
+        self.conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
+            CREATE INDEX IF NOT EXISTS idx_items_created ON items(created_at);
+            CREATE INDEX IF NOT EXISTS idx_plan_steps_status ON plan_steps(status);
+            CREATE INDEX IF NOT EXISTS idx_log_created ON execution_log(created_at);
+            CREATE INDEX IF NOT EXISTS idx_memory_ns ON memory(namespace);
+        """)
+        self.conn.commit()
         # Migrations for existing DBs
         self._migrate()
 
@@ -3179,8 +3188,9 @@ class API(BaseHTTPRequestHandler):
             tags = b.get("tags", "")
             if not isinstance(tags, str):
                 tags = ",".join(str(t) for t in tags)
-            # Sanitize: lowercase, strip, max 200 chars
-            tags = ",".join(t.strip().lower() for t in tags.split(",") if t.strip())[:200]
+            # Sanitize: lowercase, strip, max 20 tags, max 200 chars total
+            tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()][:20]
+            tags = ",".join(tag_list)[:200]
             manager.master.ex("UPDATE repos SET tags=? WHERE id=?", (tags, rid))
             manager.master.commit()
             _response_cache.clear()
@@ -3511,13 +3521,19 @@ class API(BaseHTTPRequestHandler):
                     )
                     subprocess.run(["git", "commit", "-m", f"Rollback to {commit_hash[:8]}"],
                                    cwd=repo["path"], capture_output=True, text=True, timeout=30)
-                # Record in history
+                # Record in history + reset in_progress/completed items to pending
                 db = manager.get_repo_db(rid)
+                items_reset = 0
                 if db:
                     db.add_history("rollback", f"Rolled back to {commit_hash[:8]}",
                                    commit_hash, state_before=head)
+                    # Reset recently completed items back to pending since code was rolled back
+                    c = db.ex("UPDATE items SET status='pending', completed_at=NULL "
+                              "WHERE status IN ('completed', 'in_progress')")
+                    items_reset = c.rowcount
+                    db.commit()
                 return self._json({"ok": True, "rolled_back_to": commit_hash,
-                                   "previous_head": head})
+                                   "previous_head": head, "items_reset": items_reset})
             except Exception as e:
                 return self._json({"error": f"Rollback failed: {str(e)}"}, 500)
 
