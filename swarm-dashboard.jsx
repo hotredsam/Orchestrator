@@ -888,6 +888,23 @@ function Dashboard() {
                 </div>
               ))}
             </div>
+            {/* Running Repos Strip */}
+            {repos.filter(r => r.running).length > 0 && (
+              <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginBottom: 16 }}>
+                {repos.filter(r => r.running).map(r => {
+                  const rst = STATES[r.state] || STATES.idle;
+                  return (
+                    <div key={r.id} onClick={() => { setSR(r.id); setTab("flow"); }}
+                      style={{ display: "flex", alignItems: "center", gap: 6, background: C.white, border: `2px solid ${C.darkBrown}33`, borderRadius: 20, padding: "4px 12px 4px 6px", cursor: "pointer", transition: "transform .15s", fontSize: 12 }}
+                      onMouseOver={e => e.currentTarget.style.transform = "scale(1.05)"} onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}>
+                      <div style={{ width: 20, height: 20, borderRadius: "50%", background: rst.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, animation: "bounce 2s infinite" }}>{rst.emoji}</div>
+                      <span style={{ fontWeight: 600 }}>{r.name}</span>
+                      <span style={{ color: C.brown, fontSize: 10 }}>{rst.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {/* Stale Items Warning */}
             {staleItems.length > 0 && (
               <Card bg="#FFF3E0" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.orange}` }}>
@@ -1624,11 +1641,16 @@ function Dashboard() {
               const done = plan.filter(s => s.status === "completed").length;
               const totalCost = plan.reduce((s, p) => s + (p.cost_usd || 0), 0);
               const totalDur = plan.reduce((s, p) => s + (p.duration_sec || 0), 0);
+              const remaining = plan.length - done;
+              const avgDur = done > 0 ? totalDur / done : 0;
+              const avgCost = done > 0 ? totalCost / done : 0;
+              const etaMins = remaining > 0 && avgDur > 0 ? Math.round((remaining * avgDur) / 60) : 0;
               return (
                 <div style={{ textAlign: "center", marginBottom: 12, fontSize: 13, color: C.brown, fontWeight: 600 }}>
                   {done}/{plan.length} steps done
                   {totalCost > 0 && <> {"\u00B7"} ${totalCost.toFixed(2)} total cost</>}
                   {totalDur > 0 && <> {"\u00B7"} {Math.round(totalDur/60)}m total time</>}
+                  {etaMins > 0 && <> {"\u00B7"} ~{etaMins}m ETA (${(remaining * avgCost).toFixed(2)} est.)</>}
                 </div>
               );
             })()}
