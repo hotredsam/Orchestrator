@@ -624,7 +624,18 @@ def cmd_digest():
     digest = data.get("digest", "")
     if not digest:
         return "Daily digest is empty — no data available."
-    return f"*Daily Digest*\n\n{digest}"
+    # Append quick system stats
+    sys_data = _orch_get("/api/system")
+    extra = ""
+    if isinstance(sys_data, dict) and "repos" in sys_data:
+        s = sys_data
+        extra = (
+            f"\n\n*Quick Stats:*"
+            f"\n📦 {s.get('repos', 0)} repos | ⚡ {s.get('running', 0)} running"
+            f"\n✅ {s.get('done_items', 0)}/{s.get('total_items', 0)} items done"
+            f"\n💰 ${s.get('total_cost', 0):.4f} total cost"
+        )
+    return f"*Daily Digest*\n\n{digest}{extra}"
 
 
 def cmd_costs():

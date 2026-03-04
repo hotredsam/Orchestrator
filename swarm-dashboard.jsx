@@ -3897,14 +3897,22 @@ function Dashboard() {
                 // Actions
                 if (q === "start" && sr) { f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
                 if (q === "stop" && sr) { f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
+                if (q === "start all") { startAll(); }
+                if (q === "stop all") { stopAll(); }
+                if (q === "pause" && sr) { pauseRepo(sr); }
+                if (q === "resume" && sr) { resumeRepo(sr); }
                 if (q === "dark" || q === "theme") { toggleDark(); }
                 if (q === "refresh" || q === "reload") { load(true); }
+                if (q === "export items" && sr) { const data = items.map(it => ({ title: it.title, type: it.type, priority: it.priority, status: it.status })); const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "items.json"; a.click(); URL.revokeObjectURL(url); }
+                if (q === "export logs") { exportLogs(); }
+                if (q === "health") { setTab("health"); scanHealth(); }
+                if (q === "help" || q === "?") { setShowHelp(true); }
                 if (q.startsWith("search ")) { setTab("master"); setGlobalSearch(q.slice(7)); searchGlobal(q.slice(7)); }
                 setShowCommandPalette(false);
               }}
               style={{ width: "100%", padding: "12px 16px", fontSize: 16, border: `2px solid ${C.darkBrown}`, borderRadius: 12, outline: "none", fontFamily: "'Fredoka', sans-serif", background: dark ? "#3D3D3D" : C.cream, color: dark ? "#E0E0E0" : C.darkBrown }} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10, fontSize: 11, color: C.brown }}>
-              {["home","items","plan","logs","health","settings","start","stop","dark","refresh"].map(cmd => (
+              {["home","items","plan","logs","health","settings","start","stop","pause","start all","stop all","dark","refresh","export items","export logs","help"].map(cmd => (
                 <span key={cmd} onClick={() => { setCmdQuery(cmd); }} style={{ padding: "3px 10px", borderRadius: 8, background: dark ? "#444" : C.cream, cursor: "pointer", border: `1px solid ${C.darkBrown}33` }}>{cmd}</span>
               ))}
             </div>
