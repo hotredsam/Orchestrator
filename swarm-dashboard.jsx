@@ -1333,6 +1333,7 @@ function Dashboard() {
                 <option value="state">Sort: State</option>
                 <option value="items">Sort: Items</option>
                 <option value="cycles">Sort: Cycles</option>
+                <option value="cost">Sort: Cost</option>
               </select>
             </div>
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
@@ -1348,6 +1349,7 @@ function Dashboard() {
                 if (repoSort === "state") return (a.state || "").localeCompare(b.state || "");
                 if (repoSort === "items") return ((b.stats?.items_total || 0) - (a.stats?.items_total || 0));
                 if (repoSort === "cycles") return ((b.cycle_count || 0) - (a.cycle_count || 0));
+                if (repoSort === "cost") return ((costs[b.id] || 0) - (costs[a.id] || 0));
                 return 0;
               }).map(r => {
                 const rst = STATES[r.state] || STATES.idle;
@@ -2053,6 +2055,15 @@ function Dashboard() {
                 <Btn bg="#A0ADB5" onClick={() => clearItems("completed")} style={{ fontSize: 12, padding: "8px 14px" }}>{"\u2705"} Clear Done</Btn>
                 <Btn bg="#7E57C2" onClick={() => apiAction("/api/items/archive", { method: "POST", body: JSON.stringify({ repo_id: sr, days: 7 }) }, "Old items archived")} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDCE6"} Archive 7d+</Btn>
                 <Btn bg={C.red} onClick={() => clearItems()} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDDD1\uFE0F"} Clear All</Btn>
+                <Btn bg="#5D6D7E" onClick={() => {
+                  const data = items.map(it => ({ title: it.title, type: it.type, priority: it.priority, status: it.status, description: it.description, source: it.source, depends_on: it.depends_on, created_at: it.created_at }));
+                  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a"); a.href = url;
+                  a.download = `swarm-items-${repo?.name || "repo"}-${new Date().toISOString().slice(0,10)}.json`;
+                  a.click(); URL.revokeObjectURL(url);
+                  showToast(`Exported ${items.length} items to JSON`, "success");
+                }} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDCE5"} Export</Btn>
                 <button onClick={() => setCompactItems(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactItems ? C.teal : C.cream, color: compactItems ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact view">{compactItems ? "\u2630 Compact" : "\u2637 Full"}</button>
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
@@ -2247,11 +2258,14 @@ function Dashboard() {
               const avgCost = done > 0 ? totalCost / done : 0;
               const etaMins = remaining > 0 && avgDur > 0 ? Math.round((remaining * avgDur) / 60) : 0;
               return (
-                <div style={{ textAlign: "center", marginBottom: 12, fontSize: 13, color: C.brown, fontWeight: 600 }}>
-                  {done}/{plan.length} steps done
-                  {totalCost > 0 && <> {"\u00B7"} ${totalCost.toFixed(2)} total cost</>}
-                  {totalDur > 0 && <> {"\u00B7"} {Math.round(totalDur/60)}m total time</>}
-                  {etaMins > 0 && <> {"\u00B7"} ~{etaMins}m ETA (${(remaining * avgCost).toFixed(2)} est.)</>}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 12 }}>
+                  <ProgressRing done={done} total={plan.length} size={48} strokeWidth={4} color={done === plan.length ? C.green : C.teal} />
+                  <div style={{ fontSize: 13, color: C.brown, fontWeight: 600 }}>
+                    {done}/{plan.length} steps done
+                    {totalCost > 0 && <> {"\u00B7"} ${totalCost.toFixed(2)} total cost</>}
+                    {totalDur > 0 && <> {"\u00B7"} {Math.round(totalDur/60)}m total time</>}
+                    {etaMins > 0 && <div style={{ fontSize: 11, marginTop: 2 }}>{"\u23F3"} ~{etaMins}m ETA (${(remaining * avgCost).toFixed(2)} est.)</div>}
+                  </div>
                 </div>
               );
             })()}
