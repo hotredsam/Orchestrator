@@ -785,12 +785,14 @@ def cmd_compare():
             state_icon = "\U0001F7E2" if r["state"] not in ("idle", "unknown") else "\u26AA"
             done = r.get("items_done", 0)
             total = r.get("items_total", 0)
+            cost = r.get("cost", 0)
+            eff = f"${cost / done:.4f}/item" if done > 0 and cost > 0 else ""
             bar_len = min(int(done / max_items * 8), 8)
             lines.append(
                 f"{state_icon} *{r['name']}*\n"
                 f"  {'█' * bar_len}{'░' * (8 - bar_len)} "
-                f"{done}/{total} items | ${r['cost']} | "
-                f"{r['error_rate']}% err | {r['cycles']} cyc"
+                f"{done}/{total} items | ${cost} | "
+                f"{r['error_rate']}% err{f' | {eff}' if eff else ''}"
             )
         return "\n".join(lines)
     return "Could not fetch comparison data."
@@ -1102,6 +1104,26 @@ def cmd_leaderboard():
             f"({'█' * bar_len}{'░' * (20 - bar_len)}) {pct}%"
         )
         lines.append(f"   Cost: ${r.get('cost', 0)} | Health: {r.get('health_score', '-')}")
+    return "\n".join(lines)
+
+
+def cmd_top():
+    """Show top 5 repos by recent completions (items done today or total if no daily data)."""
+    data = _orch_get("/api/comparison")
+    if isinstance(data, dict) and "error" in data:
+        return f"Error: {data['error']}"
+    repos = data.get("repos", []) if isinstance(data, dict) else []
+    if not repos:
+        return "No repos to rank yet."
+    ranked = sorted(repos, key=lambda r: r.get("items_done", 0), reverse=True)[:5]
+    medals = ["\U0001F947", "\U0001F948", "\U0001F949", "4\uFE0F\u20E3", "5\uFE0F\u20E3"]
+    lines = ["*\U0001F51D Top 5 Repos*\n"]
+    for i, r in enumerate(ranked):
+        done = r.get("items_done", 0)
+        total = r.get("items_total", 0)
+        cost = r.get("cost", 0)
+        eff = f" (${cost/done:.4f}/item)" if done > 0 and cost > 0 else ""
+        lines.append(f"{medals[i]} *{r['name']}* — {done}/{total} items{eff}")
     return "\n".join(lines)
 
 
@@ -1580,6 +1602,8 @@ def handle_message(msg):
         reply = cmd_eta()
     elif t in ("forecast", "cost-forecast", "cost forecast"):
         reply = cmd_forecast()
+    elif t in ("top", "top5", "best"):
+        reply = cmd_top()
     elif t in ("leaderboard", "leader", "rankings", "rank"):
         reply = cmd_leaderboard()
     elif t in ("summary", "overview", "report"):

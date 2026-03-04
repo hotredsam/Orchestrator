@@ -459,6 +459,9 @@ function Dashboard() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Scroll to top on tab change
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, [tab]);
+
   // Keyboard shortcuts
   const [showHelp, setShowHelp] = useState(false);
   useEffect(() => {

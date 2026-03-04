@@ -888,18 +888,24 @@
     const API_BASE = params.get('api') || window.location.origin || 'http://localhost:6969';
     let __apiToken = window.__SWARM_API_TOKEN__ || '';
 
-    async function api(path, opts) {
-      try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (__apiToken) headers['Authorization'] = 'Bearer ' + __apiToken;
-        const res = await fetch(API_BASE + path, {
-          headers,
-          ...opts,
-        });
-        return await res.json();
-      } catch(e) {
-        console.error('API error:', path, e);
-        return null;
+    async function api(path, opts, { silent = false, retries = 1 } = {}) {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const headers = { 'Content-Type': 'application/json' };
+          if (__apiToken) headers['Authorization'] = 'Bearer ' + __apiToken;
+          const res = await fetch(API_BASE + path, { headers, ...opts });
+          if (!res.ok && !silent) {
+            const errData = await res.json().catch(() => ({}));
+            showToast(errData.error || `API error ${res.status}`, 'error');
+            return null;
+          }
+          return await res.json();
+        } catch(e) {
+          console.error('API error:', path, e);
+          if (attempt < retries) { await new Promise(r => setTimeout(r, 500 * (attempt + 1))); continue; }
+          if (!silent) showToast('Connection lost — check orchestrator', 'error');
+          return null;
+        }
       }
     }
 
