@@ -169,6 +169,8 @@ function Dashboard() {
   const [costHistory, setCostHistory] = useState([]);
   const [healthScores, setHealthScores] = useState(null);
   const [sparklines, setSparklines] = useState({});
+  const [etas, setEtas] = useState({});
+  const [masterFocus, setMasterFocus] = useState(-1);
   const [compactItems, setCompactItems] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
@@ -330,6 +332,7 @@ function Dashboard() {
         try { const cb = await f("/api/circuit-breakers"); if(cb.ok) { const cd = await cb.json(); setCircuitBreakers(cd.circuit_breakers || []); } } catch {}
         try { const hs = await f("/api/health/detailed"); if(hs.ok) setHealthScores(await hs.json()); } catch {}
         try { const sp = await f("/api/sparklines"); if(sp.ok) { const sd = await sp.json(); setSparklines(sd.sparklines || {}); } } catch {}
+        try { const et = await f("/api/eta"); if(et.ok) { const ed = await et.json(); setEtas(ed.etas || {}); } } catch {}
       }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -370,6 +373,12 @@ function Dashboard() {
       if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
       if (e.key === "[") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci > 0) setTab(TABS_LIST[ci - 1]); }
       if (e.key === "]") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci < TABS_LIST.length - 1) setTab(TABS_LIST[ci + 1]); }
+      // j/k navigation in master view
+      if (tab === "master" && e.key === "j") { e.preventDefault(); setMasterFocus(prev => Math.min(prev + 1, repos.length - 1)); }
+      if (tab === "master" && e.key === "k") { e.preventDefault(); setMasterFocus(prev => Math.max(prev - 1, 0)); }
+      if (tab === "master" && e.key === "Enter" && masterFocus >= 0 && masterFocus < repos.length) {
+        e.preventDefault(); const r = repos[masterFocus]; if (r) { setSR(r.id); setTab("flow"); }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -1302,12 +1311,13 @@ function Dashboard() {
                 const pa = pinnedRepos.includes(a.id) ? 0 : 1;
                 const pb = pinnedRepos.includes(b.id) ? 0 : 1;
                 return pa - pb || a.name.localeCompare(b.name);
-              }).map(r => {
+              }).map((r, _mi) => {
                 const rst = STATES[r.state] || STATES.idle;
                 const s = r.stats || {};
                 const pct = s.steps_total ? Math.round(s.steps_done / s.steps_total * 100) : 0;
+                const isFocused = _mi === masterFocus;
                 return (
-                  <Card key={r.id} className="hover-lift" bg={batchSelected.has(r.id) ? C.yellow : C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", background: batchSelected.has(r.id) ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
+                  <Card key={r.id} className="hover-lift" bg={batchSelected.has(r.id) ? C.yellow : isFocused ? C.lightTeal : C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", outline: isFocused ? `3px solid ${C.teal}` : "none", outlineOffset: -1, background: batchSelected.has(r.id) ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` : isFocused ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
                       <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
@@ -1447,6 +1457,19 @@ function Dashboard() {
                   ))}
                 </div>
               </div>
+              {/* ETA estimate */}
+              {etas[sr] && !etas[sr].complete && etas[sr].eta_min !== null && (
+                <div style={{ textAlign: "center", marginTop: 8, fontSize: 12, color: C.brown, background: `${C.cream}88`, borderRadius: 8, padding: "6px 12px" }}>
+                  {"\u23F3"} ETA: ~{etas[sr].eta_min < 60 ? `${Math.round(etas[sr].eta_min)}min` : `${(etas[sr].eta_min / 60).toFixed(1)}h`} remaining
+                  {etas[sr].est_cost > 0 && <span> ({"\uD83D\uDCB0"} ~${etas[sr].est_cost.toFixed(3)})</span>}
+                  <span style={{ opacity: 0.6 }}> — {etas[sr].remaining} of {etas[sr].total} steps left</span>
+                </div>
+              )}
+              {etas[sr]?.complete && (
+                <div style={{ textAlign: "center", marginTop: 8, fontSize: 12, color: C.green, fontWeight: 700 }}>
+                  {"\u2705"} All {etas[sr].total} steps complete!
+                </div>
+              )}
             </Card>
 
             {/* Action buttons */}

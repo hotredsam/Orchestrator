@@ -3211,6 +3211,36 @@ class API(BaseHTTPRequestHandler):
                                "total_cost": sum(get_costs().values()),
                                "costs": get_costs()})
 
+        if path == "/api/eta":
+            # ETA estimates for all repos with remaining plan steps
+            etas = {}
+            for repo in manager.master.get_repos():
+                db = manager.get_repo_db(repo["id"])
+                if not db:
+                    continue
+                try:
+                    steps = db.fetchall("SELECT status, duration_sec, cost_usd FROM plan_steps")
+                    if not steps:
+                        continue
+                    done = [s for s in steps if s["status"] == "completed"]
+                    remaining = len(steps) - len(done)
+                    if remaining == 0:
+                        etas[repo["id"]] = {"name": repo["name"], "done": len(done), "total": len(steps),
+                                            "remaining": 0, "eta_min": 0, "est_cost": 0, "complete": True}
+                        continue
+                    if done:
+                        avg_dur = sum(s["duration_sec"] or 0 for s in done) / len(done)
+                        avg_cost = sum(s["cost_usd"] or 0 for s in done) / len(done)
+                        etas[repo["id"]] = {"name": repo["name"], "done": len(done), "total": len(steps),
+                                            "remaining": remaining, "eta_min": round(remaining * avg_dur / 60, 1),
+                                            "est_cost": round(remaining * avg_cost, 4), "complete": False}
+                    else:
+                        etas[repo["id"]] = {"name": repo["name"], "done": 0, "total": len(steps),
+                                            "remaining": remaining, "eta_min": None, "est_cost": None, "complete": False}
+                except Exception:
+                    pass
+            return self._json({"etas": etas})
+
         if path == "/api/sparklines":
             # Return 7-day action counts for all repos (lightweight for master view)
             result = {}
