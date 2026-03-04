@@ -1996,6 +1996,20 @@ function Dashboard() {
                   </div>
                 );
               })()}
+              {/* Last error preview */}
+              {(() => {
+                const lastErr = mistakes.length > 0 ? mistakes[0] : null;
+                return lastErr && (
+                  <div style={{ marginTop: 8, padding: "6px 12px", background: "#FFEBEE", borderRadius: 8, border: `1px solid ${C.red}33`, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => setTab("mistakes")}>
+                    <span style={{ fontSize: 14 }}>{"\uD83D\uDC80"}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 10, color: C.red, fontWeight: 700, letterSpacing: 0.5 }}>LAST ERROR</div>
+                      <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>[{lastErr.error_type}] {lastErr.description?.slice(0, 60)}</div>
+                    </div>
+                    <span style={{ fontSize: 9, color: C.brown }}>{"\u279C"} details</span>
+                  </div>
+                );
+              })()}
             </Card>
 
             {/* Error trend mini */}

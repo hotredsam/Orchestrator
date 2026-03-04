@@ -797,6 +797,9 @@
           <button class="btn btn-green btn-sm" id="itemsStartBtn" onclick="quickRepoAction('start')" style="padding:4px 8px;font-size:10px;">▶</button>
           <button class="btn btn-red btn-sm" id="itemsStopBtn" onclick="quickRepoAction('stop')" style="padding:4px 8px;font-size:10px;">⏹</button>
         </div>
+        <div class="input-group mb-12" style="display:flex;gap:6px;">
+          <input type="text" class="input" id="itemsSearchInput" placeholder="Search items..." style="flex:1;" oninput="clearTimeout(window._itemSearchDebounce); window._itemSearchDebounce=setTimeout(loadItems, 300)">
+        </div>
         <div id="itemsList">
           <div class="empty-state"><div class="empty-emoji">📦</div><p>Select a repo to view items</p></div>
         </div>
@@ -1285,8 +1288,10 @@
 
       let items = data;
       if (filter) items = items.filter(i => i.status === filter);
+      const itemSearch = (document.getElementById('itemsSearchInput')?.value || '').toLowerCase();
+      if (itemSearch) items = items.filter(i => (i.title || '').toLowerCase().includes(itemSearch) || (i.description || '').toLowerCase().includes(itemSearch));
 
-      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${items.length} items${filter ? ` (${filter})` : ''}</div>` + items.map(item => {
+      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${items.length}${itemSearch ? ' matched' : ''} items${filter ? ` (${filter})` : ''}${itemSearch ? ` for "${esc(itemSearch)}"` : ''}</div>` + items.map(item => {
         const statusColors = { pending: 'var(--orange)', in_progress: 'var(--teal)', completed: 'var(--green)' };
         const typeEmoji = item.type === 'issue' ? '🐛' : '✨';
         const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢', critical: '⛔' };

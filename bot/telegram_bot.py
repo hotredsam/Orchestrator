@@ -1435,6 +1435,34 @@ def cmd_batch(args):
     return "\n".join(lines)
 
 
+def cmd_changelog(name: str = ""):
+    """Show recent git commits for a repo."""
+    import subprocess
+    repo = _find_repo(name) if name else None
+    if name and not repo:
+        return f"Repo '{name}' not found."
+    if not repo:
+        path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    else:
+        path = repo.get("path", "")
+    if not path or not os.path.isdir(path):
+        return f"Repo path not found."
+    try:
+        result = subprocess.run(
+            ["git", "log", "--oneline", "-10"],
+            capture_output=True, text=True, timeout=10, cwd=path
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            label = repo["name"] if repo else "Orchestrator"
+            lines = [f"\U0001F4DD *Recent Commits ({label}):*\n"]
+            for line in result.stdout.strip().split("\n")[:10]:
+                lines.append(f"  `{line[:80]}`")
+            return "\n".join(lines)
+        return "No git history found."
+    except Exception as e:
+        return f"Error: {e}"
+
+
 def cmd_pin(name: str = ""):
     """Pin a repo as default context for commands."""
     global _pinned_repo
@@ -1535,6 +1563,7 @@ def cmd_help():
 `top` — Top 5 repos by items completed
 `notify` / `notify [cat]` — View/toggle notifications
 `pin [repo]` / `pin clear` — Set default repo for commands
+`changelog [repo]` — Recent git commits
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -1837,6 +1866,8 @@ def handle_message(msg):
         reply = cmd_notify(t[7:].strip() if t.startswith("notify ") else "")
     elif t == "pin" or t.startswith("pin "):
         reply = cmd_pin(t[4:].strip() if t.startswith("pin ") else "")
+    elif t == "changelog" or t.startswith("changelog "):
+        reply = cmd_changelog(t[10:].strip() if t.startswith("changelog ") else _pinned_repo)
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         app_url = f"{public_url}/telegram-app"
