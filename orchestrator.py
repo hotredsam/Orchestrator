@@ -3060,6 +3060,51 @@ class API(BaseHTTPRequestHandler):
             history = manager.master.get_health_history(days)
             return self._json({"history": history, "days": days})
 
+        if path == "/api/cost-forecast":
+            # Predict next 7 days cost based on last 7 days trend
+            repos = manager.master.get_repos()
+            daily_costs = {}
+            for repo in repos:
+                db = manager.get_repo_db(repo["id"])
+                if not db:
+                    continue
+                try:
+                    rows = db.fetchall(
+                        "SELECT date(created_at) as day, SUM(cost_usd) as cost "
+                        "FROM execution_log WHERE created_at >= datetime('now', '-7 days') "
+                        "GROUP BY date(created_at) ORDER BY day")
+                    for r in rows:
+                        daily_costs[r["day"]] = daily_costs.get(r["day"], 0) + (r["cost"] or 0)
+                except Exception:
+                    pass
+            days = sorted(daily_costs.keys())
+            costs_list = [round(daily_costs[d], 4) for d in days]
+            avg_daily = sum(costs_list) / max(len(costs_list), 1) if costs_list else 0
+            total_7d = sum(costs_list)
+            # Linear trend
+            if len(costs_list) >= 2:
+                n = len(costs_list)
+                xs = list(range(n))
+                x_mean = sum(xs) / n
+                y_mean = sum(costs_list) / n
+                ss_xy = sum((xs[i] - x_mean) * (costs_list[i] - y_mean) for i in range(n))
+                ss_xx = sum((xs[i] - x_mean) ** 2 for i in range(n))
+                slope = ss_xy / ss_xx if ss_xx != 0 else 0
+                intercept = y_mean - slope * x_mean
+                forecast = [round(max(0, intercept + slope * (n + i)), 4) for i in range(7)]
+            else:
+                slope = 0
+                forecast = [round(avg_daily, 4)] * 7
+            return self._json({
+                "daily_costs": costs_list,
+                "days": days,
+                "avg_daily": round(avg_daily, 4),
+                "total_7d": round(total_7d, 4),
+                "forecast_7d": forecast,
+                "forecast_total": round(sum(forecast), 4),
+                "trend": "rising" if slope > 0.01 else "falling" if slope < -0.01 else "stable",
+            })
+
         if path == "/api/chat/history":
             return self._json(chat_history[-50:])
 

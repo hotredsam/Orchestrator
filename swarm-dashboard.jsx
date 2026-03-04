@@ -193,6 +193,8 @@ function Dashboard() {
   const [sparklines, setSparklines] = useState({});
   const [etas, setEtas] = useState({});
   const [heatmap, setHeatmap] = useState(null);
+  const [costForecast, setCostForecast] = useState(null);
+  const [healthHistory, setHealthHistory] = useState(null);
   const [masterFocus, setMasterFocus] = useState(-1);
   const [compactMaster, setCompactMaster] = useState(() => localStorage.getItem("swarm-compact-master") === "1");
   const [compactItems, setCompactItems] = useState(false);
@@ -360,6 +362,8 @@ function Dashboard() {
         try { const sp = await f("/api/sparklines"); if(sp.ok) { const sd = await sp.json(); setSparklines(sd.sparklines || {}); } } catch {}
         try { const et = await f("/api/eta"); if(et.ok) { const ed = await et.json(); setEtas(ed.etas || {}); } } catch {}
         try { const hm = await f("/api/heatmap"); if(hm.ok) setHeatmap(await hm.json()); } catch {}
+        try { const cf = await f("/api/cost-forecast"); if(cf.ok) setCostForecast(await cf.json()); } catch {}
+        try { const hh = await f("/api/health/history"); if(hh.ok) setHealthHistory(await hh.json()); } catch {}
       }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -1063,6 +1067,85 @@ function Dashboard() {
               </Card>
             )}
 
+            {/* Cost Forecast */}
+            {costForecast && costForecast.total_7d > 0 && (
+              <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 12px", padding: 14, background: `linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>Cost Forecast (Next 7 Days)</div>
+                <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 8 }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, color: C.teal }}>${costForecast.total_7d}</div>
+                    <div style={{ fontSize: 10, color: C.brown }}>Last 7d</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, color: costForecast.trend === "rising" ? C.orange : costForecast.trend === "falling" ? C.green : C.teal }}>
+                      {costForecast.trend === "rising" ? "\u2191" : costForecast.trend === "falling" ? "\u2193" : "\u2192"} ${costForecast.forecast_total}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.brown }}>Forecast 7d</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, color: C.brown }}>${costForecast.avg_daily}/day</div>
+                    <div style={{ fontSize: 10, color: C.brown }}>Avg Daily</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 40 }}>
+                  {[...costForecast.daily_costs, ...costForecast.forecast_7d].map((v, i) => {
+                    const all = [...costForecast.daily_costs, ...costForecast.forecast_7d];
+                    const max = Math.max(...all, 0.001);
+                    const isForecast = i >= costForecast.daily_costs.length;
+                    return (
+                      <div key={i} style={{ flex: 1, height: `${(v / max) * 36}px`, minHeight: v > 0 ? 3 : 0, background: isForecast ? `${C.orange}88` : C.teal, borderRadius: "2px 2px 0 0", transition: "height 0.3s", opacity: isForecast ? 0.6 : 1 }} title={`$${v}${isForecast ? " (forecast)" : ""}`} />
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.brown, marginTop: 2 }}>
+                  <span>Past</span><span>|</span><span>Forecast</span>
+                </div>
+              </Card>
+            )}
+
+            {/* Health History Chart */}
+            {healthHistory?.history?.length > 0 && (
+              <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 12px", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>Health Score Trends</div>
+                {(() => {
+                  const byRepo = {};
+                  healthHistory.history.forEach(h => {
+                    if (!byRepo[h.repo_id]) byRepo[h.repo_id] = [];
+                    byRepo[h.repo_id].push(h);
+                  });
+                  const repoIds = Object.keys(byRepo).slice(0, 6);
+                  const colors = [C.teal, C.orange, C.green, C.red, "#7E57C2", C.brown];
+                  return (
+                    <div>
+                      <div style={{ height: 60, position: "relative" }}>
+                        {repoIds.map((rid, idx) => {
+                          const points = byRepo[rid];
+                          if (points.length < 2) return null;
+                          const pts = points.map((p, i) => `${(i / Math.max(points.length - 1, 1)) * 100}%,${60 - (p.score / 100) * 56}`).join(" ");
+                          return (
+                            <svg key={rid} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+                              <polyline points={pts} fill="none" stroke={colors[idx % colors.length]} strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 4 }}>
+                        {repoIds.map((rid, idx) => {
+                          const repo = repos.find(r => r.id === parseInt(rid));
+                          return (
+                            <span key={rid} style={{ fontSize: 9, display: "flex", alignItems: "center", gap: 3 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: colors[idx % colors.length], display: "inline-block" }} />
+                              {repo?.name || `#${rid}`}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </Card>
+            )}
+
             {/* Stale Items Warning */}
             {staleItems.length > 0 && (
               <Card bg="#FFF3E0" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.orange}` }}>
@@ -1491,6 +1574,8 @@ function Dashboard() {
                       )}
                       <button onClick={e => { e.stopPropagation(); f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: r.id, message: "manual push" }) }).then(() => showToast(`${r.name} pushed`, "success")); }}
                         style={{ background: C.teal, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }}>{"\uD83D\uDE80"} Push</button>
+                      <button onClick={e => { e.stopPropagation(); const title = prompt("Quick add item for " + r.name + ":"); if (title) { f("/api/items", { method: "POST", body: JSON.stringify({ repo_id: r.id, title, type: "feature", priority: "medium" }) }).then(() => { showToast(`Added "${title}" to ${r.name}`, "success"); load(); }); } }}
+                        style={{ background: C.yellow, color: C.darkBrown, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }} title="Quick add item">{"\u2795"}</button>
                       <button onClick={e => { e.stopPropagation(); f("/api/repos/archive", { method: "POST", body: JSON.stringify({ repo_id: r.id, archive: !r.archived }) }).then(() => { showToast(`${r.name} ${r.archived ? "unarchived" : "archived"}`, "info"); load(); }); }}
                         style={{ background: "#999", color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1, opacity: 0.7 }} title={r.archived ? "Unarchive" : "Archive"}>{r.archived ? "\uD83D\uDCE4" : "\uD83D\uDCE6"}</button>
                     </div>}
