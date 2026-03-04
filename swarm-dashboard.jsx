@@ -125,7 +125,7 @@ function Dashboard() {
       const r = await f("/api/repos");
       if (r.ok) { const d = await r.json(); setRepos(d); if (!sr && d.length) setSR(d[0].id); }
       setCon(true);
-    } catch { setCon(false); }
+    } catch(err) { console.warn("Server connection lost:", err.message); setCon(false); }
     if (!sr) return;
     try {
       const [a,b,c,d,e,g,h,hi] = await Promise.all([
@@ -138,7 +138,7 @@ function Dashboard() {
       if(c.ok) setLogs(await c.json()); if(d.ok) setAgents(await d.json());
       if(e.ok) setMemory(await e.json()); if(g.ok) setMistakes(await g.json());
       if(h.ok) setAudio(await h.json()); if(hi.ok) setHistory(await hi.json());
-    } catch {}
+    } catch(err) { console.warn("Data fetch error:", err.message); }
   }, [sr]);
 
   useEffect(() => { load(); const i = setInterval(load, 3000); return () => clearInterval(i); }, [load]);
@@ -414,8 +414,21 @@ function Dashboard() {
         ))}
       </div>
 
+      {/* ═══ CONNECTION BANNER ═══ */}
+      {!connected && (
+        <div style={{ background: "linear-gradient(90deg, #E74C3C 0%, #C0392B 100%)", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, borderBottom: `3px solid ${C.darkBrown}` }}>
+          <span style={{ fontSize: 18, animation: "pulse 1.5s infinite" }}>⚠️</span>
+          <span style={{ color: C.white, fontWeight: 700, fontSize: 14, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
+            Connection lost — retrying every 3 seconds...
+          </span>
+          <button onClick={load} style={{ background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>
+            Retry Now
+          </button>
+        </div>
+      )}
+
       {/* ═══ CONTENT ═══ */}
-      <div style={{ maxHeight: "calc(100vh - 150px)", overflow: "auto" }}>
+      <div style={{ maxHeight: `calc(100vh - ${connected ? 150 : 192}px)`, overflow: "auto" }}>
 
         {/* ── HOME / TOWN SQUARE ── */}
         {tab === "home" && (<>

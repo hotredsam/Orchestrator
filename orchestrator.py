@@ -112,7 +112,7 @@ def validate_telegram_init_data(init_data: str) -> dict:
         if "user" in params:
             try:
                 user = json.loads(unquote(params["user"]))
-            except:
+            except (json.JSONDecodeError, TypeError):
                 pass
 
         return {"valid": valid, "user": user}
@@ -551,7 +551,7 @@ class Runner:
                 parsed = json.loads(out)
                 return {"success": r.returncode == 0, "output": parsed.get("result", out),
                         "raw": out, "elapsed": elapsed, "cost": parsed.get("cost_usd", 0)}
-            except:
+            except (json.JSONDecodeError, ValueError):
                 return {"success": r.returncode == 0, "output": out or err, "raw": out,
                         "elapsed": elapsed, "error": err[:1000] if r.returncode != 0 else ""}
         except subprocess.TimeoutExpired:
@@ -604,7 +604,8 @@ class Runner:
                                cwd=cwd, capture_output=True, text=True, timeout=30,
                                shell=(sys.platform == "win32"), env=clean_env())
             return r.stdout[:5000]
-        except:
+        except Exception as e:
+            log.debug(f"grep failed in {cwd}: {e}")
             return ""
 
     def git_push(self, cwd, msg="auto: agent commit", branch="main"):
@@ -619,8 +620,8 @@ class Runner:
                     tg_msg(f"📤 *{repo_name}* pushed to GitHub: {msg[:60]}")
                 else:
                     tg_msg(f"⚠️ *{repo_name}* git push failed: {result.get('error','')[:100]}. Continuing.")
-            except:
-                pass
+            except Exception as e:
+                log.debug(f"Telegram notify failed for git push: {e}")
         return result
 
     def ruflo_init(self, cwd):
@@ -755,8 +756,8 @@ Do NOT repeat these mistakes. If you encounter similar issues, use a different a
                     shutil.move(fp, dest)
                     self.db.add_audio(dest)
                     log.info(f"📥 Intake: moved {f} to audio queue for {self.repo['name']}")
-        except:
-            pass
+        except Exception as e:
+            log.warning(f"Intake folder scan failed for {self.repo['name']}: {e}")
 
         time.sleep(POLL_SEC)
         return State.IDLE
@@ -1012,8 +1013,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                 total_steps = len(self.db.all_steps())
                 done_steps = len([s for s in self.db.all_steps() if s["status"] == "completed"])
                 tg_msg(f"✅ *{self.repo['name']}* Step {done_steps+1}/{total_steps}: {step['description'][:60]}")
-            except:
-                pass
+            except Exception as e:
+                log.debug(f"Telegram notify failed: {e}")
 
         return State.TEST_STEP
 
@@ -1051,7 +1052,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                     td = json.loads(o[s:e])
                     tw = td.get("tests_written", 10)
                     tp = td.get("tests_passed", 10)
-        except:
+        except (json.JSONDecodeError, ValueError, TypeError):
             pass
 
         if not result["success"]:
@@ -1089,8 +1090,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                 from telegram_bot import send_message as tg_msg
                 total = len(self.db.all_steps())
                 tg_msg(f"🏗️ *{self.repo['name']}* — All {total} plan steps complete. Optimizing and scanning now.")
-            except:
-                pass
+            except Exception as e:
+                log.debug(f"Telegram notify failed: {e}")
         prompt = self._with_mistake_context(
             "Optimization: dead code removal, dedup, tree shaking (grep for unused). "
             "Output OPTIMIZE_COMPLETE when done."
@@ -1142,8 +1143,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                        f"🧪 Total tests passed: {tests}\n"
                        f"💀 Mistakes this cycle: {mistakes}\n"
                        f"Next: watching for new items...")
-            except:
-                pass
+            except Exception as e:
+                log.debug(f"Telegram notify failed: {e}")
 
         return State.IDLE
 
@@ -1211,8 +1212,21 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         try:
             while not self.stop_event.is_set():
                 old_state = self.state.current_state
-                handler = getattr(self, self.HANDLERS.get(self.state.current_state, "h_idle"))
-                nxt = handler()
+                handler_name = self.HANDLERS.get(self.state.current_state, "h_idle")
+                handler = getattr(self, handler_name, None)
+                if handler is None:
+                    log.error(f"[{self.repo['name']}] No handler for state {self.state.current_state}, resetting to IDLE")
+                    self.state.current_state = State.IDLE
+                    self.save()
+                    continue
+                try:
+                    nxt = handler()
+                except Exception as he:
+                    log.exception(f"[{self.repo['name']}] Handler {handler_name} crashed: {he}")
+                    self.state.errors.append(f"{handler_name}: {he}")
+                    self.db.log_mistake("handler_crash", f"{handler_name} crashed: {he}",
+                                        state_snapshot=json.dumps(self.state.to_dict()))
+                    nxt = State.IDLE
                 self.state.current_state = nxt
                 self.save()
                 self._telegram_notify(old_state, nxt)
@@ -1225,8 +1239,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                 try:
                     from telegram_bot import notify_error
                     notify_error(self.repo["name"], str(e))
-                except:
-                    pass
+                except Exception as tg_err:
+                    log.debug(f"Telegram error notify failed: {tg_err}")
         finally:
             self.state.running = False
             self.save()
@@ -1320,8 +1334,8 @@ def scan_repo_health(repo):
     try:
         for item in os.listdir(path):
             files.add(item.lower())
-    except:
-        pass
+    except OSError as e:
+        log.warning(f"Cannot list directory {path}: {e}")
 
     # Missing essentials
     if ".gitignore" not in files:
@@ -1369,10 +1383,10 @@ def scan_repo_health(repo):
                             debug_lines += 1
                         if ext in {".js", ".jsx", ".ts", ".tsx"} and "console.log" in line and "test" not in fname.lower():
                             debug_lines += 1
-                except:
+                except (OSError, UnicodeDecodeError):
                     pass
-    except:
-        pass
+    except OSError as e:
+        log.debug(f"Code scan walk failed: {e}")
 
     if todo_count > 0:
         add("warning", f"Found {todo_count} TODO/FIXME comments", f"{todo_count} TODO/FIXME/HACK/XXX comments in code")
@@ -1394,7 +1408,7 @@ def scan_repo_health(repo):
                                    timeout=10, shell=(sys.platform == "win32"))
                 if r.stdout.strip():
                     add("critical", "Remove .env from git", ".env file is tracked by git — contains secrets!", True)
-        except:
+        except (subprocess.TimeoutExpired, OSError):
             pass
         # Check for uncommitted changes
         try:
@@ -1403,7 +1417,7 @@ def scan_repo_health(repo):
             if r.stdout.strip():
                 changed = len(r.stdout.strip().split("\n"))
                 add("warning", f"Uncommitted changes ({changed} files)", "Has uncommitted changes in working tree")
-        except:
+        except (subprocess.TimeoutExpired, OSError):
             pass
         # Check for remote
         try:
@@ -1411,7 +1425,7 @@ def scan_repo_health(repo):
                                timeout=10, shell=(sys.platform == "win32"))
             if not r.stdout.strip():
                 add("warning", "No git remote", "No remote configured — can't push")
-        except:
+        except (subprocess.TimeoutExpired, OSError):
             pass
 
     # Ruflo checks
@@ -1572,7 +1586,7 @@ def detect_project_type(path):
     try:
         for item in os.listdir(path):
             files.add(item.lower())
-    except:
+    except OSError:
         return {"type": "unknown", "stack": [], "file_count": 0}
 
     stack = []
@@ -1599,7 +1613,7 @@ def detect_project_type(path):
                     stack.append("express")
                 if "typescript" in deps:
                     stack.append("typescript")
-            except:
+            except (json.JSONDecodeError, OSError, KeyError):
                 pass
         ptype = "node-react" if "react" in stack else "node"
 
@@ -1614,7 +1628,7 @@ def detect_project_type(path):
                     stack.append("flask")
                 if "django" in reqs:
                     stack.append("django")
-            except:
+            except OSError:
                 pass
         ptype = "python" if ptype == "unknown" else "fullstack"
 
@@ -1922,7 +1936,8 @@ class API(BaseHTTPRequestHandler):
                     ruflo_rows = db.fetchall("SELECT key, value FROM memory WHERE namespace='ruflo_config'")
                     stats["ruflo_config"] = {row["key"]: row["value"] for row in ruflo_rows}
                     r["stats"] = stats
-                except:
+                except Exception as e:
+                    log.debug(f"Stats fetch failed for repo {r.get('name', '?')}: {e}")
                     r["state"] = "idle"
                     r["stats"] = {}
             return self._json(repos)
@@ -2306,14 +2321,20 @@ class API(BaseHTTPRequestHandler):
                     # so the swarm re-plans and re-processes only those items
                     re_queued = []
                     if item_ids and isinstance(item_ids, list):
-                        placeholders = ",".join("?" for _ in item_ids)
-                        db.ex(f"UPDATE items SET status='pending', started_at=NULL, completed_at=NULL "
-                              f"WHERE id IN ({placeholders})", tuple(int(i) for i in item_ids))
-                        # Remove plan steps linked to those items so they get re-planned
-                        db.ex(f"DELETE FROM plan_steps WHERE item_id IN ({placeholders})",
-                              tuple(int(i) for i in item_ids))
-                        db.commit()
-                        re_queued = [int(i) for i in item_ids]
+                        # Validate all item_ids are integers
+                        try:
+                            validated_ids = [int(i) for i in item_ids]
+                        except (ValueError, TypeError):
+                            return self._json({"error": "item_ids must be a list of integers"}, 400)
+                        if validated_ids:
+                            placeholders = ",".join("?" for _ in validated_ids)
+                            db.ex(f"UPDATE items SET status='pending', started_at=NULL, completed_at=NULL "
+                                  f"WHERE id IN ({placeholders})", tuple(validated_ids))
+                            # Remove plan steps linked to those items so they get re-planned
+                            db.ex(f"DELETE FROM plan_steps WHERE item_id IN ({placeholders})",
+                                  tuple(validated_ids))
+                            db.commit()
+                            re_queued = validated_ids
                     results.append({"repo": repo["name"], "type": ptype, "config": config,
                                     "re_queued_items": re_queued})
                 except Exception as e:
