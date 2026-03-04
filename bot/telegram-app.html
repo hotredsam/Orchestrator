@@ -1332,17 +1332,19 @@
         return;
       }
 
-      el.innerHTML = data.slice(0, 50).map(log => {
-        const time = log.created_at ? new Date(log.created_at).toLocaleTimeString() : '';
+      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${data.length} log entries (showing ${Math.min(50, data.length)})</div>` + data.slice(0, 50).map(log => {
+        const ago = timeAgo(log.created_at);
         const actionColors = { state_change: 'var(--teal)', error: 'var(--red)', git_push: 'var(--green)', execute: 'var(--orange)' };
         const color = actionColors[log.action] || 'var(--text-secondary)';
+        const hasError = log.error || log.action === 'error';
         return `
-          <div style="padding:6px 0;border-bottom:1px solid var(--shadow);font-size:12px;">
+          <div style="padding:6px 0;border-bottom:1px solid var(--shadow);font-size:12px;${hasError ? 'border-left:3px solid var(--red);padding-left:6px;' : ''}">
             <div class="flex-between">
-              <span style="color:${color};font-weight:600;">${esc(log.action || '')}</span>
-              <span style="color:var(--text-secondary);font-size:10px;">${time}</span>
+              <span style="color:${color};font-weight:600;">${hasError ? '🔴 ' : ''}${esc(log.action || '')}</span>
+              <span style="color:var(--text-secondary);font-size:10px;" title="${esc(log.created_at || '')}">${ago}</span>
             </div>
-            <div style="color:var(--text);margin-top:2px;">${esc((log.details || '').substring(0, 150))}</div>
+            <div style="color:var(--text);margin-top:2px;">${esc((log.details || log.result || '').substring(0, 150))}</div>
+            ${log.error ? `<div style="color:var(--red);font-size:11px;margin-top:2px;">${esc(log.error.substring(0, 100))}</div>` : ''}
           </div>`;
       }).join('');
     }
@@ -1595,6 +1597,15 @@
       const d = document.createElement('div');
       d.textContent = s || '';
       return d.innerHTML;
+    }
+
+    function timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+      if (secs < 60) return 'just now';
+      if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+      if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+      return `${Math.floor(secs / 86400)}d ago`;
     }
 
     function formatState(s) {

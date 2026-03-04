@@ -1363,16 +1363,17 @@ def cmd_help():
 `snapshot [repo]` — Quick data snapshot with pending items
 `cost-history` — Daily cost totals for last 7 days
 `grades` — Health scores for all repos (A-F)
-`summary` — Quick one-message status overview
+`summary` — Compact system-wide summary
+`active` — Show currently running repos
+`top` — Top 5 repos by items completed
 `uptime` — Server uptime and version info
-`rotate-token` — Rotate API bearer token
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
 `leaderboard` — Repo rankings by items completed
-`summary` — Compact system-wide summary
 `errors` — Recent errors across all repos
 `docs` — List all API endpoints
 `batch [action] [target]` — Batch start/stop/push repos
+`rotate-token` — Rotate API bearer token
 `app` — Open Mini App
 `help` — This message
 
