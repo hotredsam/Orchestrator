@@ -1,6 +1,6 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
-const API = "http://localhost:6969";
+const API = window.__SWARM_API_URL__ || (window.location.port ? window.location.origin : "http://localhost:6969");
 // Auth token — may be set by Telegram Mini App page or fetched from /api/token
 let __authToken = window.__SWARM_API_TOKEN__ || "";
 const f = (u, o) => fetch(`${API}${u}`, {
@@ -1205,6 +1205,11 @@ function Dashboard() {
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: pct === 100 ? C.green : C.orange, lineHeight: 1 }}>{pct}%</div>
                         <div style={{ fontSize: 9, color: C.brown }}>complete</div>
+                        {healthScores?.repos?.[r.id] && (
+                          <div style={{ fontFamily: "'Bangers', cursive", fontSize: 14, color: healthScores.repos[r.id].grade === "A" ? C.green : healthScores.repos[r.id].grade === "F" ? C.red : C.orange, marginTop: 2 }}>
+                            {healthScores.repos[r.id].grade}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {/* Progress bar */}
