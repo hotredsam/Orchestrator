@@ -495,6 +495,7 @@ class RepoDB:
                 agent_type TEXT DEFAULT 'coder',
                 tests_written INTEGER DEFAULT 0, tests_passed INTEGER DEFAULT 0,
                 cost_usd REAL DEFAULT 0, duration_sec REAL DEFAULT 0,
+                model TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now')), completed_at TEXT,
                 FOREIGN KEY (item_id) REFERENCES items(id)
             );
@@ -577,6 +578,8 @@ class RepoDB:
             self.conn.execute("ALTER TABLE plan_steps ADD COLUMN cost_usd REAL DEFAULT 0")
         if "duration_sec" not in cols:
             self.conn.execute("ALTER TABLE plan_steps ADD COLUMN duration_sec REAL DEFAULT 0")
+        if "model" not in cols:
+            self.conn.execute("ALTER TABLE plan_steps ADD COLUMN model TEXT DEFAULT ''")
         self.conn.commit()
 
     def ex(self, q, p=(), retries=3):
@@ -696,10 +699,10 @@ class RepoDB:
                     (s.get("item_id"), i, s["description"], s.get("agent_type", "coder")))
         self.commit()
 
-    def complete_step(self, sid, tw, tp, cost=0, duration=0):
+    def complete_step(self, sid, tw, tp, cost=0, duration=0, model=""):
         self.ex("UPDATE plan_steps SET status='completed',tests_written=?,tests_passed=?,"
-                "cost_usd=?,duration_sec=?,completed_at=datetime('now') WHERE id=?",
-                (tw, tp, cost, duration, sid))
+                "cost_usd=?,duration_sec=?,model=?,completed_at=datetime('now') WHERE id=?",
+                (tw, tp, cost, duration, model, sid))
         self.commit()
 
     # Audio
@@ -1443,6 +1446,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                            "cost": step_cost})
         self.state.current_step_id = step["id"]
         self._step_exec_cost = step_cost
+        self._step_exec_model = "claude-sonnet-4-6"
         self._step_exec_dur = dur
 
         # Store in Ruflo memory
@@ -1506,7 +1510,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         test_cost = result.get("cost", 0)
         total_step_cost = getattr(self, "_step_exec_cost", 0) + test_cost
         total_step_dur = getattr(self, "_step_exec_dur", 0) + test_dur
-        self.db.complete_step(sid, tw, tp, cost=total_step_cost, duration=total_step_dur)
+        step_model = getattr(self, "_step_exec_model", "")
+        self.db.complete_step(sid, tw, tp, cost=total_step_cost, duration=total_step_dur, model=step_model)
         self.log("test_step", f"{tw} written, {tp} passed", dur=test_dur, cost=test_cost)
 
         if self.repo.get("github_url"):
@@ -2771,6 +2776,16 @@ class API(BaseHTTPRequestHandler):
                         "mistakes": mc["c"],
                         "audio": ac["c"],
                     }
+                    # File count from git
+                    try:
+                        rp = r.get("path", "")
+                        if rp and os.path.isdir(os.path.join(rp, ".git")):
+                            fc = subprocess.run(["git", "ls-files"], capture_output=True, text=True, cwd=rp, timeout=5)
+                            stats["file_count"] = len(fc.stdout.strip().splitlines()) if fc.returncode == 0 else 0
+                        else:
+                            stats["file_count"] = 0
+                    except Exception:
+                        stats["file_count"] = 0
                     # Include ruflo config
                     ruflo_rows = db.fetchall("SELECT key, value FROM memory WHERE namespace='ruflo_config'")
                     stats["ruflo_config"] = {row["key"]: row["value"] for row in ruflo_rows}

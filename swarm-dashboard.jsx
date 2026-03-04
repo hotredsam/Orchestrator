@@ -1393,10 +1393,11 @@ function Dashboard() {
                       </div>
                     )}
                     {/* Stats row */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 6 }}>
                       {[
                         { l: "Items", v: `${s.items_done||0}/${s.items_total||0}` },
                         { l: "Steps", v: `${s.steps_done||0}/${s.steps_total||0}` },
+                        { l: "Files", v: s.file_count || "-" },
                         { l: "Cycles", v: r.cycle_count||0 },
                         { l: "Cost", v: `$${(costs[r.id] || 0).toFixed(2)}` },
                       ].map((x, i) => (
@@ -1436,6 +1437,35 @@ function Dashboard() {
                 );
               })}
             </div>
+            {/* Summary bar */}
+            <Card bg={C.white} style={{ maxWidth: 700, margin: "16px auto 0", padding: "10px 20px", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
+                <div style={{ display: "flex", gap: 16 }}>
+                  {[
+                    { l: "Running", v: repos.filter(r => r.running).length, c: C.green },
+                    { l: "Idle", v: repos.filter(r => !r.running && !r.archived).length, c: C.brown },
+                    { l: "Total Items", v: repos.reduce((a, r) => a + (r.stats?.items_total || 0), 0), c: C.teal },
+                    { l: "Total Cost", v: "$" + Object.values(costs).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0).toFixed(2), c: C.orange },
+                  ].map((s, i) => (
+                    <span key={i}><span style={{ fontWeight: 700, color: s.c }}>{s.v}</span> <span style={{ color: C.brown, fontSize: 10 }}>{s.l}</span></span>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={async () => {
+                    const idle = repos.filter(r => !r.running && !r.archived);
+                    if (idle.length === 0) { showToast("No idle repos to start", "info"); return; }
+                    await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: idle.map(r => r.id), action: "start" }) });
+                    showToast(`Starting ${idle.length} idle repos`, "success"); load();
+                  }} style={{ background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u25B6"} Start All Idle</button>
+                  <button onClick={async () => {
+                    const running = repos.filter(r => r.running);
+                    if (running.length === 0) { showToast("No running repos to stop", "info"); return; }
+                    await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: running.map(r => r.id), action: "stop" }) });
+                    showToast(`Stopping ${running.length} repos`, "info"); load();
+                  }} style={{ background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u23F9"} Stop All</button>
+                </div>
+              </div>
+            </Card>
             {/* Dependency Graph */}
             <details style={{ maxWidth: 700, margin: "20px auto 0" }}>
               <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1, textAlign: "center" }}>
@@ -1855,7 +1885,7 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Add items to the Bounty Board first -- the swarm will draw up a plan!</div>
                 </Card>
               ) :
-                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); return plan.map((s,i) => {
+                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); const completedSteps = plan.filter(p => p.status === "completed" && p.duration_sec > 0); const avgDur = completedSteps.length ? completedSteps.reduce((a, p) => a + p.duration_sec, 0) / completedSteps.length : 0; return plan.map((s,i) => {
                   const done = s.status==="completed";
                   return (
                     <div key={s.id} style={{ display: "flex", gap: 12, marginBottom: 8 }}>
@@ -1870,9 +1900,11 @@ function Dashboard() {
                         <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                           {s.agent_type && <span style={{ fontSize: 10, background: C.lightOrange, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83E\uDD20"} {s.agent_type}</span>}
                           {done && <span style={{ fontSize: 10, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u2705"} Tests: {s.tests_passed}/{s.tests_written}</span>}
+                          {done && s.model && <span style={{ fontSize: 10, background: `${C.teal}22`, border: `2px solid ${C.teal}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600, color: C.teal }}>{"\uD83E\uDD16"} {s.model.replace("claude-","").replace("-20251001","")}</span>}
                           {done && s.cost_usd > 0 && <span style={{ fontSize: 10, background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83D\uDCB0"} ${s.cost_usd.toFixed(3)}</span>}
                           {done && s.duration_sec > 0 && <span style={{ fontSize: 10, background: C.lightTeal, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u23F1\uFE0F"} {Math.round(s.duration_sec)}s</span>}
                           {done && s.cost_usd > 0 && <div style={{ flex: "1 1 100%", height: 4, background: C.cream, borderRadius: 2, overflow: "hidden", marginTop: 4 }}><div style={{ height: "100%", background: `linear-gradient(90deg, ${C.teal}, ${s.cost_usd/maxCost > 0.7 ? C.orange : C.green})`, width: `${Math.min(100, (s.cost_usd / maxCost) * 100)}%`, borderRadius: 2, transition: "width .3s" }} /></div>}
+                          {!done && avgDur > 0 && <span style={{ fontSize: 10, background: `${C.teal}22`, border: `2px solid ${C.teal}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600, color: C.teal }}>{"\u23F3"} ~{avgDur >= 60 ? `${Math.round(avgDur/60)}m` : `${Math.round(avgDur)}s`} est</span>}
                           {!done && (
                             <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
                               {i > 0 && <button onClick={() => reorderStep(s.id, "up")} style={{ background: C.cream, border: `1px solid ${C.darkBrown}`, borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "1px 6px" }} title="Move up">{"\u25B2"}</button>}
