@@ -124,6 +124,8 @@ function Dashboard() {
   const [mistakeAnalysis, setMistakeAnalysis] = useState(null);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [trends, setTrends] = useState(null);
+  const [comparison, setComparison] = useState(null);
+  const [compSort, setCompSort] = useState("name");
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -254,6 +256,9 @@ function Dashboard() {
       if (full || t === "trends") {
         try { const tr = await f(`/api/trends?repo_id=${sr}&days=14`); if(tr.ok) setTrends(await tr.json()); } catch {}
       }
+      if (full || t === "compare") {
+        try { const cr = await f("/api/comparison"); if(cr.ok) setComparison(await cr.json()); } catch {}
+      }
       try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); } } catch {}
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -267,7 +272,7 @@ function Dashboard() {
     const handler = (e) => {
       // Don't handle when typing in inputs
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-      const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","trends","settings"];
+      const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","trends","compare","settings"];
       if (e.key >= "1" && e.key <= "9") { e.preventDefault(); const idx = parseInt(e.key) - 1; if (TABS_LIST[idx]) setTab(TABS_LIST[idx]); }
       if (e.key === "0") { e.preventDefault(); setTab("logs"); }
       if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${repo?.running ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
@@ -534,6 +539,7 @@ function Dashboard() {
     { id: "health", label: "🔍 Health Check" },
     { id: "metrics", label: "📊 Metrics" },
     { id: "trends", label: "📈 Trends" },
+    { id: "compare", label: "⚖️ Compare" },
     { id: "settings", label: "⚙️ Settings" },
   ];
 
@@ -1854,6 +1860,75 @@ function Dashboard() {
                 <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83D\uDCC8"}</div>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>No trend data yet</div>
                 <div style={{ fontSize: 13, color: C.brown }}>Trends appear after the swarm starts executing steps.</div>
+              </Card>
+            )}
+          </SectionBg>
+        )}
+
+        {/* ── COMPARE ── */}
+        {tab === "compare" && (
+          <SectionBg bg={`linear-gradient(180deg, #E3F2FD 0%, #BBDEFB 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Repo Showdown</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Compare repos side-by-side — find your top performers</p>
+            {comparison && comparison.repos?.length > 0 ? (
+              <>
+                {comparison.total_cost > 0 && (
+                  <div style={{ textAlign: "center", marginBottom: 12 }}>
+                    <span style={{ fontFamily: "'Bangers', cursive", fontSize: 20, color: C.teal }}>Total Cost: ${comparison.total_cost}</span>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 12, flexWrap: "wrap" }}>
+                  {[["name","Name"],["cost","Cost"],["items_done","Items"],["error_rate","Errors"],["cycles","Cycles"]].map(([key, label]) => (
+                    <button key={key} onClick={() => setCompSort(key)} style={{
+                      padding: "4px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                      fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
+                      background: compSort === key ? C.teal : C.cream,
+                      color: compSort === key ? C.white : C.darkBrown,
+                      border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
+                    }}>Sort: {label}</button>
+                  ))}
+                </div>
+                <Card bg={C.white} style={{ maxWidth: 720, margin: "0 auto", padding: 14, overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${C.darkBrown}` }}>
+                        <th style={{ padding: "8px 6px", textAlign: "left" }}>Repo</th>
+                        <th style={{ padding: "8px 6px", textAlign: "center" }}>State</th>
+                        <th style={{ padding: "8px 6px", textAlign: "right" }}>Cost</th>
+                        <th style={{ padding: "8px 6px", textAlign: "right" }}>$/Item</th>
+                        <th style={{ padding: "8px 6px", textAlign: "right" }}>Items</th>
+                        <th style={{ padding: "8px 6px", textAlign: "right" }}>Err%</th>
+                        <th style={{ padding: "8px 6px", textAlign: "right" }}>Cycles</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...comparison.repos].sort((a, b) => {
+                        if (compSort === "name") return a.name.localeCompare(b.name);
+                        return (b[compSort] || 0) - (a[compSort] || 0);
+                      }).map(r => (
+                        <tr key={r.id} style={{ borderBottom: `1px solid ${C.darkBrown}22`, cursor: "pointer" }} onClick={() => { setSR(r.id); setTab("home"); }}>
+                          <td style={{ padding: "8px 6px", fontWeight: 700 }}>{r.name}</td>
+                          <td style={{ padding: "8px 6px", textAlign: "center" }}>
+                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, fontWeight: 700,
+                              background: r.state === "idle" ? C.cream : r.state === "credits_exhausted" ? C.red : C.green,
+                              color: r.state === "idle" ? C.brown : C.white }}>{r.state}</span>
+                          </td>
+                          <td style={{ padding: "8px 6px", textAlign: "right" }}>${r.cost}</td>
+                          <td style={{ padding: "8px 6px", textAlign: "right", color: r.cost_per_item > 1 ? C.red : C.green }}>${r.cost_per_item}</td>
+                          <td style={{ padding: "8px 6px", textAlign: "right" }}>{r.items_done}/{r.items_total}</td>
+                          <td style={{ padding: "8px 6px", textAlign: "right", color: r.error_rate > 20 ? C.red : r.error_rate > 10 ? C.orange : C.green, fontWeight: 700 }}>{r.error_rate}%</td>
+                          <td style={{ padding: "8px 6px", textAlign: "right" }}>{r.cycles}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              </>
+            ) : (
+              <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto", textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>{"\u2696\uFE0F"}</div>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>No repos to compare</div>
+                <div style={{ fontSize: 13, color: C.brown }}>Register some repos first to see the showdown.</div>
               </Card>
             )}
           </SectionBg>

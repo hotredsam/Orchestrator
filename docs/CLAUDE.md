@@ -118,6 +118,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Trend analysis** — `/api/trends` endpoint with daily cost/actions/items/errors aggregation, configurable period
 - **Trends dashboard tab** — 15th tab showing summary cards, daily breakdown table, cost trend bar chart
 - **Telegram trends command** — `trends [repo]` shows 7-day performance summary with recent daily breakdown
+- **Repo comparison** — `/api/comparison` endpoint with per-repo cost, items, error rate, cycles, cost-per-item
+- **Compare dashboard tab** — 16th tab with sortable comparison table, click-to-navigate, color-coded error rates
+- **Telegram compare command** — `compare` shows cross-repo performance table
 
 ## Commands
 ```bash

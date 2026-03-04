@@ -2822,6 +2822,36 @@ class API(BaseHTTPRequestHandler):
                 },
             })
 
+        if path == "/api/comparison":
+            repos = manager.master.get_repos()
+            costs = get_costs()
+            comparison = []
+            for r in repos:
+                try:
+                    db = RepoDB(r["db_path"])
+                    items_done = db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"]
+                    items_total = db.fetchone("SELECT COUNT(*) c FROM items")["c"]
+                    errors_row = db.fetchone("SELECT COUNT(*) c FROM mistakes")
+                    error_count = errors_row["c"] if errors_row else 0
+                    log_row = db.fetchone("SELECT COUNT(*) c FROM execution_log")
+                    total_actions = log_row["c"] if log_row else 0
+                    cost = costs.get(r["id"], 0)
+                    st = db.load_state()
+                    comparison.append({
+                        "id": r["id"], "name": r["name"],
+                        "state": st.current_state.value,
+                        "cost": round(cost, 4),
+                        "items_done": items_done, "items_total": items_total,
+                        "cost_per_item": round(cost / max(items_done, 1), 4),
+                        "error_count": error_count,
+                        "error_rate": round(error_count / max(total_actions, 1) * 100, 1),
+                        "total_actions": total_actions,
+                        "cycles": st.cycle_count,
+                    })
+                except Exception:
+                    comparison.append({"id": r["id"], "name": r["name"], "state": "unknown", "cost": 0, "items_done": 0, "items_total": 0, "cost_per_item": 0, "error_count": 0, "error_rate": 0, "total_actions": 0, "cycles": 0})
+            return self._json({"repos": comparison, "total_cost": round(sum(costs.values()), 4)})
+
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):

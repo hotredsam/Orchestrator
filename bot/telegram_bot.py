@@ -720,6 +720,23 @@ def cmd_trends(name):
     return "Could not fetch trends."
 
 
+def cmd_compare():
+    """Show repo comparison table."""
+    data = _orch_get("/api/comparison")
+    if isinstance(data, dict) and "repos" in data:
+        repos = sorted(data["repos"], key=lambda r: -(r.get("items_done", 0)))
+        lines = [f"*Repo Comparison* ({len(repos)} repos, total: ${data.get('total_cost', 0)})", ""]
+        for r in repos[:10]:
+            state_icon = "\U0001F7E2" if r["state"] not in ("idle", "unknown") else "\u26AA"
+            lines.append(
+                f"{state_icon} *{r['name']}* — ${r['cost']} | "
+                f"{r['items_done']}/{r['items_total']} items | "
+                f"{r['error_rate']}% err | {r['cycles']} cycles"
+            )
+        return "\n".join(lines)
+    return "Could not fetch comparison data."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -753,6 +770,7 @@ def cmd_help():
 `budget` / `budget [amount]` — View/set budget
 `metrics` — API request/latency stats
 `trends [repo]` — 7-day performance trends
+`compare` — Cross-repo comparison table
 `app` — Open Mini App
 `help` — This message
 
@@ -928,6 +946,8 @@ def handle_message(msg):
         reply = cmd_metrics()
     elif t.startswith("trends"):
         reply = cmd_trends(t[6:].strip())
+    elif t in ("compare", "comparison"):
+        reply = cmd_compare()
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):
