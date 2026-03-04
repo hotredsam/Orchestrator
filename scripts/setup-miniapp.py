@@ -82,11 +82,13 @@ def main():
         {"command": "retry", "description": "Re-queue completed items (e.g. /retry blog)"},
         {"command": "metrics", "description": "API request and latency stats"},
         {"command": "trends", "description": "7-day performance trends (e.g. /trends blog)"},
+        {"command": "forecast", "description": "7-day cost forecast with trend"},
+        {"command": "leaderboard", "description": "Repo rankings by items completed"},
         {"command": "help", "description": "Show all available commands"},
         {"command": "app", "description": "Open the Swarm Town Mini App"},
     ])
     if result.get("ok"):
-        print("   Done! 17 commands registered")
+        print("   Done! 19 commands registered")
 
     # 3. Set bot description
     print("3. Setting bot description...")

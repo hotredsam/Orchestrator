@@ -261,6 +261,27 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Comparison bar chart** — visual horizontal bar chart above comparison table, auto-selects metric from sort
 - **Item priority breakdown** — bounty board shows priority distribution segment bar (critical/high/medium/low)
 - **Plan cost breakdown** — stacked segment bar showing per-step cost percentages with color-coded legend
+- **State progress dots** — 10-dot state machine indicator on running master view cards
+- **Item dependencies** — `depends_on` column on items table for dependency chains, badge display on bounty board
+- **Debounced search** — log and memory search inputs use 200ms debounce to reduce re-renders
+- **Memoized filtered lists** — useMemo for filteredLogs, filteredMemory, filteredItems, repoStats
+- **Log pagination** — logs tab shows 100 entries at a time with "show more" button for large log sets
+- **Plan step retry** — POST /api/plan/reset-step resets completed steps to pending for re-execution
+- **Step retry button** — reset button on completed plan steps in dashboard
+- **Health grade badges** — colored A-F grade badges with backgrounds on master view cards
+- **Radar chart** — 4-axis SVG radar chart comparing top 5 repos (items, cycles, health, actions) in Compare tab
+- **Test pass rate badge** — flow tab status panel shows test pass percentage from completed steps
+- **Dark mode scrollbar** — custom scrollbar, selection, select/option styles for dark mode
+- **Agent leaderboard** — medal-ranked agent performance chart in agents tab
+- **Budget line marker** — plan cost breakdown bar shows budget limit position with over/under coloring
+- **Telegram /leaderboard** — repo rankings with medal emojis, progress bars, and health scores
+- **Inline item editing** — click pencil to edit title/priority directly on bounty board items
+- **Cost trend mini-chart** — 30-day cost sparkline on home tab stats area
+- **Auto-scroll to active step** — plan tab auto-scrolls to first pending step on view
+- **Next step highlight** — warm orange background on the next-up plan step
+- **Error recovery suggestions** — contextual tips based on error patterns (credits, timeout, rate limit)
+- **Expandable step descriptions** — long plan step descriptions collapse with click-to-expand
+- **Sticky header extras** — cost display and SSE status badge in sticky repo bar
 
 ## Commands
 ```bash

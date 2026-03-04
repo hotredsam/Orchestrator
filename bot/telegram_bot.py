@@ -1264,6 +1264,8 @@ def cmd_help():
 `uptime` — Server uptime and version info
 `rotate-token` — Rotate API bearer token
 `eta` — Estimated time and cost remaining per repo
+`forecast` — 7-day cost forecast with trend
+`leaderboard` — Repo rankings by items completed
 `errors` — Recent errors across all repos
 `docs` — List all API endpoints
 `batch [action] [target]` — Batch start/stop/push repos
