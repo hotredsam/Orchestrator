@@ -1119,6 +1119,41 @@ def cmd_api_docs():
     return "\n".join(lines)
 
 
+def cmd_batch(args):
+    """Batch action on repos matching a tag or comma-separated names.
+
+    Examples:
+      batch start tag:frontend
+      batch stop blog,portfolio
+      batch push all
+    """
+    parts = args.strip().split(None, 1)
+    if len(parts) < 2:
+        return "Usage: `batch [start|stop|pause|resume|push] [tag:X | repo1,repo2 | all]`"
+    action, target = parts[0], parts[1]
+    if action not in ("start", "stop", "pause", "resume", "push"):
+        return f"Unknown action `{action}`. Use start/stop/pause/resume/push."
+    repos = _orch_get("/api/repos")
+    if isinstance(repos, dict) and "error" in repos:
+        return f"Error: {repos['error']}"
+    if target == "all":
+        ids = [r["id"] for r in repos]
+    elif target.startswith("tag:"):
+        tag = target[4:].strip().lower()
+        ids = [r["id"] for r in repos if tag in (r.get("tags") or "").lower().split(",")]
+    else:
+        names = [n.strip().lower() for n in target.split(",")]
+        ids = [r["id"] for r in repos if r["name"].lower() in names]
+    if not ids:
+        return "No matching repos found."
+    data = _orch_post("/api/repos/batch", {"repo_ids": ids, "action": action})
+    if isinstance(data, dict) and "error" in data:
+        return f"Error: {data['error']}"
+    results = data.get("results", {})
+    ok_count = sum(1 for r in results.values() if r.get("ok"))
+    return f"Batch `{action}` on {len(ids)} repos: {ok_count} succeeded, {len(ids) - ok_count} failed."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -1170,6 +1205,7 @@ def cmd_help():
 `eta` — Estimated time and cost remaining per repo
 `errors` — Recent errors across all repos
 `docs` — List all API endpoints
+`batch [action] [target]` — Batch start/stop/push repos
 `app` — Open Mini App
 `help` — This message
 
@@ -1389,6 +1425,8 @@ def handle_message(msg):
         reply = cmd_recent_errors()
     elif t in ("docs", "api-docs", "api docs", "endpoints"):
         reply = cmd_api_docs()
+    elif t.startswith("batch "):
+        reply = cmd_batch(t[6:])
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         reply = f"Open the Swarm Town dashboard:\n{public_url}/telegram-app"

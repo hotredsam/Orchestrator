@@ -3449,6 +3449,33 @@ class API(BaseHTTPRequestHandler):
             _response_cache.clear()
             return self._json({"ok": True, "results": results})
 
+        if path == "/api/repos/clone":
+            url = b.get("url", "").strip()
+            name = b.get("name", "").strip()[:100]
+            branch = b.get("branch", "main").strip()
+            if not url:
+                return self._json({"error": "url required"}, 400)
+            if not name:
+                name = url.rstrip("/").rsplit("/", 1)[-1].replace(".git", "")
+            dest = os.path.join(REPOS_DIR, name)
+            if os.path.exists(dest):
+                return self._json({"error": f"Directory already exists: {dest}"}, 409)
+            try:
+                result = subprocess.run(
+                    ["git", "clone", "--branch", branch, url, dest],
+                    capture_output=True, text=True, timeout=120
+                )
+                if result.returncode != 0:
+                    return self._json({"error": f"git clone failed: {result.stderr[:200]}"}, 500)
+                repo = manager.master.add_repo(name, dest, url, branch)
+                RepoDB(repo["db_path"])
+                _response_cache.clear()
+                return self._json({"ok": True, "repo": repo, "message": f"Cloned and registered '{name}'"}, 201)
+            except subprocess.TimeoutExpired:
+                return self._json({"error": "git clone timed out (120s)"}, 504)
+            except Exception as e:
+                return self._json({"error": str(e)[:200]}, 500)
+
         if path == "/api/start":
             rid = b.get("repo_id")
             tag = b.get("tag")
