@@ -124,6 +124,10 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Health score** — 0-100 composite score (40% completion, 40% low errors, 20% activity) shown in compare view
 - **CSV export** — comparison table downloadable as CSV from Compare tab
 - **Dashboard now 16 tabs** — added Trends (15th) and Compare (16th)
+- **Recent activity feed** — Town Square home tab shows last 5 actions with timestamps and error indicators
+- **Total cost stat card** — Town Square stats row includes total API cost across all repos
+- **Error badge on repo cards** — repos with mistakes show error count badge when not running
+- **Telegram activity command** — `activity` shows recent actions across all repos
 
 ## Commands
 ```bash

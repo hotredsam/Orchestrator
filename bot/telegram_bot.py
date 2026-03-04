@@ -737,6 +737,26 @@ def cmd_compare():
     return "Could not fetch comparison data."
 
 
+def cmd_activity():
+    """Show recent activity across all repos."""
+    repos = _orch_get("/api/repos")
+    if not isinstance(repos, list):
+        return "Could not fetch repos."
+    lines = ["*Recent Activity*", ""]
+    for repo in repos[:10]:
+        rid = repo.get("id")
+        logs_data = _orch_get(f"/api/logs?repo_id={rid}&limit=3")
+        if isinstance(logs_data, list) and logs_data:
+            lines.append(f"*{repo['name']}* ({repo.get('state', 'idle')})")
+            for l in logs_data[:2]:
+                action = (l.get("action") or l.get("result") or "—")[:60]
+                ts = (l.get("created_at") or "")[-8:]
+                err = " \u274C" if l.get("error") else ""
+                lines.append(f"  `{ts}` {action}{err}")
+            lines.append("")
+    return "\n".join(lines) if len(lines) > 2 else "No recent activity."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -771,6 +791,7 @@ def cmd_help():
 `metrics` — API request/latency stats
 `trends [repo]` — 7-day performance trends
 `compare` — Cross-repo comparison table
+`activity` — Recent activity across all repos
 `app` — Open Mini App
 `help` — This message
 
@@ -948,6 +969,8 @@ def handle_message(msg):
         reply = cmd_trends(t[6:].strip())
     elif t in ("compare", "comparison"):
         reply = cmd_compare()
+    elif t in ("activity", "recent"):
+        reply = cmd_activity()
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):

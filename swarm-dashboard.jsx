@@ -737,6 +737,7 @@ function Dashboard() {
                 { emoji: "\uD83D\uDCCB", label: "Items", val: repos.reduce((s,r)=>(s+(r.stats?.items_total||0)),0), bg: C.yellow },
                 { emoji: "\u2705", label: "Done", val: repos.reduce((s,r)=>(s+(r.stats?.items_done||0)),0), bg: C.lightTeal },
                 { emoji: "\uD83E\uDD20", label: "Agents", val: repos.reduce((s,r)=>(s+(r.stats?.agents||0)),0), bg: C.lightOrange },
+                { emoji: "\uD83D\uDCB0", label: "Total Cost", val: "$" + Object.values(costs).reduce((s,v)=>s+v,0).toFixed(2), bg: C.yellow },
               ].map((s,i) => (
                 <div key={i} className="stat-card" style={{ background: `linear-gradient(135deg, ${s.bg} 0%, ${s.bg}ee 100%)`, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "12px 20px", textAlign: "center", boxShadow: "0 2px 4px rgba(0,0,0,.1), 3px 3px 0 #3D2B1F", minWidth: 95, transition: "transform 0.2s, box-shadow 0.2s", cursor: "default" }}>
                   <div style={{ fontSize: 26 }}>{s.emoji}</div>
@@ -745,6 +746,20 @@ function Dashboard() {
                 </div>
               ))}
             </div>
+            {/* Recent Activity Feed */}
+            {logs.length > 0 && (
+              <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto", padding: 14 }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 8 }}>Recent Activity</div>
+                {logs.slice(0, 5).map((l, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", borderBottom: i < 4 ? `1px solid ${C.darkBrown}11` : "none", fontSize: 12 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: l.error ? C.red : C.green, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600, minWidth: 70, color: C.brown }}>{l.state || "—"}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.action || l.result || "—"}</span>
+                    <span style={{ fontSize: 10, color: C.brown, opacity: 0.6, flexShrink: 0 }}>{l.created_at?.slice(11, 19) || ""}</span>
+                  </div>
+                ))}
+              </Card>
+            )}
           </SectionBg>
 
           {/* REPO CARDS */}
@@ -801,6 +816,10 @@ function Dashboard() {
 
                     {/* Running indicator */}
                     {r.running && <div style={{ position: "absolute", top: -1, right: -1, background: `linear-gradient(135deg, ${C.green}, #27ae60)`, border: `2px solid ${C.darkBrown}`, borderRadius: "0 10px 0 10px", padding: "4px 12px", fontSize: 10, fontWeight: 700, color: C.white, letterSpacing: 1, fontFamily: "'Bangers', cursive" }}>RUNNING</div>}
+                    {/* Error count badge */}
+                    {(s.mistakes || 0) > 0 && !r.running && (
+                      <div style={{ position: "absolute", top: -1, right: -1, background: C.red, border: `2px solid ${C.darkBrown}`, borderRadius: "0 10px 0 10px", padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.white, fontFamily: "'Bangers', cursive" }}>{s.mistakes} err</div>
+                    )}
 
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, position: "relative" }}>
                       <div style={{ width: 48, height: 48, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, transition: "transform 0.3s ease, background 0.3s ease", animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
