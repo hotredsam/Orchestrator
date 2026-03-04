@@ -177,17 +177,23 @@ _sse_lock = threading.Lock()
 
 def sse_broadcast(event_type: str, data: dict):
     """Push an event to all connected SSE clients."""
-    payload = json.dumps({"type": event_type, **data, "ts": datetime.now(timezone.utc).isoformat()}, default=str)
-    msg = f"event: {event_type}\ndata: {payload}\n\n"
-    with _sse_lock:
-        dead = []
-        for q in _sse_clients:
-            try:
-                q.put_nowait(msg)
-            except queue.Full:
-                dead.append(q)
-        for q in dead:
-            _sse_clients.remove(q)
+    try:
+        payload = json.dumps({"type": event_type, **data, "ts": datetime.now(timezone.utc).isoformat()}, default=str)
+        msg = f"event: {event_type}\ndata: {payload}\n\n"
+        with _sse_lock:
+            dead = []
+            for q in _sse_clients:
+                try:
+                    q.put_nowait(msg)
+                except (queue.Full, Exception):
+                    dead.append(q)
+            for q in dead:
+                try:
+                    _sse_clients.remove(q)
+                except ValueError:
+                    pass
+    except Exception as e:
+        log.debug(f"SSE broadcast error: {e}")
 
 
 def sse_register() -> queue.Queue:
@@ -406,13 +412,28 @@ class RepoDB:
         """)
         self.conn.commit()
 
-    def ex(self, q, p=()):
-        with self.lock:
-            return self.conn.execute(q, p)
+    def ex(self, q, p=(), retries=3):
+        for attempt in range(retries):
+            try:
+                with self.lock:
+                    return self.conn.execute(q, p)
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < retries - 1:
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
+                raise
 
-    def commit(self):
-        with self.lock:
-            self.conn.commit()
+    def commit(self, retries=3):
+        for attempt in range(retries):
+            try:
+                with self.lock:
+                    self.conn.commit()
+                return
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < retries - 1:
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
+                raise
 
     def fetchall(self, q, p=()):
         return [dict(r) for r in self.ex(q, p).fetchall()]
@@ -1976,6 +1997,23 @@ def _check_rate_limit(ip, path):
         return True
 
 
+# ─── Request Metrics ──────────────────────────────────────────────────────────
+
+_metrics = {"total": 0, "endpoints": {}, "errors": 0, "rate_limited": 0}
+_metrics_lock = threading.Lock()
+
+
+def _record_metric(path, status_code=200):
+    """Record a request metric."""
+    with _metrics_lock:
+        _metrics["total"] += 1
+        _metrics["endpoints"][path] = _metrics["endpoints"].get(path, 0) + 1
+        if status_code >= 400:
+            _metrics["errors"] += 1
+        if status_code == 429:
+            _metrics["rate_limited"] += 1
+
+
 class API(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -2038,6 +2076,8 @@ class API(BaseHTTPRequestHandler):
             self._json({"error": "Not found"}, 404)
 
     def _json(self, data, status=200):
+        path = urlparse(self.path).path
+        _record_metric(path, status)
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self._cors()
@@ -2331,6 +2371,16 @@ class API(BaseHTTPRequestHandler):
                 "sse_clients": sse_count,
                 "total_cost": sum(costs.values()),
                 "version": "3.0",
+            })
+
+        if path == "/api/metrics":
+            with _metrics_lock:
+                top_endpoints = sorted(_metrics["endpoints"].items(), key=lambda x: -x[1])[:20]
+            return self._json({
+                "total_requests": _metrics["total"],
+                "errors": _metrics["errors"],
+                "rate_limited": _metrics["rate_limited"],
+                "top_endpoints": dict(top_endpoints),
             })
 
         # Daily digest — generate on demand

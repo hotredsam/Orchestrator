@@ -102,6 +102,8 @@ function Dashboard() {
   const [rollingBack, setRollingBack] = useState(false);
   const [selOptItems, setSelOptItems] = useState([]);
   const [costs, setCosts] = useState({});
+  const [repoSort, setRepoSort] = useState("name");
+  const [repoFilter, setRepoFilter] = useState("all");
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -513,11 +515,39 @@ function Dashboard() {
 
           {/* REPO CARDS */}
           <SectionBg bg={`linear-gradient(180deg, ${C.teal} 0%, #009BB8 100%)`} style={{ borderTop: `3px solid ${C.darkBrown}` }}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 20, letterSpacing: 4 }}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 12, letterSpacing: 4 }}>
               YOUR REPOS
             </h2>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16, flexWrap: "wrap" }}>
+              <select value={repoFilter} onChange={e => setRepoFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
+                <option value="all">All</option>
+                <option value="running">Running</option>
+                <option value="idle">Idle</option>
+                <option value="paused">Paused</option>
+                <option value="error">Error</option>
+              </select>
+              <select value={repoSort} onChange={e => setRepoSort(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
+                <option value="name">Sort: Name</option>
+                <option value="state">Sort: State</option>
+                <option value="items">Sort: Items</option>
+                <option value="cycles">Sort: Cycles</option>
+              </select>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-              {repos.map(r => {
+              {repos.filter(r => {
+                if (repoFilter === "all") return true;
+                if (repoFilter === "running") return r.running && !r.paused;
+                if (repoFilter === "idle") return !r.running;
+                if (repoFilter === "paused") return r.paused;
+                if (repoFilter === "error") return r.state === "error" || r.state === "credits_exhausted";
+                return true;
+              }).sort((a, b) => {
+                if (repoSort === "name") return (a.name || "").localeCompare(b.name || "");
+                if (repoSort === "state") return (a.state || "").localeCompare(b.state || "");
+                if (repoSort === "items") return ((b.stats?.items_total || 0) - (a.stats?.items_total || 0));
+                if (repoSort === "cycles") return ((b.cycle_count || 0) - (a.cycle_count || 0));
+                return 0;
+              }).map(r => {
                 const rst = STATES[r.state] || STATES.idle;
                 const s = r.stats || {};
                 const pctSteps = s.steps_total ? Math.round(s.steps_done/s.steps_total*100) : 0;
