@@ -119,6 +119,7 @@ function Dashboard() {
     try { return JSON.parse(localStorage.getItem("swarm-pinned") || "[]"); } catch { return []; }
   });
   const [uptime, setUptime] = useState("");
+  const [sysInfo, setSysInfo] = useState({});
   const [browserNotifs, setBrowserNotifs] = useState(() => localStorage.getItem("swarm-notifs") === "1");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -288,7 +289,7 @@ function Dashboard() {
       if (full || t === "compare") {
         try { const cr = await f("/api/comparison"); if(cr.ok) setComparison(await cr.json()); } catch {}
       }
-      try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); } } catch {}
+      try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); setSysInfo({ threads: sd.threads, mem: sd.memory_mb, pid: sd.pid }); } } catch {}
       if (full || t === "home") {
         try { const sl = await f("/api/stale-items?hours=2"); if(sl.ok) { const sd = await sl.json(); setStaleItems(sd.stale_items || []); } } catch {}
         try { const er = await f("/api/errors/recent?limit=5"); if(er.ok) { const ed = await er.json(); setRecentErrors(ed.errors || []); } } catch {}
@@ -758,7 +759,7 @@ function Dashboard() {
             {[...repos].sort((a, b) => { const pa = pinnedRepos.includes(a.id) ? 0 : 1; const pb = pinnedRepos.includes(b.id) ? 0 : 1; return pa - pb || a.name.localeCompare(b.name); }).map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name} [{r.state || "idle"}]</option>)}
           </select>}
           {uptime && (
-            <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: C.darkBrown }}>{"\u23F1\uFE0F"} {uptime}</div>
+            <div title={`PID: ${sysInfo.pid || "?"} | Threads: ${sysInfo.threads || "?"} | RAM: ${sysInfo.mem || "?"}MB`} style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: C.darkBrown, cursor: "help" }}>{"\u23F1\uFE0F"} {uptime}{sysInfo.mem ? ` | ${sysInfo.mem}MB` : ""}</div>
           )}
           {Object.keys(costs).length > 0 && (
             <div style={{ background: "#E8F5E9", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#2E7D32" }}>

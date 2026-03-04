@@ -2996,6 +2996,12 @@ class API(BaseHTTPRequestHandler):
                 for rid, cb in _circuit_breakers.items():
                     if cb.state != CircuitBreaker.CLOSED:
                         cb_summary[rid] = cb.status()
+            # Process info
+            try:
+                import psutil
+                mem_mb = round(psutil.Process().memory_info().rss / 1024 / 1024, 1)
+            except Exception:
+                mem_mb = None
             return self._json({
                 "uptime": f"{hrs}h {mins}m {secs}s",
                 "uptime_seconds": int(uptime_sec),
@@ -3004,6 +3010,9 @@ class API(BaseHTTPRequestHandler):
                 "sse_clients": sse_count,
                 "total_cost": sum(costs.values()),
                 "circuit_breakers": cb_summary,
+                "threads": threading.active_count(),
+                "memory_mb": mem_mb,
+                "pid": os.getpid(),
                 "version": "3.0",
             })
 
