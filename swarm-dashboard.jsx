@@ -870,6 +870,17 @@ function Dashboard() {
         .toast-info{background:#00B4D8}
         .toast-warning{background:#F7941D}
         .connection-banner{background:${C.red};color:${C.white};text-align:center;padding:8px 16px;font-size:13px;font-weight:700;font-family:'Fredoka',sans-serif;border-bottom:2px solid ${C.darkBrown};animation:pulse 2s infinite}
+        ${darkMode ? `
+          body{background:#0D1117;color:#C0C0C0}
+          ::selection{background:#E8850F44;color:#fff}
+          ::-webkit-scrollbar{width:8px;height:8px}
+          ::-webkit-scrollbar-track{background:#1A1A2E}
+          ::-webkit-scrollbar-thumb{background:#3D3D5C;border-radius:4px}
+          ::-webkit-scrollbar-thumb:hover{background:#555}
+          select{background:#1E1E2E!important;color:#C0C0C0!important}
+          option{background:#1E1E2E;color:#C0C0C0}
+          table tr:hover{background:#1E1E2E44!important}
+        ` : ''}
       `}</style>
 
       {/* ═══ HEADER — Desert Banner ═══ */}
@@ -1787,6 +1798,14 @@ function Dashboard() {
                     { label: "Items Pending", val: itemsPending, bg: itemsPending > 0 ? C.orange : C.green },
                     { label: "Steps Done", val: `${stepsDone}/${stepsTotal}`, bg: C.teal },
                     { label: "Cycles", val: repo?.cycle_count || 0, bg: C.brown },
+                    ...(() => {
+                      const cp = plan.filter(s => s.status === "completed" && s.tests_written > 0);
+                      if (cp.length === 0) return [];
+                      const passed = cp.reduce((a, s) => a + (s.tests_passed || 0), 0);
+                      const written = cp.reduce((a, s) => a + (s.tests_written || 0), 0);
+                      const rate = written > 0 ? Math.round(passed / written * 100) : 0;
+                      return [{ label: "Test Pass", val: `${rate}%`, bg: rate >= 80 ? C.green : rate >= 50 ? C.orange : C.red }];
+                    })(),
                   ].map((s, i) => (
                     <div key={i} style={{ textAlign: "center" }}>
                       <div style={{ fontFamily: "'Bangers', cursive", fontSize: 24, color: s.bg, lineHeight: 1 }}>{s.val}</div>
@@ -3068,6 +3087,49 @@ function Dashboard() {
                     ));
                   })()}
                 </Card>
+                {/* Radar Chart — top 5 repos */}
+                {comparison.repos.length >= 2 && (() => {
+                  const top5 = [...comparison.repos].sort((a,b) => (b.items_done||0) - (a.items_done||0)).slice(0, 5);
+                  const axes = ["items_done", "cycles", "health_score", "total_actions"];
+                  const axisLabels = ["Items", "Cycles", "Health", "Actions"];
+                  const maxes = axes.map(a => Math.max(...top5.map(r => r[a] || 0), 1));
+                  const cx = 140, cy = 120, rr = 80, n = axes.length;
+                  const colors = [C.teal, C.orange, C.green, "#9C27B0", C.red];
+                  const angleOf = (i) => (Math.PI * 2 * i / n) - Math.PI / 2;
+                  return (
+                    <Card bg={C.white} style={{ maxWidth: 720, margin: "0 auto 12px", padding: 14, textAlign: "center" }}>
+                      <div style={{ fontFamily: "'Bangers', cursive", fontSize: 14, letterSpacing: 1, marginBottom: 4 }}>Repo Radar (Top 5)</div>
+                      <svg viewBox="0 0 280 240" style={{ width: "100%", maxWidth: 320, display: "inline-block" }}>
+                        {/* Grid rings */}
+                        {[0.25, 0.5, 0.75, 1].map(s => (
+                          <polygon key={s} points={axes.map((_,i) => `${cx + rr*s*Math.cos(angleOf(i))},${cy + rr*s*Math.sin(angleOf(i))}`).join(" ")} fill="none" stroke={`${C.darkBrown}15`} strokeWidth={1} />
+                        ))}
+                        {/* Axis lines + labels */}
+                        {axes.map((_, i) => (
+                          <g key={i}>
+                            <line x1={cx} y1={cy} x2={cx + rr*Math.cos(angleOf(i))} y2={cy + rr*Math.sin(angleOf(i))} stroke={`${C.darkBrown}22`} strokeWidth={1} />
+                            <text x={cx + (rr+14)*Math.cos(angleOf(i))} y={cy + (rr+14)*Math.sin(angleOf(i))} fill={C.brown} fontSize="8" textAnchor="middle" dominantBaseline="middle">{axisLabels[i]}</text>
+                          </g>
+                        ))}
+                        {/* Repo polygons */}
+                        {top5.map((repo, ri) => {
+                          const pts = axes.map((a, i) => {
+                            const v = (repo[a] || 0) / maxes[i];
+                            return `${cx + rr*v*Math.cos(angleOf(i))},${cy + rr*v*Math.sin(angleOf(i))}`;
+                          }).join(" ");
+                          return <polygon key={repo.id} points={pts} fill={`${colors[ri]}22`} stroke={colors[ri]} strokeWidth={1.5} />;
+                        })}
+                      </svg>
+                      <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                        {top5.map((r, i) => (
+                          <span key={r.id} style={{ fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", gap: 3 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: colors[i], display: "inline-block" }} /> {r.name}
+                          </span>
+                        ))}
+                      </div>
+                    </Card>
+                  );
+                })()}
                 <Card bg={C.white} style={{ maxWidth: 720, margin: "0 auto", padding: 14, overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
