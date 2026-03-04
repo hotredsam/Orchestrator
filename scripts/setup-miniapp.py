@@ -67,19 +67,21 @@ def main():
     # 2. Set bot commands
     print("2. Setting bot commands...")
     result = api("setMyCommands", commands=[
-        {"command": "status", "description": "Show all repos status"},
+        {"command": "status", "description": "Show all repos with progress bars"},
         {"command": "start_all", "description": "Start all repo orchestrators"},
         {"command": "stop_all", "description": "Stop all repo orchestrators"},
         {"command": "start", "description": "Start a specific repo (e.g. /start blog)"},
         {"command": "stop", "description": "Stop a specific repo (e.g. /stop blog)"},
+        {"command": "items", "description": "List items for a repo (e.g. /items blog)"},
+        {"command": "plan", "description": "Show plan steps (e.g. /plan blog)"},
         {"command": "push", "description": "Git push a repo (e.g. /push blog)"},
         {"command": "digest", "description": "Show the daily digest summary"},
         {"command": "costs", "description": "Show per-repo API costs and total"},
-        {"command": "help", "description": "Show available commands"},
-        {"command": "app", "description": "Open the Swarm Town dashboard"},
+        {"command": "help", "description": "Show all available commands"},
+        {"command": "app", "description": "Open the Swarm Town Mini App"},
     ])
     if result.get("ok"):
-        print("   Done! 10 commands registered")
+        print("   Done! 12 commands registered")
 
     # 3. Set bot description
     print("3. Setting bot description...")

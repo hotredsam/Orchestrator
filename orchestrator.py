@@ -1951,11 +1951,45 @@ MIME_TYPES = {
 }
 
 
+# ─── Rate Limiting ────────────────────────────────────────────────────────────
+
+_rate_limits = {}  # ip -> [timestamps]
+_rate_lock = threading.Lock()
+RATE_LIMIT_RPM = int(os.environ.get("RATE_LIMIT_RPM", "120"))  # requests per minute
+RATE_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/api/events",
+                      "/api/token", "/telegram-app", "/api/status"}
+
+
+def _check_rate_limit(ip, path):
+    """Return True if request is allowed, False if rate-limited."""
+    if path in RATE_EXEMPT_PATHS:
+        return True
+    now = time.time()
+    with _rate_lock:
+        if ip not in _rate_limits:
+            _rate_limits[ip] = []
+        # Prune old entries (older than 60s)
+        _rate_limits[ip] = [t for t in _rate_limits[ip] if now - t < 60]
+        if len(_rate_limits[ip]) >= RATE_LIMIT_RPM:
+            return False
+        _rate_limits[ip].append(now)
+        return True
+
+
 class API(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Telegram-Init-Data")
+
+    def _check_rate(self):
+        """Check rate limit. Returns True if OK, False if limited (response sent)."""
+        ip = self.client_address[0]
+        path = urlparse(self.path).path
+        if not _check_rate_limit(ip, path):
+            self._json({"error": "Rate limited — too many requests"}, 429)
+            return False
+        return True
 
     def _check_auth(self):
         """Three-layer auth check. Returns True if authorized, False if denied (response already sent)."""
@@ -2021,6 +2055,10 @@ class API(BaseHTTPRequestHandler):
         p = urlparse(self.path)
         path = p.path
         q = parse_qs(p.query)
+
+        # Rate limit check
+        if not self._check_rate():
+            return
 
         # Auth check (exempt paths handled inside _check_auth)
         if not self._check_auth():
@@ -2302,6 +2340,10 @@ class API(BaseHTTPRequestHandler):
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):
+        # Rate limit check
+        if not self._check_rate():
+            return
+
         # Auth check
         if not self._check_auth():
             return

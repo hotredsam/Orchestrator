@@ -484,6 +484,63 @@ def cmd_memory(name):
     return "\n".join(lines)
 
 
+def cmd_items(name):
+    """List items for a repo."""
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    items = _orch_get(f"/api/items?repo_id={repo['id']}")
+    if not items or (isinstance(items, dict) and "error" in items):
+        return f"No items for {repo['name']}."
+
+    pending = [i for i in items if i.get("status") == "pending"]
+    in_progress = [i for i in items if i.get("status") == "in_progress"]
+    completed = [i for i in items if i.get("status") == "completed"]
+
+    lines = [f"*Items for {repo['name']}* ({len(items)} total)\n"]
+    lines.append(f"Pending: {len(pending)} | In Progress: {len(in_progress)} | Done: {len(completed)}")
+    lines.append(f"{_progress_bar(len(completed), len(items))} {int(len(completed)/len(items)*100) if items else 0}%\n")
+
+    type_emoji = {"issue": "🐛", "feature": "✨"}
+    prio_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    for item in items[:10]:
+        te = type_emoji.get(item.get("type", ""), "📋")
+        pe = prio_emoji.get(item.get("priority", ""), "🟡")
+        st = item.get("status", "pending")
+        st_mark = "✅" if st == "completed" else "⏳" if st == "in_progress" else "○"
+        lines.append(f"{st_mark} {te}{pe} {item.get('title', '')[:60]}")
+
+    if len(items) > 10:
+        lines.append(f"\n_...and {len(items) - 10} more_")
+    return "\n".join(lines)
+
+
+def cmd_plan(name):
+    """Show plan steps for a repo."""
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    steps = _orch_get(f"/api/plan?repo_id={repo['id']}")
+    if not steps or (isinstance(steps, dict) and "error" in steps):
+        return f"No plan for {repo['name']}."
+
+    completed = sum(1 for s in steps if s.get("status") == "completed")
+    pct = int(completed / len(steps) * 100) if steps else 0
+
+    lines = [f"*Plan for {repo['name']}* ({completed}/{len(steps)} done)\n"]
+    lines.append(f"{_progress_bar(completed, len(steps))} {pct}%\n")
+
+    for i, s in enumerate(steps[:15]):
+        done = s.get("status") == "completed"
+        icon = "✅" if done else "⏳"
+        agent = f" [{s.get('agent_type', '')}]" if s.get("agent_type") else ""
+        lines.append(f"{icon} {i+1}. {s.get('description', '')[:60]}{agent}")
+
+    if len(steps) > 15:
+        lines.append(f"\n_...and {len(steps) - 15} more steps_")
+    return "\n".join(lines)
+
+
 def cmd_repos():
     """List all registered repos with their IDs."""
     repos = _orch_get("/api/repos")
@@ -557,25 +614,32 @@ def cmd_costs():
 def cmd_help():
     return """*Swarm Town Commands:*
 
-`status` — All repo states and stats
-`start all` — Launch all repos
-`stop all` — Stop everything
-`start [repo]` — Start specific repo
-`stop [repo]` — Stop specific repo
-`pause [repo]` — Pause (keeps thread alive)
-`resume [repo]` — Resume paused repo
-`screenshot` / `show me` — Dashboard photo
+*Control:*
+`status` — All repos with progress bars
+`start all` / `stop all` — Launch/stop everything
+`start [repo]` / `stop [repo]` — Start/stop repo
+`pause [repo]` / `resume [repo]` — Pause/resume
+
+*Items & Plans:*
+`items [repo]` — List items with status
+`plan [repo]` — Show plan steps progress
 `add feature repo: title - desc` — Add feature
 `add issue repo: title - desc` — Add issue
-`repos` / `list` — List all registered repos
-`add repo name: /path` — Register new repo
-`push [repo]` — Git push
+
+*Inspection:*
 `logs [repo]` — Last 5 log entries
 `mistakes [repo]` — Last 5 mistakes
 `memory [repo]` — Last 5 memory entries
+
+*Management:*
+`repos` / `list` — List registered repos
+`add repo name: /path` — Register new repo
 `remove [repo]` — Remove repo (keeps files)
+`push [repo]` — Git push
+`screenshot` / `show me` — Dashboard photo
 `digest` — Daily digest summary
 `costs` — Per-repo API costs
+`app` — Open Mini App
 `help` — This message
 
 Send a voice message to queue audio for transcription."""
@@ -695,6 +759,10 @@ def handle_message(msg):
         reply = cmd_add_item("issue", text[10:])
     elif t.startswith("push "):
         reply = cmd_push(t[5:])
+    elif t.startswith("items "):
+        reply = cmd_items(t[6:])
+    elif t.startswith("plan "):
+        reply = cmd_plan(t[5:])
     elif t.startswith("logs "):
         reply = cmd_logs(t[5:])
     elif t.startswith("mistakes "):
