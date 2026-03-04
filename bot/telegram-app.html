@@ -864,6 +864,9 @@
         <h2 class="section-title">Mistake Memory</h2>
         <div class="btn-row mb-12">
           <select class="input" id="mistakesRepoSelect" onchange="loadMistakes()" style="flex:1;"></select>
+          <select class="input" id="mistakeTypeFilter" onchange="loadMistakes()" style="width:auto;min-width:80px;">
+            <option value="">All Types</option>
+          </select>
           <input type="text" class="input" id="mistakeSearchInput" placeholder="Search errors..." style="flex:1;" oninput="clearTimeout(window._mkDebounce); window._mkDebounce=setTimeout(loadMistakes, 300)">
         </div>
         <div id="mistakesList">
@@ -1584,8 +1587,19 @@
         return;
       }
 
-      const filtered = search ? data.filter(m => [m.error_type, m.description, m.fix_applied].join(' ').toLowerCase().includes(search)) : data;
-      el.innerHTML = (search ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${filtered.length}/${data.length} matching "${esc(search)}"</div>` : `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${data.length} mistakes</div>`) + (filtered.length === 0 ? '<div class="empty-state"><div class="empty-emoji">🔍</div><p>No matches</p></div>' : filtered.map(m => `
+      // Populate error type filter
+      const typeFilter = document.getElementById('mistakeTypeFilter')?.value || '';
+      const types = [...new Set(data.map(m => m.error_type || 'unknown'))].sort();
+      const typeSel = document.getElementById('mistakeTypeFilter');
+      if (typeSel) {
+        const prev = typeSel.value;
+        typeSel.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${esc(t)}" ${t === prev ? 'selected' : ''}>${esc(t)} (${data.filter(m => (m.error_type || 'unknown') === t).length})</option>`).join('');
+      }
+
+      let filtered = data;
+      if (typeFilter) filtered = filtered.filter(m => (m.error_type || 'unknown') === typeFilter);
+      if (search) filtered = filtered.filter(m => [m.error_type, m.description, m.fix_applied].join(' ').toLowerCase().includes(search));
+      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${filtered.length}${typeFilter || search ? '/' + data.length : ''} mistakes${typeFilter ? ' [' + esc(typeFilter) + ']' : ''}${search ? ' matching "' + esc(search) + '"' : ''}</div>` + (filtered.length === 0 ? '<div class="empty-state"><div class="empty-emoji">🔍</div><p>No matches</p></div>' : filtered.map(m => `
         <div class="card" style="margin-bottom:8px;padding:10px 12px;">
           <div style="font-weight:600;font-size:13px;color:var(--red);">${esc(m.error_type || 'Error')}</div>
           <div style="font-size:12px;margin-top:4px;">${esc((m.description || '').substring(0, 200))}</div>

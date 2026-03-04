@@ -229,6 +229,7 @@ function Dashboard() {
   const [planCollapsed, setPlanCollapsed] = useState(false); // collapse all long descriptions
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const [expandedLog, setExpandedLog] = useState(null); // log id
+  const [histFilter, setHistFilter] = useState("all"); // history action filter
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -3003,7 +3004,18 @@ function Dashboard() {
         {tab === "history" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.yellow} 0%, #F5D94E 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Repo History</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>A trail of every move your swarm has made</p>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 12 }}>A trail of every move your swarm has made</p>
+            <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+              {["all", "git_commit", "state_change", "execute_step", "test_step"].map(f => (
+                <span key={f} onClick={() => setHistFilter(f)}
+                  style={{ cursor: "pointer", padding: "4px 12px", borderRadius: 12, fontSize: 11, fontWeight: 700,
+                    background: histFilter === f ? C.orange : C.cream, color: histFilter === f ? C.white : C.brown,
+                    border: `2px solid ${histFilter === f ? C.orange : C.darkBrown}33`, transition: "all .2s" }}>
+                  {f === "all" ? "All" : f === "git_commit" ? "Commits" : f === "state_change" ? "States" : f === "execute_step" ? "Execute" : "Tests"}
+                </span>
+              ))}
+              {history.length > 0 && <span style={{ fontSize: 10, color: C.brown, alignSelf: "center" }}>{histFilter === "all" ? history.length : history.filter(h => h.action === histFilter).length} entries</span>}
+            </div>
             <div style={{ maxWidth: 700, margin: "0 auto" }}>
               {history.length === 0 ? (
                 <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
@@ -3012,7 +3024,7 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>History is recorded as the orchestrator works through steps.</div>
                 </Card>
               ) :
-                history.map((h, i) => (
+                history.filter(h => histFilter === "all" || h.action === histFilter).map((h, i) => (
                   <div key={i} className="timeline-entry">
                     {/* Timeline icon */}
                     <div style={{ position: "absolute", left: 0, top: 4 }}>

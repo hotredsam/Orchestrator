@@ -1108,12 +1108,23 @@ def cmd_snapshot(name):
     steps = data.get("plan_steps", [])
     done_items = sum(1 for i in items if i.get("status") == "completed")
     done_steps = sum(1 for s in steps if s.get("status") == "completed")
+    total_cost = sum(s.get("cost_usd", 0) for s in steps if s.get("status") == "completed")
+    total_dur = sum(s.get("duration_sec", 0) for s in steps if s.get("status") == "completed")
+    models = {}
+    for s in steps:
+        if s.get("model") and s.get("status") == "completed":
+            m = s["model"].replace("claude-", "").replace("-20251001", "").replace("-20250514", "")
+            models[m] = models.get(m, 0) + 1
     lines = [
         f"\U0001F4F8 *Snapshot: {data.get('repo', name)}*",
         f"  Items: {done_items}/{len(items)} completed",
         f"  Steps: {done_steps}/{len(steps)} completed",
+        f"  \U0001F4B0 Cost: ${total_cost:.3f} | \u23F1 Time: {int(total_dur/60)}m",
         f"  Exported: {data.get('exported_at', 'N/A')[:19]}",
     ]
+    if models:
+        model_str = ", ".join(f"{m}: {c}" for m, c in sorted(models.items(), key=lambda x: -x[1]))
+        lines.append(f"  \U0001F916 Models: {model_str}")
     # Show recent pending items
     pending = [i for i in items if i.get("status") == "pending"][:5]
     if pending:
