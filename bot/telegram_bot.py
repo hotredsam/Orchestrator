@@ -990,31 +990,31 @@ def cmd_stale():
     return "\n".join(lines)
 
 
-def cmd_summary():
-    """Quick one-message overview: status + health + costs."""
-    status_data = _orch_get("/api/status")
-    health_data = _orch_get("/api/health/detailed")
-    costs_data = _orch_get("/api/costs")
-    lines = ["\U0001F3D8\uFE0F *Swarm Town Summary*", ""]
-    if isinstance(status_data, dict) and "error" not in status_data:
-        lines.append(f"\u23F1 Uptime: {status_data.get('uptime', '?')}")
-        lines.append(f"\U0001F4E6 Repos: {status_data.get('repos_running', 0)}/{status_data.get('repos_total', 0)} running")
-    if isinstance(costs_data, dict) and "total" in costs_data:
-        lines.append(f"\U0001F4B0 Total Cost: ${costs_data['total']:.3f}")
-    if isinstance(health_data, dict):
-        avg = health_data.get("average_score", 0)
-        lines.append(f"\U0001F3E5 Avg Health: {avg}/100")
-        # Count grades
-        grades = {}
-        for r in health_data.get("repos", []):
-            g = r.get("grade", "?")
-            grades[g] = grades.get(g, 0) + 1
-        if grades:
-            grade_str = " ".join(f"{g}:{c}" for g, c in sorted(grades.items()))
-            lines.append(f"   Grades: {grade_str}")
-    cbs = status_data.get("circuit_breakers", {}) if isinstance(status_data, dict) else {}
-    if cbs:
-        lines.append(f"\u26A1 {len(cbs)} circuit breaker(s) tripped")
+def cmd_active():
+    """Show currently running repos with their active items and progress."""
+    repos = _orch_get("/api/repos")
+    if isinstance(repos, dict) and "error" in repos:
+        return f"Error: {repos['error']}"
+    if not isinstance(repos, list):
+        return "No repo data available."
+    active = [r for r in repos if r.get("running")]
+    if not active:
+        return "\U0001F634 *No active repos* — everything is idle."
+    lines = [f"\u26A1 *{len(active)} Active Repos*", ""]
+    for r in active:
+        s = r.get("stats", {})
+        done = s.get("items_done", 0)
+        total = s.get("items_total", 0)
+        pct = round(done / max(total, 1) * 100)
+        bar_len = min(pct // 10, 10)
+        bar = '\u2588' * bar_len + '\u2591' * (10 - bar_len)
+        state = r.get("state", "running")
+        paused = " \u23F8" if r.get("paused") else ""
+        lines.append(
+            f"\U0001F7E2 *{r['name']}*{paused}\n"
+            f"  `[{bar}]` {done}/{total} items ({pct}%)\n"
+            f"  State: {state} | Cost: ${s.get('cost', 0):.4f}"
+        )
     return "\n".join(lines)
 
 
@@ -1560,6 +1560,8 @@ def handle_message(msg):
         reply = cmd_help()
     elif t.startswith("search "):
         reply = cmd_search(t[7:].strip())
+    elif t in ("active", "running", "live"):
+        reply = cmd_active()
     elif t in ("stale", "stuck"):
         reply = cmd_stale()
     elif t in ("breakers", "circuit-breakers", "circuit"):

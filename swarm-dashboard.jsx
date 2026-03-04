@@ -1046,6 +1046,11 @@ function Dashboard() {
                 : <button onClick={() => startRepo(cr.id)} style={{ background: C.green, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u25B6"}</button>}
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
+              {healthScores?.average_score != null && (() => {
+                const s = healthScores.average_score;
+                const hc = s >= 80 ? C.green : s >= 60 ? C.orange : C.red;
+                return <span title={`System health: ${s}%`} style={{ width: 8, height: 8, borderRadius: "50%", background: hc, display: "inline-block", animation: s < 60 ? "pulse 1.5s infinite" : "none", boxShadow: `0 0 4px ${hc}` }} />;
+              })()}
               {/* Overall mini progress bar */}
               {(() => {
                 const ti = repos.reduce((a, r) => a + (r.stats?.items_total || 0), 0);

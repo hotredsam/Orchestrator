@@ -784,6 +784,7 @@
         <h2 class="section-title">Plan Steps</h2>
         <div class="btn-row mb-12">
           <select class="input" id="planRepoSelect" onchange="loadPlan()" style="flex:1;"></select>
+          <button class="btn btn-sm" id="planFilterBtn" onclick="togglePlanFilter()" style="padding:4px 10px;font-size:11px;">All</button>
         </div>
         <div id="planList">
           <div class="empty-state"><div class="empty-emoji">📐</div><p>Select a repo to view plan</p></div>
@@ -933,6 +934,7 @@
     let chatHistory = [];
     let totalCost = 0;
     let sseSource = null;
+    let planFilter = 'all'; // all, pending, completed
 
     // ─── Tab Navigation ───────────────────────────────────────────────────────
     function switchTab(tab) {
@@ -1236,6 +1238,15 @@
     }
 
     // ─── Screen 8: Plan Steps ─────────────────────────────────────────────────
+    function togglePlanFilter() {
+      const cycle = { all: 'pending', pending: 'completed', completed: 'all' };
+      planFilter = cycle[planFilter] || 'all';
+      const btn = document.getElementById('planFilterBtn');
+      if (btn) btn.textContent = planFilter === 'all' ? 'All' : planFilter === 'pending' ? 'Pending' : 'Done';
+      haptic('light');
+      loadPlan();
+    }
+
     async function loadPlan() {
       const repoId = document.getElementById('planRepoSelect')?.value;
       const el = document.getElementById('planList');
@@ -1252,28 +1263,32 @@
 
       const completed = data.filter(s => s.status === 'completed').length;
       const pct = Math.round((completed / data.length) * 100);
+      const totalCostPlan = data.reduce((a, s) => a + (s.cost_usd || 0), 0);
+      const filtered = planFilter === 'all' ? data : data.filter(s => planFilter === 'completed' ? s.status === 'completed' : s.status !== 'completed');
 
       el.innerHTML = `
         <div style="margin-bottom:12px;">
           <div class="flex-between" style="font-size:13px;margin-bottom:4px;">
-            <span>${completed}/${data.length} steps done</span>
+            <span>${completed}/${data.length} steps done${totalCostPlan > 0 ? ` · $${totalCostPlan.toFixed(4)}` : ''}</span>
             <span style="font-weight:600;">${pct}%</span>
           </div>
           <div style="background:var(--input-bg);border-radius:8px;height:8px;overflow:hidden;">
             <div style="height:100%;width:${pct}%;background:var(--green);border-radius:8px;transition:width .3s;"></div>
           </div>
+          ${planFilter !== 'all' ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;text-align:center;">Showing ${filtered.length} ${planFilter} steps</div>` : ''}
         </div>
-        ${data.map((step, i) => {
+        ${filtered.map((step, i) => {
           const done = step.status === 'completed';
           const icon = done ? '✅' : '⏳';
           const agentBadge = step.agent_type ? `<span style="font-size:10px;padding:1px 6px;border-radius:6px;background:var(--teal);color:#fff;">${step.agent_type}</span>` : '';
+          const costBadge = step.cost_usd > 0 ? `<span style="font-size:10px;color:var(--green);font-weight:600;">$${step.cost_usd.toFixed(4)}</span>` : '';
           return `
             <div style="padding:8px 0;border-bottom:1px solid var(--shadow);display:flex;gap:8px;align-items:flex-start;${done ? 'opacity:0.6;' : ''}">
               <span style="font-size:14px;min-width:24px;text-align:center;">${icon}</span>
               <div style="flex:1;">
                 <div style="font-size:13px;font-weight:500;">${esc(step.description || '')}</div>
                 <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">
-                  Step ${i + 1} ${agentBadge}
+                  Step ${data.indexOf(step) + 1} ${agentBadge} ${costBadge}
                   ${step.tests_written ? ` | ${step.tests_passed}/${step.tests_written} tests` : ''}
                 </div>
               </div>
