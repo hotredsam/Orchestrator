@@ -873,6 +873,34 @@ def cmd_circuit_breakers():
     return "\n".join(lines)
 
 
+def cmd_snapshot(name):
+    """Get a snapshot summary of a specific repo's data."""
+    rid = _resolve_repo(name)
+    if not rid:
+        return f"Repo not found: {name}"
+    data = _orch_get(f"/api/repos/snapshot?repo_id={rid}&include=items,plan")
+    if not isinstance(data, dict) or "error" in data:
+        return f"Could not fetch snapshot for {name}."
+    items = data.get("items", [])
+    steps = data.get("plan_steps", [])
+    done_items = sum(1 for i in items if i.get("status") == "completed")
+    done_steps = sum(1 for s in steps if s.get("status") == "completed")
+    lines = [
+        f"\U0001F4F8 *Snapshot: {data.get('repo', name)}*",
+        f"  Items: {done_items}/{len(items)} completed",
+        f"  Steps: {done_steps}/{len(steps)} completed",
+        f"  Exported: {data.get('exported_at', 'N/A')[:19]}",
+    ]
+    # Show recent pending items
+    pending = [i for i in items if i.get("status") == "pending"][:5]
+    if pending:
+        lines.append("")
+        lines.append("*Pending Items:*")
+        for it in pending:
+            lines.append(f"  \u2022 {it.get('title', '?')[:50]}")
+    return "\n".join(lines)
+
+
 def cmd_stale():
     """Show items stuck in_progress for 2+ hours."""
     data = _orch_get("/api/stale-items?hours=2")
@@ -967,6 +995,7 @@ def cmd_help():
 `tags` / `tags repo` / `tags repo: tag1,tag2` — View/set tags
 `stale` — Show items stuck in_progress for 2+ hours
 `breakers` — Circuit breaker states across repos
+`snapshot [repo]` — Quick data snapshot with pending items
 `app` — Open Mini App
 `help` — This message
 
@@ -1166,6 +1195,8 @@ def handle_message(msg):
         reply = cmd_stale()
     elif t in ("breakers", "circuit-breakers", "circuit"):
         reply = cmd_circuit_breakers()
+    elif t.startswith("snapshot "):
+        reply = cmd_snapshot(t[9:].strip())
     elif t.startswith("tags"):
         reply = cmd_tags(t[4:].strip())
     elif t in ("app", "dashboard", "open"):

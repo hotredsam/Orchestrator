@@ -19,7 +19,7 @@ SWARM ORCHESTRATOR v3 — Full Autonomous Multi-Repo
 import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging, hmac, secrets, queue
 import logging.handlers
 import threading, shutil, base64, signal, traceback
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass, field, asdict
@@ -621,11 +621,22 @@ class RepoDB:
                 return False
         return _Tx(self)
 
+    _SLOW_QUERY_MS = 200  # log queries slower than this
+
     def fetchall(self, q, p=()):
-        return [dict(r) for r in self.ex(q, p).fetchall()]
+        t0 = time.time()
+        result = [dict(r) for r in self.ex(q, p).fetchall()]
+        ms = (time.time() - t0) * 1000
+        if ms > self._SLOW_QUERY_MS:
+            log.warning("SLOW QUERY (%.0fms): %s [%s]", ms, q[:120], self.path)
+        return result
 
     def fetchone(self, q, p=()):
+        t0 = time.time()
         r = self.ex(q, p).fetchone()
+        ms = (time.time() - t0) * 1000
+        if ms > self._SLOW_QUERY_MS:
+            log.warning("SLOW QUERY (%.0fms): %s [%s]", ms, q[:120], self.path)
         return dict(r) if r else None
 
     # Items (features + issues)
@@ -766,6 +777,17 @@ class MasterDB:
         if "tags" not in cols:
             self.conn.execute("ALTER TABLE repos ADD COLUMN tags TEXT DEFAULT ''")
             self.conn.commit()
+        # Daily costs table for historical tracking
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_costs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                cost REAL DEFAULT 0,
+                UNIQUE(repo_id, date)
+            )
+        """)
+        self.conn.commit()
 
     def ex(self, q, p=()):
         with self.lock:
@@ -796,6 +818,26 @@ class MasterDB:
         """Remove a repo from the registry. Does NOT delete files on disk."""
         self.ex("DELETE FROM repos WHERE id=?", (repo_id,))
         self.commit()
+
+    def save_daily_costs(self, costs: Dict[int, float]):
+        """Persist current cost totals to daily_costs table (upsert today's row)."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        with self.lock:
+            for rid, cost in costs.items():
+                if cost > 0:
+                    self.conn.execute(
+                        "INSERT INTO daily_costs (repo_id, date, cost) VALUES (?, ?, ?)"
+                        " ON CONFLICT(repo_id, date) DO UPDATE SET cost = excluded.cost",
+                        (rid, today, cost))
+            self.conn.commit()
+
+    def get_cost_history(self, days=30):
+        """Get daily cost history for the last N days."""
+        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        rows = self.ex(
+            "SELECT repo_id, date, cost FROM daily_costs WHERE date >= ? ORDER BY date",
+            (cutoff,)).fetchall()
+        return [dict(r) for r in rows]
 
 
 # ─── Claude Runner ────────────────────────────────────────────────────────────
@@ -2519,6 +2561,11 @@ class API(BaseHTTPRequestHandler):
             costs = get_costs()
             return self._json({"costs": costs, "total": sum(costs.values())})
 
+        if path == "/api/costs/history":
+            days = min(int(q.get("days", [30])[0]), 365)
+            history = master.get_cost_history(days)
+            return self._json({"history": history, "days": days})
+
         # Telegram Mini App — serve the self-contained HTML file with token injected
         if path == "/telegram-app":
             html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot", "telegram-app.html")
@@ -3758,6 +3805,13 @@ def digest_scheduler():
                 except Exception as e:
                     log.warning(f"Failed to send daily digest: {e}")
             sse_broadcast("digest", {"message": "Daily digest generated"})
+            # Persist daily costs to master DB
+            try:
+                master = MasterDB(MASTER_DB)
+                master.save_daily_costs(get_costs())
+                log.info("Daily costs persisted to master DB")
+            except Exception as e:
+                log.warning(f"Failed to persist daily costs: {e}")
         time.sleep(300)  # Check every 5 minutes
 
 
