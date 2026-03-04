@@ -2637,8 +2637,9 @@ function Dashboard() {
                 </Card>
               ) :
                 agents.map((a,i) => (
-                  <Card key={a.id||i} bg={C.white} style={{ padding: 12, textAlign: "center", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
-                    <div style={{ fontSize: 32, animation: "bounce 2s infinite", animationDelay: `${i*0.2}s` }}>{"\uD83E\uDD20"}</div>
+                  <Card key={a.id||i} bg={C.white} style={{ padding: 12, textAlign: "center", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)`, position: "relative" }}>
+                    <div style={{ position: "absolute", top: 4, right: 6, fontSize: 8, fontWeight: 700, padding: "1px 6px", borderRadius: 8, background: a.task ? C.green : "#aaa", color: C.white }}>{a.task ? "WORKING" : "IDLE"}</div>
+                    <div style={{ fontSize: 32, animation: a.task ? "bounce 2s infinite" : "none", animationDelay: `${i*0.2}s` }}>{"\uD83E\uDD20"}</div>
                     <div style={{ fontFamily: "'Bangers',cursive", fontSize: 17, letterSpacing: 1, marginTop: 2 }}>{a.agent_type}</div>
                     <div style={{ fontSize: 9, color: C.brown, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.agent_id}</div>
                     {a.task && <div style={{ fontSize: 10, marginTop: 4, background: C.lightOrange, borderRadius: 6, padding: "3px 6px", border: `1px solid ${C.orange}` }}>{a.task?.slice(0,40)}</div>}

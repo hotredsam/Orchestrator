@@ -1306,7 +1306,16 @@ def cmd_batch(args):
         return f"Error: {data['error']}"
     results = data.get("results", {})
     ok_count = sum(1 for r in results.values() if r.get("ok"))
-    return f"Batch `{action}` on {len(ids)} repos: {ok_count} succeeded, {len(ids) - ok_count} failed."
+    fail_count = len(ids) - ok_count
+    lines = [f"\u2699\uFE0F *Batch `{action}`* on {len(ids)} repos: {ok_count}\u2705 {fail_count}\u274C"]
+    # Show per-repo results
+    repo_names = {str(r["id"]): r["name"] for r in repos}
+    for rid, res in list(results.items())[:10]:
+        name = repo_names.get(str(rid), f"#{rid}")
+        icon = "\u2705" if res.get("ok") else "\u274C"
+        err = f" — {res.get('error', '')[:40]}" if not res.get("ok") and res.get("error") else ""
+        lines.append(f"  {icon} {name}{err}")
+    return "\n".join(lines)
 
 
 def cmd_help():

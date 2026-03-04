@@ -981,13 +981,27 @@
       if (!data) return;
       repos = data;
 
+      // Fetch system stats for header
+      const sysData = await api('/api/system', undefined, { silent: true });
+
       const el = document.getElementById('homeRepoList');
       if (!repos.length) {
         el.innerHTML = '<div class="empty-state"><div class="empty-emoji">🏜️</div><p>No repos registered yet.<br>Add one via the API!</p></div>';
         return;
       }
 
-      el.innerHTML = repos.map(r => {
+      // System stats header
+      const sysHeader = sysData && sysData.repos ? `
+        <div class="card" style="margin-bottom:10px;padding:8px 12px;background:linear-gradient(135deg, var(--card-bg), var(--bg));">
+          <div style="display:flex;justify-content:space-around;text-align:center;font-size:11px;">
+            <div><div style="font-weight:700;font-size:16px;color:var(--teal);">${sysData.repos}</div>Repos</div>
+            <div><div style="font-weight:700;font-size:16px;color:var(--green);">${sysData.running || 0}</div>Running</div>
+            <div><div style="font-weight:700;font-size:16px;color:var(--orange);">${sysData.done_items || 0}/${sysData.total_items || 0}</div>Items</div>
+            <div><div style="font-weight:700;font-size:16px;color:var(--red);">$${(sysData.total_cost || 0).toFixed(2)}</div>Cost</div>
+          </div>
+        </div>` : '';
+
+      el.innerHTML = sysHeader + repos.map(r => {
         const st = r.state || 'idle';
         const running = r.running;
         const paused = r.paused;
