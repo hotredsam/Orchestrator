@@ -76,6 +76,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Quality gate safety** — optimization stashes broken changes instead of pushing if quality gate fails
 - **Dynamic agent scaling** — h_final_optimize scales agent count based on codebase file count (2-8 agents)
 - **Windows launcher hardened** — launch-swarm.bat falls back to PowerShell if curl unavailable
+- **Priority auto-escalation** — items pending for 2+ hours auto-escalate (low→medium, medium→high)
+- **Log search** — dashboard logs tab has search/filter bar for finding specific actions
+- **Memory search** — dashboard memory tab has inline search for filtering entries
 
 ## Commands
 ```bash

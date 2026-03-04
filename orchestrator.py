@@ -1122,8 +1122,25 @@ Return ONLY a JSON array:
         return State.CHECK_NEW_ITEMS
 
     def h_check_new_items(self):
+        # Auto-escalate priority on old pending items (>2 cycles stuck)
+        self._auto_escalate_priorities()
         pending = self.db.get_pending_items()
         return State.UPDATE_PLAN if pending else State.CHECK_PLAN_COMPLETE
+
+    def _auto_escalate_priorities(self):
+        """Bump priority of items stuck as pending for 2+ cycles."""
+        escalation = {"low": "medium", "medium": "high"}
+        old_items = self.db.fetchall(
+            "SELECT id, priority, created_at FROM items WHERE status='pending' "
+            "AND created_at < datetime('now', '-2 hours')"
+        )
+        for item in old_items:
+            new_prio = escalation.get(item["priority"])
+            if new_prio:
+                self.db.ex("UPDATE items SET priority=? WHERE id=?", (new_prio, item["id"]))
+                log.info(f"⬆️ [{self.repo['name']}] Escalated item {item['id']} from {item['priority']} to {new_prio}")
+        if old_items:
+            self.db.commit()
 
     def h_update_plan(self):
         self.state.active_agents = 2

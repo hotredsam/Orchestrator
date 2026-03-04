@@ -109,6 +109,8 @@ function Dashboard() {
   const [newWebhook, setNewWebhook] = useState({ url: "", events: "*" });
   const [repoSort, setRepoSort] = useState("name");
   const [repoFilter, setRepoFilter] = useState("all");
+  const [logSearch, setLogSearch] = useState("");
+  const [memSearch, setMemSearch] = useState("");
   const [toasts, setToasts] = useState([]);
   const mRec = useRef(null);
   const chnk = useRef([]);
@@ -1184,9 +1186,11 @@ function Dashboard() {
         {tab === "memory" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.lightTeal} 0%, #9DE4ED 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Agent Memory</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Ruflo memory -- stores plans, execution results, and configs</p>
-            <div style={{ textAlign: "center", marginBottom: 16 }}>
-              <Btn bg={C.teal} onClick={async () => { await f("/api/memory/seed", { method: "POST", body: JSON.stringify({ repo_id: sr }) }); load(); }} style={{ fontSize: 15, padding: "10px 20px" }}>{"\uD83D\uDD04"} Seed Memory from Repo State</Btn>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 10 }}>Ruflo memory -- stores plans, execution results, and configs</p>
+            <div style={{ textAlign: "center", marginBottom: 10, display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <Btn bg={C.teal} onClick={async () => { await f("/api/memory/seed", { method: "POST", body: JSON.stringify({ repo_id: sr }) }); load(); }} style={{ fontSize: 14, padding: "8px 18px" }}>{"\uD83D\uDD04"} Seed Memory</Btn>
+              <Inp placeholder="Search memory..." value={memSearch} onChange={e => setMemSearch(e.target.value)}
+                style={{ maxWidth: 280, fontSize: 12, padding: "8px 14px" }} />
             </div>
             <div style={{ maxWidth: 700, margin: "0 auto" }}>
               {memory.length===0 ? (
@@ -1196,7 +1200,7 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Start a repo to generate plans and build Ruflo memory. Or click "Seed Memory" above.</div>
                 </Card>
               ) :
-                memory.map(m => (
+                memory.filter(m => !memSearch || [m.namespace,m.key,m.value].join(" ").toLowerCase().includes(memSearch.toLowerCase())).map(m => (
                   <div key={m.id} className="hover-glow" style={{ display: "flex", gap: 8, padding: "7px 12px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 4, fontSize: 12, transition: "box-shadow 0.2s, transform 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                     <span style={{ background: C.orange, color: C.white, borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{m.namespace}</span>
                     <span style={{ fontWeight: 700, minWidth: 80 }}>{m.key}</span>
@@ -1239,12 +1243,16 @@ function Dashboard() {
         {tab === "logs" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.yellow} 0%, #F5D94E 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Town Logs</h2>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10 }}>
               <p style={{ fontSize: 13, color: C.brown }}>Every action, every decision -- all on record</p>
               <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.green, borderRadius: 12, padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.white }}>
                 <span style={{ animation: "rec 1.5s infinite" }}>●</span> LIVE
               </div>
               <span style={{ fontSize: 11, color: C.brown }}>{logs.length} entries</span>
+            </div>
+            <div style={{ maxWidth: 800, margin: "0 auto 10px", display: "flex", justifyContent: "center" }}>
+              <Inp placeholder="Search logs..." value={logSearch} onChange={e => setLogSearch(e.target.value)}
+                style={{ maxWidth: 400, fontSize: 12, padding: "8px 14px" }} />
             </div>
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               {logs.length===0 ? (
@@ -1254,7 +1262,7 @@ function Dashboard() {
                   <div style={{ fontSize: 12, color: C.brown }}>Logs appear as the orchestrator works its magic.</div>
                 </Card>
               ) :
-                logs.map((l, i) => (
+                logs.filter(l => !logSearch || [l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())).map((l, i) => (
                   <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: i === 0 ? "#FFFDE7" : C.white, border: `2px solid ${i === 0 ? C.orange : C.darkBrown}`, borderRadius: 8, marginBottom: 3, fontSize: 11, boxShadow: i === 0 ? `0 0 8px ${C.orange}44` : "0 1px 3px rgba(0,0,0,.04)", transition: "transform .15s, background .3s, border-color .3s" }}>
                     <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
                     <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
