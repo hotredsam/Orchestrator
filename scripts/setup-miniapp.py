@@ -84,11 +84,12 @@ def main():
         {"command": "trends", "description": "7-day performance trends (e.g. /trends blog)"},
         {"command": "forecast", "description": "7-day cost forecast with trend"},
         {"command": "leaderboard", "description": "Repo rankings by items completed"},
+        {"command": "summary", "description": "Compact system-wide summary"},
         {"command": "help", "description": "Show all available commands"},
         {"command": "app", "description": "Open the Swarm Town Mini App"},
     ])
     if result.get("ok"):
-        print("   Done! 19 commands registered")
+        print("   Done! 20 commands registered")
 
     # 3. Set bot description
     print("3. Setting bot description...")

@@ -1080,6 +1080,38 @@ def cmd_leaderboard():
     return "\n".join(lines)
 
 
+def cmd_summary():
+    """Show a compact system-wide summary."""
+    data = _orch_get("/api/system")
+    if isinstance(data, dict) and "error" in data:
+        return f"Error: {data['error']}"
+    if not isinstance(data, dict) or "repos" not in data:
+        return "No system data available."
+    ti = data.get("total_items", 0)
+    di = data.get("done_items", 0)
+    pct = round(di / max(ti, 1) * 100)
+    bar_len = min(pct // 5, 20)
+    lines = [
+        "*\U0001F3DC\uFE0F Swarm Town Summary*\n",
+        f"\U0001F4E6 *{data.get('repos', 0)}* repos ({data.get('running', 0)} running, {data.get('paused', 0)} paused)",
+        f"\U0001F4CB Items: *{di}/{ti}* ({'█' * bar_len}{'░' * (20 - bar_len)}) {pct}%",
+        f"\u26A1 Steps: *{data.get('done_steps', 0)}/{data.get('total_steps', 0)}*",
+        f"\U0001F920 Agents: *{data.get('total_agents', 0)}*",
+        f"\U0001F504 Cycles: *{data.get('total_cycles', 0)}*",
+        f"\U0001F4B0 Total Cost: *${data.get('total_cost', 0):.4f}*",
+    ]
+    if data.get("total_mistakes", 0) > 0:
+        lines.append(f"\U0001F480 Mistakes: *{data['total_mistakes']}*")
+    # Top 3 repos by cost
+    cost_by_repo = data.get("cost_by_repo", {})
+    if cost_by_repo:
+        top = sorted(cost_by_repo.items(), key=lambda x: x[1], reverse=True)[:3]
+        lines.append("\n*Top Cost Repos:*")
+        for name, cost in top:
+            lines.append(f"  `{name}`: ${cost:.4f}")
+    return "\n".join(lines)
+
+
 def cmd_tags(text):
     """View or set repo tags. 'tags repo' to view, 'tags repo: tag1, tag2' to set."""
     if ":" in text:
@@ -1272,6 +1304,7 @@ def cmd_help():
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
 `leaderboard` — Repo rankings by items completed
+`summary` — Compact system-wide summary
 `errors` — Recent errors across all repos
 `docs` — List all API endpoints
 `batch [action] [target]` — Batch start/stop/push repos
@@ -1344,6 +1377,7 @@ def handle_callback_query(cbq):
         "cmd_costs": cmd_costs,
         "cmd_leaderboard": cmd_leaderboard,
         "cmd_forecast": cmd_forecast,
+        "cmd_summary": cmd_summary,
     }
     handler = cmd_map.get(data)
     if handler:
@@ -1521,6 +1555,8 @@ def handle_message(msg):
         reply = cmd_forecast()
     elif t in ("leaderboard", "leader", "rankings", "rank"):
         reply = cmd_leaderboard()
+    elif t in ("summary", "overview", "report"):
+        reply = cmd_summary()
     elif t in ("errors", "recent-errors", "recent errors"):
         reply = cmd_recent_errors()
     elif t in ("docs", "api-docs", "api docs", "endpoints"):
