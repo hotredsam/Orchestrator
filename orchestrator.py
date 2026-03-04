@@ -3007,8 +3007,44 @@ class API(BaseHTTPRequestHandler):
                 "version": "3.0",
             })
 
+        if path == "/api/init":
+            # Batch endpoint — returns repos, costs, status in one call
+            uptime_sec = time.time() - _start_time
+            hrs, rem = divmod(int(uptime_sec), 3600)
+            mins, secs = divmod(rem, 60)
+            repos_list = manager.master.get_repos()
+            running = sum(1 for r in repos_list if r.get("running"))
+            costs = get_costs()
+            repos_out = []
+            for r in repos_list:
+                db = manager.get_repo_db(r["id"])
+                ic = db.fetchone(
+                    "SELECT COUNT(*) c,"
+                    " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done,"
+                    " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pend,"
+                    " SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) prog"
+                    " FROM items") if db else {"c": 0, "done": 0, "pend": 0, "prog": 0}
+                repos_out.append({
+                    "id": r["id"], "name": r["name"], "path": r["path"],
+                    "state": r.get("state", "idle"), "running": r.get("running", False),
+                    "items_total": ic["c"] or 0, "items_done": int(ic["done"] or 0),
+                    "cost": costs.get(r["id"], 0),
+                })
+            return self._json({
+                "repos": repos_out,
+                "costs": costs,
+                "status": {
+                    "uptime": f"{hrs}h {mins}m {secs}s",
+                    "repos_total": len(repos_list),
+                    "repos_running": running,
+                    "total_cost": sum(costs.values()),
+                    "version": "3.0",
+                },
+            })
+
         if path == "/api/docs":
             return self._json({"endpoints": [
+                {"method": "GET", "path": "/api/init", "desc": "Batch init data (repos, costs, status)"},
                 {"method": "GET", "path": "/api/status", "desc": "System uptime, counts, version"},
                 {"method": "GET", "path": "/api/repos", "desc": "List all repos with stats"},
                 {"method": "GET", "path": "/api/items?repo_id=N", "desc": "Items for a repo"},

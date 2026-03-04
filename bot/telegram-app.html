@@ -614,7 +614,7 @@
         <h1>🌵 Swarm Town</h1>
         <div style="display:flex; align-items:center; gap:8px;">
           <span id="costBadge" style="display:none; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; background:rgba(46,204,113,0.15); color:var(--green); border:2px solid var(--green);"></span>
-          <button onclick="toggleDarkMode()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px;" id="darkToggle">🌙</button>
+          <button onclick="toggleDarkMode()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px;" id="darkToggle" aria-label="Toggle dark mode">🌙</button>
         </div>
       </div>
       <div class="header-subtitle" id="headerSubtitle">Multi-Repo Orchestrator</div>
@@ -741,7 +741,7 @@
           <button class="quick-btn" onclick="sendChat('npm install all')">NPM Install</button>
         </div>
         <div class="chat-input-bar">
-          <input type="text" class="input" id="chatInput" placeholder="Type a command..." onkeydown="if(event.key==='Enter')sendChat()">
+          <input type="text" class="input" id="chatInput" placeholder="Type a command..." onkeydown="if(event.key==='Enter')sendChat()" aria-label="Chat command input">
           <button class="btn btn-orange" onclick="sendChat()">Send</button>
         </div>
       </div>
@@ -828,38 +828,38 @@
     </div>
 
     <!-- Tab Bar -->
-    <div class="tab-bar">
-      <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
+    <div class="tab-bar" role="tablist" aria-label="Navigation tabs">
+      <button class="tab-btn active" data-tab="home" onclick="switchTab('home')" role="tab" aria-selected="true" aria-label="Home">
         <span>🏠</span><span class="tab-label">Home</span>
       </button>
-      <button class="tab-btn" data-tab="add" onclick="switchTab('add')">
+      <button class="tab-btn" data-tab="add" onclick="switchTab('add')" role="tab" aria-selected="false" aria-label="Add item">
         <span>➕</span><span class="tab-label">Add</span>
       </button>
-      <button class="tab-btn" data-tab="items" onclick="switchTab('items')">
+      <button class="tab-btn" data-tab="items" onclick="switchTab('items')" role="tab" aria-selected="false" aria-label="Items list">
         <span>📦</span><span class="tab-label">Items</span>
       </button>
-      <button class="tab-btn" data-tab="flow" onclick="switchTab('flow')">
+      <button class="tab-btn" data-tab="flow" onclick="switchTab('flow')" role="tab" aria-selected="false" aria-label="Flow map">
         <span>🗺️</span><span class="tab-label">Flow</span>
       </button>
-      <button class="tab-btn" data-tab="plan" onclick="switchTab('plan')">
+      <button class="tab-btn" data-tab="plan" onclick="switchTab('plan')" role="tab" aria-selected="false" aria-label="Plan steps">
         <span>📐</span><span class="tab-label">Plan</span>
       </button>
-      <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">
+      <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')" role="tab" aria-selected="false" aria-label="Logs">
         <span>📜</span><span class="tab-label">Logs</span>
       </button>
-      <button class="tab-btn" data-tab="memory" onclick="switchTab('memory')">
+      <button class="tab-btn" data-tab="memory" onclick="switchTab('memory')" role="tab" aria-selected="false" aria-label="Memory">
         <span>🧠</span><span class="tab-label">Memory</span>
       </button>
-      <button class="tab-btn" data-tab="mistakes" onclick="switchTab('mistakes')">
+      <button class="tab-btn" data-tab="mistakes" onclick="switchTab('mistakes')" role="tab" aria-selected="false" aria-label="Errors">
         <span>💀</span><span class="tab-label">Errors</span>
       </button>
-      <button class="tab-btn" data-tab="health" onclick="switchTab('health')">
+      <button class="tab-btn" data-tab="health" onclick="switchTab('health')" role="tab" aria-selected="false" aria-label="Health scan">
         <span>🔍</span><span class="tab-label">Health</span>
       </button>
-      <button class="tab-btn" data-tab="chat" onclick="switchTab('chat')">
+      <button class="tab-btn" data-tab="chat" onclick="switchTab('chat')" role="tab" aria-selected="false" aria-label="Chat">
         <span>💬</span><span class="tab-label">Chat</span>
       </button>
-      <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">
+      <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')" role="tab" aria-selected="false" aria-label="Statistics">
         <span>📊</span><span class="tab-label">Stats</span>
       </button>
     </div>
@@ -940,7 +940,9 @@
       currentTab = tab;
 
       document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.tab === tab);
+        const isActive = b.dataset.tab === tab;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-selected', isActive ? 'true' : 'false');
       });
       document.querySelectorAll('.screen').forEach(s => {
         const isChat = s.id === 'screen-chat';
