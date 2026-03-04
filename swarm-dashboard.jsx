@@ -151,6 +151,7 @@ function Dashboard() {
   const [mistakes, setMistakes] = useState([]);
   const [audio, setAudio] = useState([]);
   const [connected, setCon] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
   const [ni, setNI] = useState({ type: "feature", title: "", description: "", priority: "medium" });
   const [nr, setNR] = useState({ name: "", path: "", github_url: "", branch: "main" });
   const [healthData, setHealthData] = useState([]);
@@ -445,6 +446,7 @@ function Dashboard() {
       }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
+    setLastRefresh(Date.now());
   }, [sr]);
 
   useEffect(() => { load(true); const i = setInterval(() => load(false), refreshInterval); return () => clearInterval(i); }, [load, refreshInterval]);
@@ -1058,6 +1060,7 @@ function Dashboard() {
                 : <button onClick={() => startRepo(cr.id)} style={{ background: C.green, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u25B6"}</button>}
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
+              {lastRefresh && <span style={{ fontSize: 8, color: C.brown, opacity: 0.7 }}>{Math.floor((Date.now() - lastRefresh) / 1000) < 10 ? "just now" : Math.floor((Date.now() - lastRefresh) / 1000) + "s ago"}</span>}
               {healthScores?.average_score != null && (() => {
                 const s = healthScores.average_score;
                 const hc = s >= 80 ? C.green : s >= 60 ? C.orange : C.red;

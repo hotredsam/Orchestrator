@@ -1069,6 +1069,7 @@
               <span class="card-label">Cycles</span>
               <span class="card-value">${r.cycle_count || 0}</span>
             </div>
+            ${(stats.cost || 0) > 0 ? `<div class="card-row"><span class="card-label">Cost</span><span class="card-value" style="color:var(--red);font-weight:700;">$${(stats.cost || 0).toFixed(4)}</span></div>` : ''}
             <div class="btn-row" style="margin-top:10px;">
               ${running
                 ? `<button class="btn btn-red btn-sm" onclick="stopRepo(${r.id})">Stop</button>`

@@ -545,9 +545,24 @@ def cmd_memory(name):
     mem = _orch_get(f"/api/memory?repo_id={repo['id']}")
     if not mem or (isinstance(mem, dict) and "error" in mem):
         return f"No memory for {repo['name']}."
-    lines = [f"*Last 5 memory entries for {repo['name']}:*\n"]
-    for m in mem[:5]:
-        lines.append(f"[{m.get('namespace','')}] {m.get('key','')}: {str(m.get('value',''))[:80]}")
+
+    # Group by namespace
+    ns_groups = {}
+    for m in mem:
+        ns = m.get("namespace", "general")
+        ns_groups.setdefault(ns, []).append(m)
+
+    lines = [f"\U0001F9E0 *Memory for {repo['name']}* ({len(mem)} entries)\n"]
+    if len(ns_groups) > 1:
+        ns_summary = ", ".join(f"`{ns}` ({len(items)})" for ns, items in sorted(ns_groups.items(), key=lambda x: -len(x[1])))
+        lines.append(f"*Namespaces:* {ns_summary}\n")
+
+    lines.append("*Recent:*")
+    for m in mem[:7]:
+        ns_tag = f"`{m.get('namespace', '')}` " if m.get("namespace") else ""
+        lines.append(f"\U0001F4DD {ns_tag}*{m.get('key', '')}*: {str(m.get('value', ''))[:70]}")
+    if len(mem) > 7:
+        lines.append(f"\n_...and {len(mem) - 7} more entries_")
     return "\n".join(lines)
 
 
