@@ -3273,6 +3273,24 @@ class API(BaseHTTPRequestHandler):
             _cache_set("eta_all", result)
             return self._json(result)
 
+        if path == "/api/repo-readme" and rid:
+            repo = next((r for r in manager.master.get_repos() if r["id"] == rid), None)
+            if not repo:
+                return self._json({"error": "Repo not found"}, 404)
+            content = ""
+            source = ""
+            for fname in ["CLAUDE.md", "claude.md", "README.md", "readme.md"]:
+                fpath = os.path.join(repo["path"], fname)
+                if os.path.isfile(fpath):
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as fp:
+                            content = fp.read()[:10000]  # Cap at 10KB
+                        source = fname
+                        break
+                    except Exception:
+                        pass
+            return self._json({"content": content, "source": source, "repo": repo["name"]})
+
         if path == "/api/repo-graph":
             # Return repo dependency graph for visualization
             repos = manager.master.get_repos()

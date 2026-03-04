@@ -75,6 +75,28 @@ const FLOW_EDGES = [
   ["scan_repo","idle","M90,468 L50,468 L50,36 L250,36"],
 ];
 
+function RepoReadme({ repoId, Card, C }) {
+  const [content, setContent] = useState("");
+  const [source, setSource] = useState("");
+  useEffect(() => {
+    if (repoId) f(`/api/repo-readme?repo_id=${repoId}`).then(r => r.json()).then(d => { setContent(d.content || ""); setSource(d.source || ""); }).catch(() => {});
+  }, [repoId]);
+  return (
+    <details style={{ maxWidth: 680, margin: "0 auto 16px" }}>
+      <summary style={{ fontSize: 12, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
+        {"\uD83D\uDCC4"} Repo Docs {source ? `(${source})` : ""}
+      </summary>
+      {content ? (
+        <Card bg={C.white} style={{ marginTop: 8, padding: 16 }}>
+          <pre style={{ fontSize: 11, lineHeight: 1.5, color: C.darkBrown, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 300, overflowY: "auto", fontFamily: "monospace", margin: 0 }}>{content}</pre>
+        </Card>
+      ) : (
+        <div style={{ fontSize: 11, color: C.brown, marginTop: 6, textAlign: "center" }}>No CLAUDE.md or README.md found.</div>
+      )}
+    </details>
+  );
+}
+
 function RequestLog() {
   const [entries, setEntries] = useState([]);
   const [filter, setFilter] = useState("all");
@@ -1516,6 +1538,9 @@ function Dashboard() {
                 : <Btn bg={C.orange} onClick={() => pauseRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9208; Pause</Btn>)}
               <Btn bg={C.teal} onClick={pushGH} style={{ padding: "10px 20px", fontSize: 16 }}>&uarr; Push Git</Btn>
             </div>
+
+            {/* Repo README/CLAUDE.md viewer */}
+            <RepoReadme repoId={sr} Card={Card} C={C} />
 
             {/* Flowchart */}
             <Card bg="transparent" style={{ maxWidth: 680, margin: "0 auto 16px", padding: 0, border: "none", boxShadow: "none", background: "none" }}>

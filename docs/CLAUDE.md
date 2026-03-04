@@ -223,6 +223,23 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Telegram batch command** — `batch [action] [tag:X | repo1,repo2 | all]` for bulk operations from Telegram
 - **Telegram ETA command** — `eta` shows estimated time/cost remaining per repo based on average step duration
 - **setStatusFilter bug fix** — keyboard shortcut 'C' (clear all) no longer references undefined function
+- **Plan step cost bars** — inline cost bar visualization per step showing relative cost (green/orange gradient)
+- **SVG Sparkline component** — tiny inline sparkline for trend visualization in master view cards
+- **Activity sparklines** — GET /api/sparklines returns 7-day action counts per repo (30s cache). Shown in master view cards
+- **Last activity timestamp** — master view cards show relative "Xm ago" / "Xh ago" labels from repo orchestrator
+- **ETA calculator API** — GET /api/eta returns estimated time/cost remaining for all repos based on avg step duration
+- **Flow tab ETA display** — status panel shows time remaining, estimated cost, and step completion status
+- **Master view keyboard nav** — J/K to navigate repo cards, Enter to open focused repo, auto-scroll to focused card
+- **Dashboard prefs export/import** — Settings tab: export/import dark mode, pinned repos, refresh interval, notifications
+- **Repo dependency tracking** — `deps` column in repos table, POST /api/repos/deps, GET /api/repo-graph for visualization
+- **Dependency graph UI** — collapsible section on master view to configure repo-to-repo dependencies
+- **ThreadPoolExecutor** — Manager now includes a 4-worker thread pool for parallel task execution
+- **Per-endpoint cache TTL** — sparklines=30s, eta=15s, repo-graph=60s, docs=300s (default still 3s)
+- **Repo archive/unarchive** — `archived` column, POST /api/repos/archive, auto-stops repo on archive
+- **Archive filter** — master view "Archived" filter tab, include_archived=1 param on GET /api/repos
+- **Compact master mode** — toggle hides tags/sparklines/quick actions for denser repo grid (localStorage)
+- **Telegram /archive command** — `archive [repo]` and `unarchive [repo]` for repo archival via chat
+- **Repo README viewer** — GET /api/repo-readme reads CLAUDE.md or README.md from repo path. Collapsible viewer in flow tab
 
 ## Commands
 ```bash
@@ -256,6 +273,8 @@ POST /api/repos/delete             — Remove repo {repo_id}
 GET  /api/repos/export             — Export all repos as JSON backup
 POST /api/repos/import             — Import repos from JSON {repos: [...]}
 POST /api/repos/tags               — Set repo tags {repo_id, tags: "tag1,tag2"}
+POST /api/repos/deps               — Set repo dependencies {repo_id, deps: "1,3,5"}
+POST /api/repos/archive            — Archive/unarchive repo {repo_id, archive: bool}
 
 # Control
 POST /api/start                    — Start repo {repo_id} or {repo_id: "all"}
@@ -315,6 +334,10 @@ GET  /api/health/detailed          — Health scores (0-100) with A-F grades
 GET  /api/repos/snapshot?repo_id=N — Full repo data export
 GET  /api/digest                   — Generate daily digest on demand
 GET  /api/health-scan              — Scan all repos for health issues
+GET  /api/sparklines               — 7-day action counts per repo (30s cache)
+GET  /api/eta                      — ETA estimates (time + cost) per repo (15s cache)
+GET  /api/repo-graph               — Dependency graph nodes + edges (60s cache)
+GET  /api/repo-readme?repo_id=N    — Read CLAUDE.md or README.md from repo
 POST /api/fix-all                  — Auto-fix all detected health issues
 POST /api/fix                      — Fix specific issue {repo_id, issue_title, ...}
 POST /api/rollback                 — Git rollback {repo_id, commit_hash}
