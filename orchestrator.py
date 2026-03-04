@@ -176,7 +176,7 @@ _sse_lock = threading.Lock()
 
 
 def sse_broadcast(event_type: str, data: dict):
-    """Push an event to all connected SSE clients."""
+    """Push an event to all connected SSE clients + fire webhooks."""
     try:
         payload = json.dumps({"type": event_type, **data, "ts": datetime.now(timezone.utc).isoformat()}, default=str)
         msg = f"event: {event_type}\ndata: {payload}\n\n"
@@ -192,6 +192,8 @@ def sse_broadcast(event_type: str, data: dict):
                     _sse_clients.remove(q)
                 except ValueError:
                     pass
+        # Fire webhooks in background
+        _fire_webhooks(event_type, data)
     except Exception as e:
         log.debug(f"SSE broadcast error: {e}")
 
@@ -209,6 +211,59 @@ def sse_unregister(q: queue.Queue):
     with _sse_lock:
         if q in _sse_clients:
             _sse_clients.remove(q)
+
+
+# ─── Webhooks ────────────────────────────────────────────────────────────────
+
+_webhooks: List[dict] = []  # [{id, url, events: ["state_change", "log", ...], secret}]
+_webhook_lock = threading.Lock()
+_webhook_counter = 0
+
+
+def webhook_register(url: str, events: List[str] = None, secret: str = "") -> dict:
+    global _webhook_counter
+    with _webhook_lock:
+        _webhook_counter += 1
+        wh = {"id": _webhook_counter, "url": url, "events": events or ["*"], "secret": secret}
+        _webhooks.append(wh)
+    return wh
+
+
+def webhook_remove(wh_id: int) -> bool:
+    with _webhook_lock:
+        before = len(_webhooks)
+        _webhooks[:] = [w for w in _webhooks if w["id"] != wh_id]
+        return len(_webhooks) < before
+
+
+def webhook_list() -> List[dict]:
+    with _webhook_lock:
+        return [{"id": w["id"], "url": w["url"], "events": w["events"]} for w in _webhooks]
+
+
+def _fire_webhooks(event_type: str, payload: dict):
+    """Send event to matching webhooks in background threads."""
+    with _webhook_lock:
+        targets = [w for w in _webhooks if "*" in w["events"] or event_type in w["events"]]
+    if not targets:
+        return
+    body = json.dumps({"event": event_type, **payload, "ts": datetime.now(timezone.utc).isoformat()}, default=str)
+    for wh in targets:
+        threading.Thread(target=_send_webhook, args=(wh, body), daemon=True).start()
+
+
+def _send_webhook(wh: dict, body: str):
+    """POST webhook payload. Best-effort, logs failures."""
+    import urllib.request
+    try:
+        headers = {"Content-Type": "application/json"}
+        if wh.get("secret"):
+            sig = hmac.new(wh["secret"].encode(), body.encode(), hashlib.sha256).hexdigest()
+            headers["X-Swarm-Signature"] = sig
+        req = urllib.request.Request(wh["url"], data=body.encode(), headers=headers, method="POST")
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        log.debug(f"Webhook {wh['id']} to {wh['url']} failed: {e}")
 
 
 # ─── Cost Tracking ────────────────────────────────────────────────────────────
@@ -306,6 +361,21 @@ def clean_env():
 for d in [REPOS_DIR, AUDIO_DIR, INTAKE_FOLDER]:
     os.makedirs(d, exist_ok=True)
 
+class _JsonFormatter(logging.Formatter):
+    """Emit structured JSON log lines for machine parsing."""
+    def format(self, record):
+        return json.dumps({
+            "ts": self.formatTime(record), "level": record.levelname,
+            "msg": record.getMessage(), "module": record.module,
+            "line": record.lineno,
+        }, ensure_ascii=False)
+
+_json_handler = logging.handlers.RotatingFileHandler(
+    os.path.expanduser("~/swarm-json.log"), encoding='utf-8',
+    maxBytes=20*1024*1024, backupCount=5,
+)
+_json_handler.setFormatter(_JsonFormatter())
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -315,6 +385,7 @@ logging.basicConfig(
             os.path.expanduser("~/swarm.log"), encoding='utf-8',
             maxBytes=50*1024*1024, backupCount=3,
         ),
+        _json_handler,
     ],
 )
 log = logging.getLogger("swarm")
@@ -2536,6 +2607,9 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/digest":
             return self._json({"digest": generate_daily_digest()})
 
+        if path == "/api/webhooks":
+            return self._json({"webhooks": webhook_list()})
+
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):
@@ -2921,6 +2995,23 @@ class API(BaseHTTPRequestHandler):
                 except Exception as e:
                     results.append({"repo": repo.get("name", "?"), "error": str(e)})
             return self._json({"ok": True, "optimized": len(results), "results": results})
+
+        # ─── Webhook Endpoints ─────────────────────────────────────────────
+        if path == "/api/webhooks":
+            url = b.get("url", "").strip()
+            if not url:
+                return self._json({"error": "url required"}, 400)
+            events = b.get("events", ["*"])
+            secret = b.get("secret", "")
+            wh = webhook_register(url, events, secret)
+            return self._json({"ok": True, "webhook": {"id": wh["id"], "url": wh["url"], "events": wh["events"]}})
+
+        if path == "/api/webhooks/delete":
+            wh_id = b.get("id")
+            if not wh_id:
+                return self._json({"error": "id required"}, 400)
+            removed = webhook_remove(int(wh_id))
+            return self._json({"ok": True, "removed": removed})
 
         # ─── Chat Bridge Endpoints ────────────────────────────────────────────
         if path == "/api/bridge/inbox":

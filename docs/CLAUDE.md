@@ -70,6 +70,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Per-step cost tracking** — plan_steps table stores cost_usd and duration_sec, displayed in dashboard plan view
 - **Item management UI** — dashboard has dedupe, clear done, clear all buttons + per-item delete + status filter chips
 - **DB migrations** — RepoDB auto-migrates older databases to add new columns
+- **Structured JSON logging** — machine-parseable JSON log at `~/swarm-json.log` (20MB rotate, 5 backups) alongside human-readable `~/swarm.log`
+- **Webhooks** — register external HTTP callbacks for SSE events (state_change, log, error_event, watchdog). HMAC-SHA256 signing with optional secret
 
 ## Commands
 ```bash
@@ -140,6 +142,11 @@ GET  /api/health-scan              — Scan all repos for health issues
 POST /api/fix-all                  — Auto-fix all detected health issues
 POST /api/fix                      — Fix specific issue {repo_id, issue_title, ...}
 POST /api/rollback                 — Git rollback {repo_id, commit_hash}
+
+# Webhooks
+GET  /api/webhooks                 — List registered webhooks
+POST /api/webhooks                 — Register webhook {url, events?: ["*"], secret?}
+POST /api/webhooks/delete          — Remove webhook {id}
 ```
 
 ## Telegram Bot Commands
