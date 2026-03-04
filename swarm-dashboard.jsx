@@ -3012,8 +3012,8 @@ function Dashboard() {
                     </div>
                     {expandedLog === l.id && (
                       <div style={{ background: C.cream, border: `2px solid ${C.teal}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "8px 12px", marginBottom: 3, fontSize: 11 }}>
-                        {l.result && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.teal }}>Result:</span> <span style={{ color: C.darkBrown }}>{l.result}</span></div>}
-                        {l.error && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.red }}>Error:</span> <span style={{ color: C.red }}>{l.error}</span></div>}
+                        {l.result && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.teal }}>Result:</span> <span style={{ color: C.darkBrown }}>{l.result.length > 200 ? <>{l.result.slice(0, 200)}<span onClick={e => { e.stopPropagation(); e.currentTarget.parentElement.textContent = l.result; }} style={{ color: C.teal, cursor: "pointer", fontWeight: 600 }}> ...Show more</span></> : l.result}</span></div>}
+                        {l.error && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.red }}>Error:</span> <span style={{ color: C.red }}>{l.error.length > 200 ? <>{l.error.slice(0, 200)}<span onClick={e => { e.stopPropagation(); e.currentTarget.parentElement.textContent = l.error; }} style={{ color: C.orange, cursor: "pointer", fontWeight: 600 }}> ...Show more</span></> : l.error}</span></div>}
                         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", color: C.brown, fontSize: 10, alignItems: "center" }}>
                           {l.model && <span>Model: {l.model}</span>}
                           {l.tokens_in > 0 && <span>Tokens in: {l.tokens_in}</span>}

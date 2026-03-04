@@ -1784,6 +1784,21 @@
       document.getElementById('statMemory').textContent = totalMemory;
       document.getElementById('statRepos').textContent = data.length;
       document.getElementById('statCost').textContent = totalCost > 0 ? '$' + totalCost.toFixed(2) : '-';
+      // Cost trend sparkline via localStorage
+      if (totalCost > 0) {
+        const costHist = JSON.parse(localStorage.getItem('cost_trend') || '[]');
+        costHist.push(totalCost);
+        if (costHist.length > 10) costHist.splice(0, costHist.length - 10);
+        localStorage.setItem('cost_trend', JSON.stringify(costHist));
+        if (costHist.length >= 2) {
+          const trend = costHist[costHist.length-1] - costHist[costHist.length-2];
+          const trendIcon = trend > 0.01 ? '📈' : trend < -0.01 ? '📉' : '→';
+          const maxC = Math.max(...costHist);
+          const spark = costHist.map(c => `<div style="width:3px;height:${Math.max(2,Math.round(c/maxC*12))}px;background:${c > costHist[0] ? 'var(--red)' : 'var(--green)'};border-radius:1px;"></div>`).join('');
+          const costEl = document.getElementById('statCost');
+          if (costEl) costEl.innerHTML = '$' + totalCost.toFixed(2) + ` <span style="display:inline-flex;align-items:flex-end;gap:1px;vertical-align:middle;margin-left:3px;">${spark}</span> <span style="font-size:9px;">${trendIcon}</span>`;
+        }
+      }
       document.getElementById('statsBreakdown').innerHTML = breakdowns.join('') || '<div class="empty-state"><p>No repos yet</p></div>';
     }
 

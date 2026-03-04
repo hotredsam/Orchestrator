@@ -1152,6 +1152,36 @@ def cmd_stale():
     return "\n".join(lines)
 
 
+def cmd_alive():
+    """Quick heartbeat check showing system liveness and last activity."""
+    data = _orch_get("/api/status")
+    if isinstance(data, dict) and "error" in data:
+        return f"\U0001F534 *Orchestrator unreachable:* {data['error']}"
+    uptime = data.get("uptime", "unknown")
+    repos = _orch_get("/api/repos") or []
+    running = len([r for r in repos if r.get("running")]) if isinstance(repos, list) else 0
+    total = len(repos) if isinstance(repos, list) else 0
+    # Find most recent activity
+    latest_ts = ""
+    latest_repo = ""
+    for r in (repos if isinstance(repos, list) else []):
+        la = r.get("last_activity", 0)
+        if la and (not latest_ts or la > latest_ts):
+            latest_ts = la
+            latest_repo = r.get("name", "?")
+    ago = ""
+    if latest_ts:
+        secs = int(time.time() - latest_ts)
+        ago = f"{secs}s ago" if secs < 60 else f"{secs//60}m ago" if secs < 3600 else f"{secs//3600}h ago"
+    return (
+        f"\U0001F49A *System Alive*\n\n"
+        f"\u23F1 Uptime: `{uptime}`\n"
+        f"\U0001F7E2 Repos: {running}/{total} running\n"
+        f"\U0001F4E1 Last activity: *{latest_repo}* ({ago})\n"
+        f"\U0001F916 Bot: responding normally"
+    )
+
+
 def cmd_active():
     """Show currently running repos with their active items and progress."""
     repos = _orch_get("/api/repos")
@@ -1774,6 +1804,7 @@ def cmd_help():
 `fastest` — Fastest completed steps across all repos
 `dedupe [repo]` — Remove duplicate pending items
 `remind <minutes>` — Schedule a status reminder
+`alive` — Quick heartbeat check on system liveness
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -2062,6 +2093,8 @@ def handle_message(msg):
         reply = cmd_search(t[7:].strip())
     elif t in ("active", "running", "live"):
         reply = cmd_active()
+    elif t in ("alive", "heartbeat", "ping"):
+        reply = cmd_alive()
     elif t in ("fastest", "speed", "quickest"):
         reply = cmd_fastest()
     elif t == "dedupe" or t.startswith("dedupe "):
@@ -2140,7 +2173,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
