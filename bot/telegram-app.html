@@ -832,6 +832,11 @@
 
     </div>
 
+    <!-- Last Updated Bar -->
+    <div style="text-align:center;padding:2px 0;font-size:9px;color:var(--text-secondary);background:var(--card-bg);border-top:1px solid var(--border);opacity:0.7;">
+      Updated <span id="lastFetchLabel">—</span>
+    </div>
+
     <!-- Tab Bar -->
     <div class="tab-bar" role="tablist" aria-label="Navigation tabs">
       <button class="tab-btn active" data-tab="home" onclick="switchTab('home')" role="tab" aria-selected="true" aria-label="Home">
@@ -945,6 +950,23 @@
     let totalCost = 0;
     let sseSource = null;
     let planFilter = 'all'; // all, pending, completed
+    let lastFetchTime = null;
+
+    function updateLastFetch() {
+      lastFetchTime = Date.now();
+      const el = document.getElementById('lastFetchLabel');
+      if (el) el.textContent = 'just now';
+    }
+
+    setInterval(() => {
+      if (!lastFetchTime) return;
+      const el = document.getElementById('lastFetchLabel');
+      if (!el) return;
+      const secs = Math.floor((Date.now() - lastFetchTime) / 1000);
+      if (secs < 5) el.textContent = 'just now';
+      else if (secs < 60) el.textContent = secs + 's ago';
+      else el.textContent = Math.floor(secs / 60) + 'm ago';
+    }, 5000);
 
     // ─── Tab Navigation ───────────────────────────────────────────────────────
     function switchTab(tab) {
@@ -983,6 +1005,7 @@
       const data = await api('/api/repos');
       if (!data) return;
       repos = data;
+      updateLastFetch();
 
       // Fetch system stats for header
       const sysData = await api('/api/system', undefined, { silent: true });

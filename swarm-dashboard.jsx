@@ -1175,12 +1175,18 @@ function Dashboard() {
               <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginBottom: 16 }}>
                 {repos.filter(r => r.running).map(r => {
                   const rst = STATES[r.state] || STATES.idle;
+                  const done = r.stats?.items_done || 0;
+                  const total = r.stats?.items_total || 0;
+                  const pct = total > 0 ? Math.round(done / total * 100) : 0;
                   return (
                     <div key={r.id} onClick={() => { setSR(r.id); setTab("flow"); }}
                       style={{ display: "flex", alignItems: "center", gap: 6, background: C.white, border: `2px solid ${C.darkBrown}33`, borderRadius: 20, padding: "4px 12px 4px 6px", cursor: "pointer", transition: "transform .15s", fontSize: 12 }}
                       onMouseOver={e => e.currentTarget.style.transform = "scale(1.05)"} onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}>
                       <div style={{ width: 20, height: 20, borderRadius: "50%", background: rst.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, animation: "bounce 2s infinite" }}>{rst.emoji}</div>
                       <span style={{ fontWeight: 600 }}>{r.name}</span>
+                      <div style={{ width: 32, height: 6, borderRadius: 3, background: `${C.darkBrown}22`, overflow: "hidden" }} title={`${done}/${total} (${pct}%)`}>
+                        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 3, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, transition: "width .5s" }} />
+                      </div>
                       <span style={{ color: C.brown, fontSize: 10 }}>{rst.label}</span>
                     </div>
                   );

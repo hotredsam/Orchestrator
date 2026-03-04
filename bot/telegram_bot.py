@@ -48,6 +48,16 @@ _buffer_timer = None
 _BUFFER_INTERVAL = 60  # seconds between flushes
 _BUFFER_MAX = 100  # max messages before forced flush
 
+# ─── Notification Preferences ───────────────────────────────────────────────
+# Keys: state_changes, completions, errors, credits, digest
+_notify_prefs = {
+    "state_changes": True,
+    "completions": True,
+    "errors": True,
+    "credits": True,
+    "digest": True,
+}
+
 
 def queue_message(text):
     """Add a message to the buffer instead of sending immediately.
@@ -1340,6 +1350,38 @@ def cmd_batch(args):
     return "\n".join(lines)
 
 
+def cmd_notify(arg: str = ""):
+    """View or toggle notification preferences."""
+    global _notify_prefs
+    categories = list(_notify_prefs.keys())
+
+    if not arg:
+        lines = ["\U0001F514 *Notification Preferences*", ""]
+        for cat in categories:
+            icon = "\u2705" if _notify_prefs[cat] else "\u274C"
+            label = cat.replace("_", " ").title()
+            lines.append(f"  {icon} {label}")
+        lines.append("")
+        lines.append("Toggle: `/notify state_changes`")
+        lines.append("Categories: " + ", ".join(f"`{c}`" for c in categories))
+        return "\n".join(lines)
+
+    key = arg.strip().lower().replace(" ", "_")
+    if key == "all_on":
+        for c in categories:
+            _notify_prefs[c] = True
+        return "\U0001F514 All notifications enabled."
+    if key == "all_off":
+        for c in categories:
+            _notify_prefs[c] = False
+        return "\U0001F515 All notifications disabled."
+    if key not in _notify_prefs:
+        return f"Unknown category `{key}`. Options: {', '.join(categories)}, all_on, all_off"
+    _notify_prefs[key] = not _notify_prefs[key]
+    state = "\u2705 ON" if _notify_prefs[key] else "\u274C OFF"
+    return f"\U0001F514 *{key.replace('_', ' ').title()}* → {state}"
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -1388,6 +1430,7 @@ def cmd_help():
 `summary` — Compact system-wide summary
 `active` — Show currently running repos
 `top` — Top 5 repos by items completed
+`notify` / `notify [cat]` — View/toggle notifications
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -1659,6 +1702,8 @@ def handle_message(msg):
         reply = cmd_archive(t[10:].strip(), unarchive=True)
     elif t.startswith("batch "):
         reply = cmd_batch(t[6:])
+    elif t == "notify" or t.startswith("notify "):
+        reply = cmd_notify(t[7:].strip() if t.startswith("notify ") else "")
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
         app_url = f"{public_url}/telegram-app"
@@ -1774,6 +1819,8 @@ def handle_voice(msg, voice):
 
 def notify_state_change(repo_name, old_state, new_state):
     """Notify on state transition."""
+    if not _notify_prefs.get("state_changes", True):
+        return
     desc = {
         "idle": "Waiting for items",
         "check_audio": "Checking for audio reviews",
@@ -1797,18 +1844,26 @@ def notify_state_change(repo_name, old_state, new_state):
 
 
 def notify_cycle_complete(repo_name, cycle_num, items_done):
+    if not _notify_prefs.get("completions", True):
+        return
     send_message(f"🎉 *{repo_name}* completed cycle #{cycle_num} — {items_done} items done")
 
 
 def notify_credits_exhausted(repo_name):
+    if not _notify_prefs.get("credits", True):
+        return
     send_message(f"💳 Credits exhausted for *{repo_name}*. Will auto-resume when back.")
 
 
 def notify_credits_restored(repo_name, resume_state):
+    if not _notify_prefs.get("credits", True):
+        return
     send_message(f"✅ Credits restored! Resuming *{repo_name}* from {resume_state}")
 
 
 def notify_error(repo_name, error_msg):
+    if not _notify_prefs.get("errors", True):
+        return
     send_message(f"💀 Error in *{repo_name}*: {error_msg[:500]}")
 
 
