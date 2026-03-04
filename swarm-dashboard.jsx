@@ -1073,6 +1073,21 @@ function Dashboard() {
                 </div>
               ))}
             </div>
+            {/* Cost Trend Mini-Chart */}
+            {costHistory.length > 1 && (
+              <div style={{ maxWidth: 500, margin: "0 auto 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 10, color: C.brown, fontWeight: 600, minWidth: 55 }}>30d Costs</span>
+                <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 1, height: 24 }}>
+                  {costHistory.slice(-30).map((d, i, arr) => {
+                    const max = Math.max(...arr.map(x => x.cost || 0), 0.01);
+                    return (
+                      <div key={i} style={{ flex: 1, height: `${((d.cost || 0) / max) * 22}px`, minHeight: d.cost > 0 ? 2 : 0, background: `linear-gradient(180deg, ${C.teal}, ${C.green})`, borderRadius: "2px 2px 0 0", transition: "height 0.3s" }} title={`${d.date}: $${d.cost}`} />
+                    );
+                  })}
+                </div>
+                <span style={{ fontSize: 10, color: C.brown, fontWeight: 700 }}>${repoStats.totalCost.toFixed(2)}</span>
+              </div>
+            )}
             {/* Overall Progress */}
             {(() => {
               const totalItems = repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0);
@@ -2235,10 +2250,11 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Add items to the Bounty Board first -- the swarm will draw up a plan!</div>
                 </Card>
               ) :
-                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); const completedSteps = plan.filter(p => p.status === "completed" && p.duration_sec > 0); const avgDur = completedSteps.length ? completedSteps.reduce((a, p) => a + p.duration_sec, 0) / completedSteps.length : 0; return plan.map((s,i) => {
+                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); const completedSteps = plan.filter(p => p.status === "completed" && p.duration_sec > 0); const avgDur = completedSteps.length ? completedSteps.reduce((a, p) => a + p.duration_sec, 0) / completedSteps.length : 0; const firstPendingIdx = plan.findIndex(s => s.status !== "completed"); return plan.map((s,i) => {
                   const done = s.status==="completed";
+                  const isNextStep = i === firstPendingIdx;
                   return (
-                    <div key={s.id} style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+                    <div key={s.id} ref={isNextStep ? el => { if (el && tab === "plan") setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300); } : undefined} style={{ display: "flex", gap: 12, marginBottom: 8, outline: isNextStep ? `2px solid ${C.orange}44` : "none", borderRadius: 8 }}>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                         <div style={{ width: 36, height: 36, borderRadius: "50%", background: done ? `linear-gradient(135deg, ${C.green}, #27ae60)` : C.cream, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontFamily: "'Bangers',cursive", flexShrink: 0, color: done ? C.white : C.darkBrown, boxShadow: done ? `0 2px 8px ${C.green}44` : "none" }}>
                           {done ? "\u2713" : i+1}
