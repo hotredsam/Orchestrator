@@ -106,6 +106,7 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Uptime display** — header shows server uptime (from /api/status)
 - **Browser notifications** — optional desktop notifications for cycle complete, errors, budget exceeded (localStorage toggle)
 - **Cache invalidation** — response cache cleared on all POST requests to ensure fresh data after writes
+- **Master view search** — search bar + state filter chips (All/Running/Idle/Pinned) on master view
 
 ## Commands
 ```bash

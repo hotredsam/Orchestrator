@@ -854,9 +854,30 @@ function Dashboard() {
         {tab === "master" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>All Repos -- Master View</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>Bird's-eye view of every repo in your swarm</p>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 12 }}>Bird's-eye view of every repo in your swarm</p>
+            {/* Filter bar */}
+            <div style={{ maxWidth: 600, margin: "0 auto 16px", display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+              <Inp placeholder="Search repos..." value={repoFilter === "all" ? "" : (repoFilter.startsWith("q:") ? repoFilter.slice(2) : "")}
+                onChange={e => setRepoFilter(e.target.value ? "q:" + e.target.value : "all")}
+                style={{ maxWidth: 200, fontSize: 12, padding: "8px 14px" }} />
+              {["all", "running", "idle", "pinned"].map(f => (
+                <span key={f} onClick={() => setRepoFilter(f)}
+                  style={{ cursor: "pointer", padding: "4px 12px", borderRadius: 12, fontSize: 11, fontWeight: 700,
+                    background: repoFilter === f ? C.orange : C.cream, color: repoFilter === f ? C.white : C.brown,
+                    border: `2px solid ${repoFilter === f ? C.orange : C.darkBrown}33`, transition: "all .2s" }}>
+                  {f === "all" ? "All" : f === "running" ? "Running" : f === "idle" ? "Idle" : "Pinned"}
+                </span>
+              ))}
+              <span style={{ fontSize: 11, color: C.brown }}>{repos.length} repos</span>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-              {[...repos].sort((a, b) => {
+              {[...repos].filter(r => {
+                if (repoFilter === "running") return r.running;
+                if (repoFilter === "idle") return !r.running;
+                if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
+                if (repoFilter.startsWith("q:")) return r.name.toLowerCase().includes(repoFilter.slice(2).toLowerCase());
+                return true;
+              }).sort((a, b) => {
                 const pa = pinnedRepos.includes(a.id) ? 0 : 1;
                 const pb = pinnedRepos.includes(b.id) ? 0 : 1;
                 return pa - pb || a.name.localeCompare(b.name);
