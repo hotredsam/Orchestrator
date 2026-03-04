@@ -137,6 +137,7 @@ function Dashboard() {
   const [scrolledPast, setScrolledPast] = useState(false);
   const [costHistory, setCostHistory] = useState([]);
   const [healthScores, setHealthScores] = useState(null);
+  const [compactItems, setCompactItems] = useState(false);
   const [staleItems, setStaleItems] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -1441,6 +1442,7 @@ function Dashboard() {
                 <Btn bg="#A0ADB5" onClick={() => clearItems("completed")} style={{ fontSize: 12, padding: "8px 14px" }}>{"\u2705"} Clear Done</Btn>
                 <Btn bg="#7E57C2" onClick={() => apiAction("/api/items/archive", { method: "POST", body: JSON.stringify({ repo_id: sr, days: 7 }) }, "Old items archived")} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDCE6"} Archive 7d+</Btn>
                 <Btn bg={C.red} onClick={() => clearItems()} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDDD1\uFE0F"} Clear All</Btn>
+                <button onClick={() => setCompactItems(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactItems ? C.teal : C.cream, color: compactItems ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact view">{compactItems ? "\u2630 Compact" : "\u2637 Full"}</button>
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
                 </span>
@@ -1504,6 +1506,17 @@ function Dashboard() {
                     medium: { bg: C.teal, icon: "\uD83D\uDD35", label: "MEDIUM", size: 11 },
                     low: { bg: "#A0ADB5", icon: "\u26AA", label: "LOW", size: 11 },
                   }[it.priority] || { bg: "#ccc", icon: "", label: it.priority, size: 11 };
+                  if (compactItems) return (
+                    <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: it.status === "completed" ? C.lightTeal : C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, marginBottom: 3, fontSize: 11 }}>
+                      <input type="checkbox" checked={selectedItems.has(it.id)} onChange={() => toggleSelectItem(it.id)} style={{ cursor: "pointer", accentColor: C.orange }} />
+                      <span style={{ fontSize: 14 }}>{it.type === "issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"}</span>
+                      <span style={{ fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
+                      <span style={{ background: prioConfig.bg, color: C.white, borderRadius: 4, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{prioConfig.label}</span>
+                      <span style={{ background: it.status === "completed" ? C.green : it.status === "in_progress" ? C.orange : "#ccc", color: C.white, borderRadius: 4, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{it.status}</span>
+                      {it.status === "pending" && <button onClick={() => quickStatusChange(it.id, "completed")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: C.green, padding: 0 }}>{"\u2705"}</button>}
+                      <button onClick={() => deleteItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: C.red, padding: 0 }}>{"\u2716"}</button>
+                    </div>
+                  );
                   return (
                     <div key={it.id} className="bounty-poster" style={{
                       background: it.status === "completed"

@@ -873,6 +873,24 @@ def cmd_circuit_breakers():
     return "\n".join(lines)
 
 
+def cmd_health_scores():
+    """Show health scores for all repos."""
+    data = _orch_get("/api/health/detailed")
+    if not isinstance(data, dict):
+        return "Could not fetch health scores."
+    repos = data.get("repos", [])
+    if not repos:
+        return "No repos registered."
+    avg = data.get("average_score", 0)
+    grade_emoji = {"A": "\U0001F7E2", "B": "\U0001F535", "C": "\U0001F7E1", "D": "\U0001F7E0", "F": "\U0001F534"}
+    lines = [f"*\U0001F3E5 Health Report* (Avg: {avg})", ""]
+    for r in sorted(repos, key=lambda x: -x["score"]):
+        emoji = grade_emoji.get(r["grade"], "\u2B1C")
+        issues_str = f" — {', '.join(r['issues'][:2])}" if r["issues"] else ""
+        lines.append(f"  {emoji} *{r['grade']}* `{r['repo']}` ({r['score']}){issues_str}")
+    return "\n".join(lines)
+
+
 def cmd_cost_history():
     """Show daily cost totals for the last 7 days."""
     data = _orch_get("/api/costs/history?days=7")
@@ -1021,6 +1039,7 @@ def cmd_help():
 `breakers` — Circuit breaker states across repos
 `snapshot [repo]` — Quick data snapshot with pending items
 `cost-history` — Daily cost totals for last 7 days
+`grades` — Health scores for all repos (A-F)
 `app` — Open Mini App
 `help` — This message
 
@@ -1188,6 +1207,8 @@ def handle_message(msg):
         reply = cmd_costs()
     elif t in ("health", "healthcheck", "health_scan"):
         reply = cmd_health()
+    elif t in ("health-scores", "grades", "scores"):
+        reply = cmd_health_scores()
     elif t.startswith("budget"):
         reply = cmd_budget(t[6:].strip())
     elif t.startswith("retry"):
