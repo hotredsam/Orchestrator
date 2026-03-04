@@ -1335,7 +1335,13 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
 
     def h_final_optimize(self):
         log.info(f"🔧 [{self.repo['name']}] Optimizing...")
-        self.state.active_agents = 2
+        # Dynamic agent count based on codebase size
+        try:
+            file_count = sum(1 for _ in Path(self.repo["path"]).rglob("*") if _.is_file()
+                            and not any(p in str(_) for p in ["node_modules", ".git", "__pycache__", ".venv"]))
+        except Exception:
+            file_count = 50
+        self.state.active_agents = min(max(file_count // 50, 2), 8)
         self.save()
         if TELEGRAM_ENABLED:
             try:
@@ -1351,16 +1357,23 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="OPTIMIZE_COMPLETE", model="claude-haiku-4-5-20251001")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
-        self.log("optimize", result.get("output","")[:300])
+        self.log("optimize", result.get("output","")[:300], cost=result.get("cost", 0))
         if self.repo.get("github_url"):
             gate = runner.ruflo_quality_gate(self.repo["path"], "full")
             if not gate["passed"]:
                 log.warning(f"⚠️ [{self.repo['name']}] Quality gate failed after optimize: {gate['checks']}")
-            runner.git_push(self.repo["path"], "refactor: optimization pass", self.repo.get("branch","main"))
+                # Stash broken changes so we don't push broken code
+                runner.run_cmd(["git", "stash", "--include-untracked"], cwd=self.repo["path"], timeout=30)
+                self.db.log_mistake("quality_gate_fail", f"Optimization broke quality gate: {gate['checks']}",
+                                    state_snapshot="optimize")
+                log.warning(f"⚠️ [{self.repo['name']}] Changes stashed due to gate failure")
+            else:
+                runner.git_push(self.repo["path"], "refactor: optimization pass", self.repo.get("branch","main"))
         return State.SCAN_REPO
 
     def h_scan_repo(self):
         log.info(f"🔎 [{self.repo['name']}] Final scan...")
+        t0 = time.time()
         prompt = self._with_mistake_context(
             "Full scan: run all tests, check imports, verify build, update CLAUDE.md. "
             "Fix any issues. Output SCAN_COMPLETE."
@@ -1368,6 +1381,9 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="SCAN_COMPLETE", model="claude-haiku-4-5-20251001")
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
+
+        self.log("scan_repo", result.get("output", "")[:300], dur=time.time()-t0,
+                 cost=result.get("cost", 0))
 
         self.db.ex("UPDATE items SET status='completed',completed_at=datetime('now') "
                    "WHERE status='in_progress'")
@@ -1383,17 +1399,30 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         self.state.active_agents = 0
         log.info(f"🎉 [{self.repo['name']}] Cycle {self.state.cycle_count} done!")
 
+        # Gather cycle metrics
+        items_done = self.db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"]
+        items_total = self.db.fetchone("SELECT COUNT(*) c FROM items")["c"]
+        tests_passed = sum(s.get("tests_passed", 0) for s in self.db.all_steps())
+        mistakes = len(self.db.get_mistakes(100))
+        repo_cost = get_costs().get(self.repo["id"], 0)
+
+        # Broadcast cycle completion for webhooks + SSE
+        sse_broadcast("cycle_complete", {
+            "repo": self.repo["name"], "repo_id": self.repo["id"],
+            "cycle": self.state.cycle_count,
+            "items_done": items_done, "items_total": items_total,
+            "tests_passed": tests_passed, "mistakes": mistakes,
+            "cost": repo_cost,
+        })
+
         if TELEGRAM_ENABLED:
             try:
                 from telegram_bot import send_message as tg_msg
-                items_done = self.db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"]
-                items_total = self.db.fetchone("SELECT COUNT(*) c FROM items")["c"]
-                tests = sum(s.get("tests_passed", 0) for s in self.db.all_steps())
-                mistakes = len(self.db.get_mistakes(100))
                 tg_msg(f"🎉 *{self.repo['name']}* finished cycle #{self.state.cycle_count}!\n"
                        f"📊 Items done: {items_done}/{items_total}\n"
-                       f"🧪 Total tests passed: {tests}\n"
+                       f"🧪 Total tests passed: {tests_passed}\n"
                        f"💀 Mistakes this cycle: {mistakes}\n"
+                       f"💰 Total cost: ${repo_cost:.2f}\n"
                        f"Next: watching for new items...")
             except Exception as e:
                 log.debug(f"Telegram notify failed: {e}")

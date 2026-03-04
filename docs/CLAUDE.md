@@ -71,7 +71,11 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Item management UI** — dashboard has dedupe, clear done, clear all buttons + per-item delete + status filter chips
 - **DB migrations** — RepoDB auto-migrates older databases to add new columns
 - **Structured JSON logging** — machine-parseable JSON log at `~/swarm-json.log` (20MB rotate, 5 backups) alongside human-readable `~/swarm.log`
-- **Webhooks** — register external HTTP callbacks for SSE events (state_change, log, error_event, watchdog). HMAC-SHA256 signing with optional secret
+- **Webhooks** — register external HTTP callbacks for SSE events (state_change, log, error_event, watchdog, cycle_complete). HMAC-SHA256 signing with optional secret
+- **Cycle completion events** — SSE + webhook broadcast on cycle_complete with full metrics (items done, tests, cost)
+- **Quality gate safety** — optimization stashes broken changes instead of pushing if quality gate fails
+- **Dynamic agent scaling** — h_final_optimize scales agent count based on codebase file count (2-8 agents)
+- **Windows launcher hardened** — launch-swarm.bat falls back to PowerShell if curl unavailable
 
 ## Commands
 ```bash

@@ -7,8 +7,16 @@ echo.
 
 cd /d "%~dp0\.."
 
+REM Check if curl is available, else use PowerShell
+where curl >nul 2>&1
+if errorlevel 1 (
+    set HEALTH_CMD=powershell -NoProfile -Command "try{(Invoke-WebRequest -Uri 'http://localhost:6969/api/status' -UseBasicParsing -TimeoutSec 2).StatusCode}catch{exit 1}"
+) else (
+    set HEALTH_CMD=curl -s http://localhost:6969/api/status
+)
+
 REM Check if already running
-curl -s http://localhost:6969/api/repos >nul 2>&1
+%HEALTH_CMD% >nul 2>&1
 if not errorlevel 1 (
     echo   ✅ Server already running! Opening dashboard...
     start http://localhost:6969
@@ -22,7 +30,7 @@ REM Wait for API
 echo   Waiting for API...
 :WAIT_LOOP
 timeout /t 1 /nobreak >nul
-curl -s http://localhost:6969/api/repos >nul 2>&1
+%HEALTH_CMD% >nul 2>&1
 if errorlevel 1 goto WAIT_LOOP
 echo   ✅ API ready!
 

@@ -169,6 +169,13 @@ function Dashboard() {
           showToast(`Error in ${d.repo_name || "repo"}: ${(d.error || "").slice(0, 80)}`, "error");
         } catch {}
       });
+      es.addEventListener("cycle_complete", (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          showToast(`${d.repo || "Repo"} completed cycle #${d.cycle} (${d.items_done}/${d.items_total} items, ${d.tests_passed} tests)`, "success");
+          load();
+        } catch {}
+      });
       es.onerror = () => { es.close(); setTimeout(connect, 5000); };
     };
     connect();
@@ -1583,6 +1590,7 @@ function Dashboard() {
                     style={{ padding: "8px 12px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, fontSize: 12, fontFamily: "'Fredoka',sans-serif", fontWeight: 600 }}>
                     <option value="*">All Events</option>
                     <option value="state_change">State Changes</option>
+                    <option value="cycle_complete">Cycle Complete</option>
                     <option value="log">Logs</option>
                     <option value="error_event">Errors</option>
                     <option value="watchdog">Watchdog</option>
