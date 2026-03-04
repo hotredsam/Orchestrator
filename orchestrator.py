@@ -2746,6 +2746,19 @@ class API(BaseHTTPRequestHandler):
             results["total"] = sum(len(v) for v in results.values())
             return self._json(results)
 
+        if path == "/api/circuit-breakers":
+            repos = manager.master.get_repos()
+            cbs = []
+            for r in repos:
+                cb = get_circuit_breaker(r["id"])
+                status = cb.status()
+                status["repo_id"] = r["id"]
+                status["repo_name"] = r["name"]
+                if cb.last_failure > 0:
+                    status["last_failure_ago"] = round(time.time() - cb.last_failure)
+                cbs.append(status)
+            return self._json({"circuit_breakers": cbs})
+
         if path == "/api/health-scan":
             repos = manager.master.get_repos()
             results = []

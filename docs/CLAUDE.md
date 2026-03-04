@@ -157,6 +157,7 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Batch start/stop by tag** — `/api/start` and `/api/stop` accept `{tag: "tagname"}` to operate on all repos with that tag
 - **Stale item detection** — `/api/stale-items?hours=2` finds items stuck in_progress across all repos, warning banner on Town Square
 - **Execution timeline** — `/api/timeline?repo_id=N` returns state transition history for debugging
+- **Circuit breaker visibility** — `/api/circuit-breakers` endpoint exposes per-repo circuit breaker state. Health tab shows open/half-open breakers with failure counts
 
 ## Commands
 ```bash
@@ -226,6 +227,7 @@ GET  /api/notes?repo_id=N          — Repo notes/annotations
 POST /api/notes                    — Add/delete note {repo_id, action, text/note_key}
 GET  /api/search?q=term&scope=all  — Cross-repo search (items, logs, mistakes)
 GET  /api/stale-items?hours=2      — Items stuck in_progress across all repos
+GET  /api/circuit-breakers         — Per-repo circuit breaker states
 GET  /api/timeline?repo_id=N       — State transition history for debugging
 
 # System

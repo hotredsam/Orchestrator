@@ -133,6 +133,7 @@ function Dashboard() {
   const [globalResults, setGlobalResults] = useState(null);
   const [logLevelFilter, setLogLevelFilter] = useState("all");
   const [staleItems, setStaleItems] = useState([]);
+  const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
   const [newNote, setNewNote] = useState("");
@@ -279,6 +280,9 @@ function Dashboard() {
       try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); } } catch {}
       if (full || t === "home") {
         try { const sl = await f("/api/stale-items?hours=2"); if(sl.ok) { const sd = await sl.json(); setStaleItems(sd.stale_items || []); } } catch {}
+      }
+      if (full || t === "health") {
+        try { const cb = await f("/api/circuit-breakers"); if(cb.ok) { const cd = await cb.json(); setCircuitBreakers(cd.circuit_breakers || []); } } catch {}
       }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -1912,6 +1916,28 @@ function Dashboard() {
                   })}
                 </div>
               </div>
+            )}
+
+            {/* Circuit Breaker Status */}
+            {circuitBreakers.some(cb => cb.state !== "closed") && (
+              <Card bg="#FFF3E0" style={{ maxWidth: 800, margin: "0 auto 16px", border: `2px solid ${C.orange}` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 8, color: C.orange }}>{"\u26A1"} Circuit Breakers</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                  {circuitBreakers.filter(cb => cb.state !== "closed").map(cb => (
+                    <div key={cb.repo_id} style={{ padding: "8px 12px", background: cb.state === "open" ? "#FFEBEE" : "#FFF8E1", borderRadius: 8, border: `2px solid ${cb.state === "open" ? C.red : C.orange}`, fontSize: 11 }}>
+                      <div style={{ fontWeight: 700 }}>{cb.repo_name}</div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                        <span style={{ color: cb.state === "open" ? C.red : C.orange, fontWeight: 700 }}>{cb.state.toUpperCase()}</span>
+                        <span>{cb.failures}/{cb.threshold} failures</span>
+                        {cb.last_failure_ago && <span style={{ color: C.brown }}>{cb.last_failure_ago}s ago</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+            {circuitBreakers.length > 0 && circuitBreakers.every(cb => cb.state === "closed") && (
+              <div style={{ textAlign: "center", fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 16 }}>{"\u2705"} All circuit breakers closed — everything healthy!</div>
             )}
 
             {/* Chat Interface */}
