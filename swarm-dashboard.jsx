@@ -1930,6 +1930,38 @@ function Dashboard() {
                 </span>
               </div>
             )}
+            {/* Priority breakdown */}
+            {items.length > 0 && (
+              <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 10px", padding: "8px 14px", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.brown }}>Priority:</span>
+                  {[
+                    { p: "critical", c: C.red, icon: "\uD83D\uDD25" },
+                    { p: "high", c: C.orange, icon: "\u26A1" },
+                    { p: "medium", c: C.teal, icon: "\u25CF" },
+                    { p: "low", c: "#999", icon: "\u25CB" },
+                  ].map(({ p, c, icon }) => {
+                    const count = items.filter(i => i.priority === p).length;
+                    if (count === 0) return null;
+                    return (
+                      <span key={p} style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3 }}>
+                        <span>{icon}</span>
+                        <span style={{ fontWeight: 700, color: c }}>{count}</span>
+                        <span style={{ fontSize: 9, color: C.brown }}>{p}</span>
+                      </span>
+                    );
+                  })}
+                  <div style={{ flex: 1, height: 6, background: C.cream, borderRadius: 3, overflow: "hidden", display: "flex" }}>
+                    {["critical", "high", "medium", "low"].map(p => {
+                      const count = items.filter(i => i.priority === p).length;
+                      const pct = items.length > 0 ? (count / items.length) * 100 : 0;
+                      const colors = { critical: C.red, high: C.orange, medium: C.teal, low: "#999" };
+                      return pct > 0 ? <div key={p} style={{ width: `${pct}%`, height: "100%", background: colors[p], transition: "width 0.3s" }} /> : null;
+                    })}
+                  </div>
+                </div>
+              </Card>
+            )}
             {items.length > 0 && (
               <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                 {["all", "pending", "in_progress", "completed", "archived"].map(f => (
@@ -2175,6 +2207,32 @@ function Dashboard() {
                     <span>{new Date(minStart).toLocaleTimeString()}</span>
                     <span>{Math.round((maxEnd - minStart) / 60000)}min total span</span>
                     <span>{new Date(maxEnd).toLocaleTimeString()}</span>
+                  </div>
+                </Card>
+              );
+            })()}
+            {/* Plan Cost Breakdown */}
+            {(() => {
+              const costed = plan.filter(s => s.status === "completed" && s.cost_usd > 0);
+              if (costed.length < 2) return null;
+              const totalCost = costed.reduce((a, s) => a + s.cost_usd, 0);
+              const colors = [C.teal, C.orange, C.green, C.red, "#7E57C2", C.yellow, "#FF6B6B", "#4ECDC4", "#45B7D1", C.brown];
+              return (
+                <Card bg={C.white} style={{ maxWidth: 680, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>Cost Breakdown (${totalCost.toFixed(3)} total)</div>
+                  <div style={{ display: "flex", height: 20, borderRadius: 10, overflow: "hidden", border: `2px solid ${C.darkBrown}` }}>
+                    {costed.map((s, i) => (
+                      <div key={s.id} style={{ width: `${(s.cost_usd / totalCost) * 100}%`, height: "100%", background: colors[i % colors.length], transition: "width 0.3s" }}
+                        title={`Step ${s.step_order}: $${s.cost_usd.toFixed(3)} (${Math.round(s.cost_usd/totalCost*100)}%)`} />
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, justifyContent: "center" }}>
+                    {costed.slice(0, 8).map((s, i) => (
+                      <span key={s.id} style={{ fontSize: 9, display: "flex", alignItems: "center", gap: 3 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 2, background: colors[i % colors.length], display: "inline-block" }} />
+                        Step {s.step_order}: ${s.cost_usd.toFixed(3)}
+                      </span>
+                    ))}
                   </div>
                 </Card>
               );
@@ -2914,6 +2972,27 @@ function Dashboard() {
                   ))}
                   <Btn bg={C.teal} onClick={exportComparison} style={{ fontSize: 11, padding: "4px 12px" }}>{"\u2B07"} CSV</Btn>
                 </div>
+                {/* Visual Bar Chart */}
+                <Card bg={C.white} style={{ maxWidth: 720, margin: "0 auto 12px", padding: 14 }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 14, letterSpacing: 1, marginBottom: 8, textAlign: "center" }}>
+                    {compSort === "cost" ? "Cost" : compSort === "items_done" ? "Items Done" : compSort === "error_rate" ? "Error Rate" : compSort === "cycles" ? "Cycles" : compSort === "health_score" ? "Health" : "Cost"} Comparison
+                  </div>
+                  {(() => {
+                    const metric = compSort === "name" ? "cost" : compSort;
+                    const sorted = [...comparison.repos].sort((a,b) => (b[metric]||0) - (a[metric]||0));
+                    const maxV = Math.max(...sorted.map(r => r[metric] || 0), 0.001);
+                    const barColor = metric === "error_rate" ? C.red : metric === "cost" ? C.orange : metric === "health_score" ? C.green : C.teal;
+                    return sorted.slice(0, 10).map(r => (
+                      <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, minWidth: 80, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                        <div style={{ flex: 1, height: 14, background: `${C.darkBrown}08`, borderRadius: 4, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${((r[metric]||0)/maxV)*100}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})`, borderRadius: 4, transition: "width 0.3s" }} />
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700, minWidth: 40, color: barColor }}>{metric === "cost" ? `$${r[metric]}` : metric === "error_rate" ? `${r[metric]}%` : r[metric] || 0}</span>
+                      </div>
+                    ));
+                  })()}
+                </Card>
                 <Card bg={C.white} style={{ maxWidth: 720, margin: "0 auto", padding: 14, overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
