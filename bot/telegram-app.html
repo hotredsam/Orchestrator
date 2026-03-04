@@ -1214,6 +1214,8 @@
             ${item.description && item.description !== item.title ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">${esc(item.description).substring(0, 100)}</div>` : ''}
             <div class="flex-between" style="font-size:11px;color:var(--text-secondary);">
               <span>${prioEmoji[item.priority] || '🟡'} ${item.priority} | ${item.source || 'manual'}</span>
+              ${item.status === 'pending' ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:10px;background:var(--green);color:#fff;" onclick="changeItemStatus(${repoId},${item.id},'completed')">✅ Done</button>` : ''}
+              ${item.status === 'completed' ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:10px;background:var(--orange);color:#fff;" onclick="changeItemStatus(${repoId},${item.id},'pending')">🔄 Retry</button>` : ''}
               <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:var(--red);border-color:var(--red);" onclick="deleteItem(${repoId},${item.id})">Del</button>
             </div>
           </div>`;
@@ -1223,6 +1225,13 @@
     async function deleteItem(repoId, itemId) {
       haptic('medium');
       await api('/api/items/delete', { method: 'POST', body: JSON.stringify({ repo_id: repoId, item_id: itemId }) });
+      loadItems();
+    }
+
+    async function changeItemStatus(repoId, itemId, newStatus) {
+      haptic('light');
+      await api('/api/items/update', { method: 'POST', body: JSON.stringify({ repo_id: repoId, item_id: itemId, status: newStatus }) });
+      showToast(`Item ${newStatus === 'completed' ? 'completed' : 're-queued'}`, 'success');
       loadItems();
     }
 

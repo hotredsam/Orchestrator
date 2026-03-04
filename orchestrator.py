@@ -3915,9 +3915,14 @@ class API(BaseHTTPRequestHandler):
             if not db: return self._json({"error": "No repo"}, 400)
             title = (b.get("title") or "").strip()[:200]
             if not title: return self._json({"error": "title required"}, 400)
+            itype = b.get("type", "feature")
+            if itype not in ("feature", "issue", "bug", "task", "enhancement"):
+                return self._json({"error": f"Invalid type '{itype}'. Must be feature/issue/bug/task/enhancement"}, 400)
+            prio = b.get("priority", "medium")
+            if prio not in ("low", "medium", "high", "critical"):
+                return self._json({"error": f"Invalid priority '{prio}'. Must be low/medium/high/critical"}, 400)
             desc = (b.get("description") or "")[:5000]
-            db.add_item(b.get("type","feature"), title, desc,
-                        b.get("priority","medium"), b.get("source","manual"))
+            db.add_item(itype, title, desc, prio, b.get("source", "manual"))
             return self._json({"ok": True}, 201)
 
         if path == "/api/items/bulk":
@@ -3946,6 +3951,12 @@ class API(BaseHTTPRequestHandler):
             if not db: return self._json({"error": "No repo"}, 400)
             item_id = b.get("item_id")
             if not item_id: return self._json({"error": "item_id required"}, 400)
+            if "status" in b and b["status"] not in ("pending", "in_progress", "completed", "failed", "archived"):
+                return self._json({"error": f"Invalid status '{b['status']}'"}, 400)
+            if "priority" in b and b["priority"] not in ("low", "medium", "high", "critical"):
+                return self._json({"error": f"Invalid priority '{b['priority']}'"}, 400)
+            if "type" in b and b["type"] not in ("feature", "issue", "bug", "task", "enhancement"):
+                return self._json({"error": f"Invalid type '{b['type']}'"}, 400)
             sets, vals = [], []
             for field in ("status", "priority", "title", "description", "type", "depends_on"):
                 if field in b:

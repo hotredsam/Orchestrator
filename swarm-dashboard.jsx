@@ -174,6 +174,7 @@ function Dashboard() {
   const [repoFilter, setRepoFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
   const [memSearch, setMemSearch] = useState("");
+  const [mistakeSearch, setMistakeSearch] = useState("");
   const [toasts, setToasts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [apiMetrics, setApiMetrics] = useState(null);
@@ -246,6 +247,13 @@ function Dashboard() {
   // Debounced search values — avoids filtering on every keystroke
   const dLogSearch = useDebounce(logSearch, 200);
   const dMemSearch = useDebounce(memSearch, 200);
+  const dMistakeSearch = useDebounce(mistakeSearch, 200);
+
+  const filteredMistakes = useMemo(() => {
+    if (!dMistakeSearch) return mistakes;
+    const q = dMistakeSearch.toLowerCase();
+    return mistakes.filter(m => [m.error_type, m.description, m.resolution].join(" ").toLowerCase().includes(q));
+  }, [mistakes, dMistakeSearch]);
 
   // Memoized filtered logs — only recomputes when inputs change
   const filteredLogs = useMemo(() => {
@@ -2731,7 +2739,12 @@ function Dashboard() {
         {tab === "mistakes" && (
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Mistake Graveyard</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Lessons learned -- injected into prompts so agents don't repeat mistakes</p>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 10 }}>Lessons learned -- injected into prompts so agents don't repeat mistakes</p>
+            <div style={{ maxWidth: 620, margin: "0 auto 12px", display: "flex", justifyContent: "center", gap: 8, alignItems: "center" }}>
+              <Inp placeholder="Search mistakes..." value={mistakeSearch} onChange={e => setMistakeSearch(e.target.value)}
+                style={{ maxWidth: 300, fontSize: 12, padding: "8px 14px" }} />
+              {dMistakeSearch && <span style={{ fontSize: 11, color: C.brown }}>{filteredMistakes.length}/{mistakes.length} matched</span>}
+            </div>
             {mistakeAnalysis && mistakeAnalysis.total > 0 && (
               <div style={{ maxWidth: 620, margin: "0 auto 16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
                 <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
@@ -2771,14 +2784,14 @@ function Dashboard() {
               </div>
             )}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
-              {mistakes.length===0 ? (
+              {filteredMistakes.length===0 ? (
                 <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
                   <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83C\uDF1F"}</div>
-                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>Clean run, partner!</div>
-                  <div style={{ fontSize: 13, color: C.brown }}>No mistakes on the books -- the swarm is riding clean.</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>{dMistakeSearch ? "No matches" : "Clean run, partner!"}</div>
+                  <div style={{ fontSize: 13, color: C.brown }}>{dMistakeSearch ? `No mistakes matching "${dMistakeSearch}"` : "No mistakes on the books -- the swarm is riding clean."}</div>
                 </Card>
               ) :
-                mistakes.map(m => (
+                filteredMistakes.map(m => (
                   <Card key={m.id} bg={C.white} style={{ marginBottom: 8, padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, #FFF5F5 100%)` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                       <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.red, border: `2px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{"\uD83D\uDC80"}</div>
