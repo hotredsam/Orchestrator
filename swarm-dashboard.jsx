@@ -1116,7 +1116,16 @@ function Dashboard() {
                   <Inp placeholder="GitHub URL" value={nr.github_url} onChange={e => setNR(p=>({...p,github_url:e.target.value}))} style={{ fontSize: 12, padding: "8px 10px" }} />
                   <Inp placeholder="Branch" value={nr.branch} onChange={e => setNR(p=>({...p,branch:e.target.value}))} style={{ fontSize: 12, padding: "8px 10px" }} />
                 </div>
-                <Btn onClick={addRepo} bg={C.teal} style={{ fontSize: 13, padding: "7px 16px" }}>Add to Town</Btn>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn onClick={addRepo} bg={C.teal} style={{ fontSize: 13, padding: "7px 16px" }}>Add to Town</Btn>
+                  <Btn bg={C.orange} style={{ fontSize: 13, padding: "7px 16px" }} onClick={async () => {
+                    if (!nr.github_url) { showToast("Enter a GitHub URL to clone", "error"); return; }
+                    showToast("Cloning repository...", "info");
+                    const r = await f("/api/repos/clone", { method: "POST", body: JSON.stringify({ url: nr.github_url, name: nr.name || "", branch: nr.branch || "main" }) });
+                    if (r.ok) { const d = await r.json(); showToast(d.message || "Cloned!", "success"); setNR({ name: "", path: "", github_url: "", branch: "main" }); load(); }
+                    else { const d = await r.json().catch(() => ({})); showToast(d.error || "Clone failed", "error"); }
+                  }}>Clone from Git</Btn>
+                </div>
               </Card>
             </div>
           </SectionBg>
@@ -1345,9 +1354,15 @@ function Dashboard() {
           };
           return (
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F5E6C8 50%, #EDD9B3 100%)`}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 4, letterSpacing: 3, textShadow: `2px 2px 0 rgba(61,43,31,0.15)` }}>
-              {repo?.name || "Select a Repo"} -- Road Map
-            </h2>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 4 }}>
+              <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", letterSpacing: 3, textShadow: `2px 2px 0 rgba(61,43,31,0.15)` }}>
+                {repo?.name || "Select a Repo"} -- Road Map
+              </h2>
+              <select value={sr || ""} onChange={e => setSR(parseInt(e.target.value))}
+                style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
             <p style={{ textAlign: "center", fontSize: 15, color: C.brown, marginBottom: 16 }}>{si.emoji} {si.desc}</p>
 
             {/* Status Panel */}

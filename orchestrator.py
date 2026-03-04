@@ -3133,6 +3133,7 @@ class API(BaseHTTPRequestHandler):
                 {"method": "POST", "path": "/api/audio", "desc": "Upload audio for transcription"},
                 {"method": "POST", "path": "/api/repos/batch", "desc": "Batch start/stop/pause/resume/push repos"},
                 {"method": "POST", "path": "/api/repos/tags", "desc": "Set repo tags"},
+                {"method": "POST", "path": "/api/repos/clone", "desc": "Git clone and auto-register a repo"},
                 {"method": "POST", "path": "/api/repos/import", "desc": "Bulk import repos from JSON"},
                 {"method": "GET", "path": "/api/repos/export", "desc": "Export all repos as JSON"},
                 {"method": "GET", "path": "/api/comparison", "desc": "Repo comparison matrix"},
