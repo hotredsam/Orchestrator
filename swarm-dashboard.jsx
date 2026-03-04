@@ -1392,6 +1392,26 @@ function Dashboard() {
                 </div>
               </Card>
 
+              {/* Recent Activity Timeline */}
+              {logs.length > 0 && (
+                <Card bg={C.white} style={{ padding: 14, marginBottom: 12, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, color: C.darkBrown }}>Recent Activity</div>
+                  <div style={{ position: "relative", paddingLeft: 16 }}>
+                    <div style={{ position: "absolute", left: 5, top: 0, bottom: 0, width: 2, background: `${C.darkBrown}22` }} />
+                    {logs.slice(0, 5).map((l, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, position: "relative" }}>
+                        <div style={{ position: "absolute", left: -12, top: 4, width: 8, height: 8, borderRadius: "50%", background: l.level === "error" ? C.red : l.level === "warning" ? C.orange : C.teal, border: `2px solid ${C.white}` }} />
+                        <div style={{ fontSize: 10, color: C.brown, minWidth: 50, fontFamily: "monospace" }}>{l.created_at?.slice(11, 19) || ""}</div>
+                        <div style={{ fontSize: 11, flex: 1, lineHeight: 1.3 }}>
+                          <span style={{ fontWeight: 600 }}>{l.action}</span>
+                          {l.result && <span style={{ color: C.brown }}> — {l.result.slice(0, 60)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
               {/* Current State Detail */}
               <Card bg={C.white} style={{ padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, color: C.darkBrown }}>Current State</div>
