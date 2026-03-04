@@ -240,6 +240,27 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Compact master mode** — toggle hides tags/sparklines/quick actions for denser repo grid (localStorage)
 - **Telegram /archive command** — `archive [repo]` and `unarchive [repo]` for repo archival via chat
 - **Repo README viewer** — GET /api/repo-readme reads CLAUDE.md or README.md from repo path. Collapsible viewer in flow tab
+- **Plan step time estimates** — pending steps show estimated duration badge based on average completed step time
+- **Agent model badges** — completed plan steps show which Claude model was used (model column in plan_steps)
+- **Repo file count** — git ls-files count shown in master view stat grid, enriched via /api/repos
+- **Master view summary bar** — Running/Idle/Total Items/Total Cost stats + Start All Idle / Stop All buttons
+- **ProgressRing component** — circular SVG completion indicator on master view cards
+- **Comparison sparklines** — trend column added to comparison table showing 7-day activity sparklines
+- **Batch Tag Wrangler** — settings tab: add/remove tags from all repos at once, shows existing tags with counts
+- **Step duration histogram** — plan tab shows bucket-chart distribution of completed step durations (avg/min/max)
+- **Error trend card** — flow tab shows error count, rate, and recent error messages
+- **Activity heatmap** — 7-day x 24-hour GitHub-style heatmap on home tab with intensity coloring
+- **GET /api/heatmap** — activity grid across all repos grouped by day and hour
+- **Cost forecast** — home tab shows predicted 7-day cost based on linear regression of past 7 days
+- **GET /api/cost-forecast** — returns daily costs, linear trend forecast, and rising/falling/stable indicator
+- **Health history chart** — home tab shows multi-repo health score trends over time (polyline overlay)
+- **Quick-add item** — + button on master view cards for one-click item creation via prompt dialog
+- **Group by tag** — master view toggle groups repos by their first tag with section headers
+- **Notification preferences** — granular per-event-type toggles (cycles/errors/budget/stale) in settings
+- **Execution timeline** — Gantt-like visualization of completed plan steps positioned by completion time
+- **Comparison bar chart** — visual horizontal bar chart above comparison table, auto-selects metric from sort
+- **Item priority breakdown** — bounty board shows priority distribution segment bar (critical/high/medium/low)
+- **Plan cost breakdown** — stacked segment bar showing per-step cost percentages with color-coded legend
 
 ## Commands
 ```bash
@@ -338,6 +359,9 @@ GET  /api/sparklines               — 7-day action counts per repo (30s cache)
 GET  /api/eta                      — ETA estimates (time + cost) per repo (15s cache)
 GET  /api/repo-graph               — Dependency graph nodes + edges (60s cache)
 GET  /api/repo-readme?repo_id=N    — Read CLAUDE.md or README.md from repo
+GET  /api/health/history?days=30   — Health score history per repo over time
+GET  /api/heatmap?days=7           — Activity grid (day x hour) across all repos
+GET  /api/cost-forecast            — 7-day cost prediction with linear regression
 POST /api/fix-all                  — Auto-fix all detected health issues
 POST /api/fix                      — Fix specific issue {repo_id, issue_title, ...}
 POST /api/rollback                 — Git rollback {repo_id, commit_hash}

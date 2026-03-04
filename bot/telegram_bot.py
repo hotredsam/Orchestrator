@@ -1028,6 +1028,29 @@ def cmd_eta():
     return "\n".join(lines)
 
 
+def cmd_forecast():
+    """Show 7-day cost forecast based on recent spending trends."""
+    data = _orch_get("/api/cost-forecast")
+    if isinstance(data, dict) and "error" in data:
+        return f"Error: {data['error']}"
+    if not isinstance(data, dict) or "total_7d" not in data:
+        return "No cost data available yet."
+    trend_emoji = {"rising": "\U0001F4C8", "falling": "\U0001F4C9", "stable": "\u27A1\uFE0F"}.get(data.get("trend", "stable"), "\u27A1\uFE0F")
+    lines = [
+        "*Cost Forecast:*\n",
+        f"Last 7 days: *${data['total_7d']}*",
+        f"Avg daily: *${data['avg_daily']}*",
+        f"Trend: {trend_emoji} *{data.get('trend', 'stable')}*",
+        f"Forecast (next 7d): *${data['forecast_total']}*",
+        "",
+        "Daily forecast:"
+    ]
+    for i, v in enumerate(data.get("forecast_7d", [])):
+        bar_len = min(int(v * 20 / max(data.get("avg_daily", 0.01), 0.01)), 20)
+        lines.append(f"  Day {i+1}: {'█' * bar_len} ${v}")
+    return "\n".join(lines)
+
+
 def cmd_tags(text):
     """View or set repo tags. 'tags repo' to view, 'tags repo: tag1, tag2' to set."""
     if ":" in text:
@@ -1436,6 +1459,8 @@ def handle_message(msg):
         reply = cmd_rotate_token()
     elif t in ("eta", "estimate", "remaining"):
         reply = cmd_eta()
+    elif t in ("forecast", "cost-forecast", "cost forecast"):
+        reply = cmd_forecast()
     elif t in ("errors", "recent-errors", "recent errors"):
         reply = cmd_recent_errors()
     elif t in ("docs", "api-docs", "api docs", "endpoints"):
