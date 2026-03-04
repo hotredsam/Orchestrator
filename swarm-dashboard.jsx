@@ -1031,6 +1031,9 @@ function Dashboard() {
               <span style={{ color: C.brown }}>Items: {s.items_done||0}/{s.items_total||0}</span>
               <span style={{ color: C.brown }}>Steps: {s.steps_done||0}/{s.steps_total||0}</span>
               {costs[sr] > 0 && <span style={{ color: C.brown }}>${costs[sr]?.toFixed(2)}</span>}
+              {cr.running
+                ? <button onClick={() => stopRepo(cr.id)} style={{ background: C.red, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u23F9"}</button>
+                : <button onClick={() => startRepo(cr.id)} style={{ background: C.green, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u25B6"}</button>}
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
               {/* Overall mini progress bar */}
@@ -1862,6 +1865,14 @@ function Dashboard() {
                 style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                 {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
+              <div style={{ display: "flex", gap: 4 }}>
+                {repo?.running
+                  ? <Btn bg={C.red} onClick={() => stopRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u23F9"} Stop</Btn>
+                  : <Btn bg={C.green} onClick={() => startRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u25B6"} Start</Btn>}
+                {repo?.running && (repo.paused
+                  ? <Btn bg={C.teal} onClick={() => resumeRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u25B6"} Resume</Btn>
+                  : <Btn bg={C.orange} onClick={() => pauseRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u23F8"} Pause</Btn>)}
+              </div>
             </div>
             <p style={{ textAlign: "center", fontSize: 15, color: C.brown, marginBottom: 16 }}>{si.emoji} {si.desc}</p>
 
