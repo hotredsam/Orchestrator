@@ -554,7 +554,8 @@
       z-index: 100;
       transition: opacity 0.3s;
     }
-    .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+    .hidden { display: none !important; }
+    .loading-overlay.hidden { display: block !important; opacity: 0; pointer-events: none; }
     .loading-title {
       font-family: 'Bangers', cursive;
       font-size: 36px;
@@ -1221,22 +1222,27 @@
       let items = data;
       if (filter) items = items.filter(i => i.status === filter);
 
-      el.innerHTML = items.map(item => {
+      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${items.length} items${filter ? ` (${filter})` : ''}</div>` + items.map(item => {
         const statusColors = { pending: 'var(--orange)', in_progress: 'var(--teal)', completed: 'var(--green)' };
         const typeEmoji = item.type === 'issue' ? '🐛' : '✨';
-        const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
+        const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢', critical: '⛔' };
+        const hasDetails = (item.description && item.description !== item.title) || item.depends_on || item.created_at;
         return `
-          <div class="card" style="margin-bottom:8px; padding:10px 12px;">
-            <div class="flex-between mb-8">
+          <div class="card" style="margin-bottom:8px; padding:10px 12px;border-left:3px solid ${statusColors[item.status] || 'var(--orange)'};">
+            <div class="flex-between mb-8" onclick="this.parentElement.querySelector('.item-details')?.classList.toggle('hidden')" style="cursor:pointer;">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span>${typeEmoji}</span>
                 <span style="font-weight:600;font-size:14px;">${esc(item.title)}</span>
               </div>
               <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:${statusColors[item.status] || 'var(--orange)'};color:#fff;">${item.status}</span>
             </div>
-            ${item.description && item.description !== item.title ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">${esc(item.description).substring(0, 100)}</div>` : ''}
+            ${hasDetails ? `<div class="item-details hidden" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;padding:6px 8px;background:var(--bg);border-radius:6px;">
+              ${item.description && item.description !== item.title ? `<div style="margin-bottom:4px;">${esc(item.description)}</div>` : ''}
+              ${item.depends_on ? `<div style="font-size:10px;color:var(--teal);">🔗 Depends on: ${esc(item.depends_on)}</div>` : ''}
+              ${item.created_at ? `<div style="font-size:10px;margin-top:2px;">Created: ${timeAgo(item.created_at)}</div>` : ''}
+            </div>` : ''}
             <div class="flex-between" style="font-size:11px;color:var(--text-secondary);">
-              <span>${prioEmoji[item.priority] || '🟡'} ${item.priority} | ${item.source || 'manual'}</span>
+              <span>${prioEmoji[item.priority] || '🟡'} ${item.priority} | ${item.source || 'manual'}${hasDetails ? ' | tap to expand' : ''}</span>
               ${item.status === 'pending' ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:10px;background:var(--green);color:#fff;" onclick="changeItemStatus(${repoId},${item.id},'completed')">✅ Done</button>` : ''}
               ${item.status === 'completed' ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:10px;background:var(--orange);color:#fff;" onclick="changeItemStatus(${repoId},${item.id},'pending')">🔄 Retry</button>` : ''}
               <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:var(--red);border-color:var(--red);" onclick="deleteItem(${repoId},${item.id})">Del</button>

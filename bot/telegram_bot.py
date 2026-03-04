@@ -345,10 +345,19 @@ def cmd_status():
 
     running_count = sum(1 for r in repos if r.get("running"))
     paused_count = sum(1 for r in repos if r.get("paused"))
+    costs_data = _orch_get("/api/costs")
+    total_cost = costs_data.get("total", 0) if isinstance(costs_data, dict) else 0
 
     lines = [f"*Swarm Town Status* ({len(repos)} repos)"]
+    header_parts = []
     if uptime:
-        lines.append(f"Uptime: {uptime} | Running: {running_count} | Paused: {paused_count}")
+        header_parts.append(f"\u23F1 {uptime}")
+    header_parts.append(f"\U0001F7E2 {running_count} running")
+    if paused_count:
+        header_parts.append(f"\u23F8 {paused_count} paused")
+    if total_cost > 0:
+        header_parts.append(f"\U0001F4B0 ${total_cost:.3f}")
+    lines.append(" | ".join(header_parts))
     lines.append("")
 
     for r in repos:
