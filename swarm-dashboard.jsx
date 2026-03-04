@@ -1028,6 +1028,17 @@ function Dashboard() {
               {costs[sr] > 0 && <span style={{ color: C.brown }}>${costs[sr]?.toFixed(2)}</span>}
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
+              {/* Overall mini progress bar */}
+              {(() => {
+                const ti = repos.reduce((a, r) => a + (r.stats?.items_total || 0), 0);
+                const di = repos.reduce((a, r) => a + (r.stats?.items_done || 0), 0);
+                const pct = ti > 0 ? Math.round(di / ti * 100) : 0;
+                return ti > 0 && (
+                  <div style={{ flex: 1, maxWidth: 80, height: 5, background: `${C.darkBrown}22`, borderRadius: 3, overflow: "hidden" }} title={`${di}/${ti} items (${pct}%)`}>
+                    <div style={{ height: "100%", background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, borderRadius: 3, transition: "width .5s" }} />
+                  </div>
+                );
+              })()}
             </>); })()}
           </div>
         )}
@@ -1386,6 +1397,8 @@ function Dashboard() {
                     {/* Subtle card texture */}
                     <div style={{ position: "absolute", inset: 0, opacity: 0.025, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v20h2V0h2v20h2V0h2v20h2V0h2v20h2V0h2v20.5' fill='%233D2B1F' fill-opacity='.4' fill-rule='evenodd'/%3E%3C/svg%3E\")", pointerEvents: "none" }} />
 
+                    {/* Pinned indicator */}
+                    {pinnedRepos.includes(r.id) && <div style={{ position: "absolute", top: -1, left: -1, fontSize: 14, padding: "2px 6px" }} title="Pinned">{"\uD83D\uDCCC"}</div>}
                     {/* Running indicator */}
                     {r.running && <div style={{ position: "absolute", top: -1, right: -1, background: `linear-gradient(135deg, ${C.green}, #27ae60)`, border: `2px solid ${C.darkBrown}`, borderRadius: "0 10px 0 10px", padding: "4px 12px", fontSize: 10, fontWeight: 700, color: C.white, letterSpacing: 1, fontFamily: "'Bangers', cursive" }}>RUNNING</div>}
                     {/* Error count badge */}
@@ -1443,6 +1456,7 @@ function Dashboard() {
                         ? <Btn bg={C.teal} onClick={e => { e.stopPropagation(); resumeRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u25B6"} Resume</Btn>
                         : <Btn bg={C.orange} onClick={e => { e.stopPropagation(); pauseRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u23F8"} Pause</Btn>)}
                       <Btn bg="#888" onClick={e => { e.stopPropagation(); deleteRepo(r.id); }} style={{ fontSize: 11, padding: "5px 10px" }}>{"\u2716"}</Btn>
+                      <button onClick={e => { e.stopPropagation(); togglePin(r.id); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, opacity: pinnedRepos.includes(r.id) ? 1 : 0.3, padding: "2px" }} title={pinnedRepos.includes(r.id) ? "Unpin" : "Pin to top"}>{"\uD83D\uDCCC"}</button>
                       <div style={{ fontSize: 12, color: C.brown, display: "flex", alignItems: "center", gap: 4, flex: 1, fontWeight: 500 }}>
                         {rst.emoji} {rst.label}
                       </div>
