@@ -224,6 +224,7 @@ function Dashboard() {
   const [batchSelected, setBatchSelected] = useState(new Set());
   const [editingItem, setEditingItem] = useState(null); // { id, title, priority }
   const [planSearch, setPlanSearch] = useState("");
+  const [planCollapsed, setPlanCollapsed] = useState(false); // collapse all long descriptions
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const [expandedLog, setExpandedLog] = useState(null); // log id
   const mRec = useRef(null);
@@ -2360,9 +2361,10 @@ function Dashboard() {
               );
             })()}
             {plan.length > 3 && (
-              <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", justifyContent: "center" }}>
+              <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", justifyContent: "center", gap: 6 }}>
                 <Inp placeholder="Search plan steps..." value={planSearch} onChange={e => setPlanSearch(e.target.value)}
                   style={{ maxWidth: 320, fontSize: 12, padding: "6px 12px" }} />
+                <button onClick={() => setPlanCollapsed(c => !c)} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: planCollapsed ? C.teal : C.cream, color: planCollapsed ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s", whiteSpace: "nowrap" }}>{planCollapsed ? "Expand All" : "Collapse"}</button>
               </div>
             )}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
@@ -2386,13 +2388,13 @@ function Dashboard() {
                         {i < searchedPlan.length - 1 && <div style={{ width: 2, flex: 1, background: done ? C.green : `${C.darkBrown}33`, marginTop: 4 }} />}
                       </div>
                       <Card bg={done ? C.lightTeal : C.white} style={{ flex: 1, padding: 12, marginBottom: 0, background: isNextStep ? `linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)` : done ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
-                        {s.description?.length > 120 ? (
+                        {s.description?.length > 120 && !planCollapsed ? (
                           <details>
                             <summary style={{ fontSize: 13, fontWeight: done ? 400 : 600, lineHeight: 1.4, cursor: "pointer" }}>{s.description.slice(0, 120)}...</summary>
                             <div style={{ fontSize: 12, color: C.brown, lineHeight: 1.4, marginTop: 4 }}>{s.description}</div>
                           </details>
                         ) : (
-                          <div style={{ fontSize: 13, fontWeight: done ? 400 : 600, lineHeight: 1.4 }}>{s.description}</div>
+                          <div style={{ fontSize: 13, fontWeight: done ? 400 : 600, lineHeight: 1.4 }}>{planCollapsed && s.description?.length > 80 ? s.description.slice(0, 80) + "..." : s.description}</div>
                         )}
                         <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                           {s.agent_type && <span style={{ fontSize: 10, background: C.lightOrange, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83E\uDD20"} {s.agent_type}</span>}

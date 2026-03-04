@@ -769,12 +769,17 @@ def cmd_compare():
     if isinstance(data, dict) and "repos" in data:
         repos = sorted(data["repos"], key=lambda r: -(r.get("items_done", 0)))
         lines = [f"*Repo Comparison* ({len(repos)} repos, total: ${data.get('total_cost', 0)})", ""]
+        max_items = max((r.get("items_done", 0) for r in repos), default=1) or 1
         for r in repos[:10]:
             state_icon = "\U0001F7E2" if r["state"] not in ("idle", "unknown") else "\u26AA"
+            done = r.get("items_done", 0)
+            total = r.get("items_total", 0)
+            bar_len = min(int(done / max_items * 8), 8)
             lines.append(
-                f"{state_icon} *{r['name']}* — ${r['cost']} | "
-                f"{r['items_done']}/{r['items_total']} items | "
-                f"{r['error_rate']}% err | {r['cycles']} cycles"
+                f"{state_icon} *{r['name']}*\n"
+                f"  {'█' * bar_len}{'░' * (8 - bar_len)} "
+                f"{done}/{total} items | ${r['cost']} | "
+                f"{r['error_rate']}% err | {r['cycles']} cyc"
             )
         return "\n".join(lines)
     return "Could not fetch comparison data."
