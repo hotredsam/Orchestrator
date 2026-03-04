@@ -182,6 +182,8 @@ function Dashboard() {
       if (e.key >= "1" && e.key <= "9") { e.preventDefault(); const idx = parseInt(e.key) - 1; if (TABS_LIST[idx]) setTab(TABS_LIST[idx]); }
       if (e.key === "0") { e.preventDefault(); setTab("logs"); }
       if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${repo?.running ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
+      if (e.key === "p" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr && repo?.running) f(`/api/${repo?.paused ? "resume" : "pause"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
+      if (e.key === "r" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
       if (e.key === "/") { e.preventDefault(); setTab("home"); setTimeout(() => { const el = document.querySelector("input[placeholder*='command']"); if (el) el.focus(); }, 100); }
       if (e.key === "Escape") setShowHelp(false);
       if (e.key === "?") setShowHelp(prev => !prev);
@@ -1430,6 +1432,8 @@ function Dashboard() {
                 ["1-9", "Switch to tab 1-9"],
                 ["0", "Logs tab"],
                 ["S", "Start/Stop selected repo"],
+                ["P", "Pause/Resume selected repo"],
+                ["R", "Refresh all data"],
                 ["/", "Focus command center"],
                 ["?", "Toggle this help"],
                 ["Esc", "Close overlays"],
