@@ -16,8 +16,8 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8310291869:AAEGGLhVldtQ_kExJkeUF3QLBZdBlL6nzu4";
-const DEFAULT_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "5652086820";
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const DEFAULT_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
 
 // ─── Telegram API helpers ────────────────────────────────────────────────────
 
@@ -139,11 +139,12 @@ function telegramSendDocument(chatId, filePath, caption = "") {
 const TOOLS = [
   {
     name: "telegram_send_message",
-    description: "Send a text message via Telegram. Supports Markdown formatting.",
+    description: "Send a text message via Telegram. Supports Markdown formatting. Use 'header' to identify which session/context is sending the message.",
     inputSchema: {
       type: "object",
       properties: {
         text: { type: "string", description: "The message text to send. Supports Markdown." },
+        header: { type: "string", description: "Session identifier prepended to the message (e.g. 'Swarm Orchestrator', 'Claude Code', 'Codex CLI'). Helps distinguish which tool/session sent it." },
         chat_id: { type: "string", description: "Chat ID to send to. Defaults to the configured chat." },
       },
       required: ["text"],
@@ -202,9 +203,11 @@ async function handleToolCall(name, args) {
 
   switch (name) {
     case "telegram_send_message": {
+      const header = args.header ? `*[${args.header}]*\n` : "";
+      const fullText = header + args.text;
       const result = await telegramAPI("sendMessage", {
         chat_id: chatId,
-        text: args.text,
+        text: fullText,
         parse_mode: "Markdown",
       });
       return result.ok

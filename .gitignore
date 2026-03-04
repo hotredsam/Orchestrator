@@ -1,3 +1,7 @@
+# Secrets
+.env
+.env.local
+
 # Databases
 *.db
 *.db-journal
@@ -16,7 +20,7 @@ test-orchestration.ps1
 cleanup.ps1
 check-imports.py
 check-tools.py
-check-db.py
+**/check-db.py
 
 # OS
 .DS_Store
@@ -33,6 +37,15 @@ __pycache__/
 *.mp3
 *.wav
 *.m4a
+
+# Bridge data
+bridge/*.jsonl
+
+# Swarm data
+swarm-master.db
+
+# Node
+node_modules/
 
 # Zip
 files.zip

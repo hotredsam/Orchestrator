@@ -22,8 +22,8 @@ log = logging.getLogger("swarm.telegram")
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8310291869:AAEGGLhVldtQ_kExJkeUF3QLBZdBlL6nzu4")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "5652086820")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 ORCH_URL = "http://localhost:6969"
 AUDIO_DIR = os.environ.get("AGENT_AUDIO_DIR", os.path.expanduser("~/swarm-audio"))

@@ -16,16 +16,26 @@ SWARM ORCHESTRATOR v3 — Full Autonomous Multi-Repo
 • Ralph loop for persistent autonomous execution
 """
 
-import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging
+import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging, hmac, secrets
 import logging.handlers
 import threading, shutil, base64, signal, traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass, field, asdict
+
+# Load .env file if present (no dependency needed)
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.isfile(_env_path):
+    with open(_env_path) as _ef:
+        for _line in _ef:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 from typing import Optional, Dict, List
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 # Add bot/ directory to path for telegram_bot imports
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot"))
@@ -44,6 +54,112 @@ CLAUDE_MODEL = os.environ.get("AGENT_MODEL", "sonnet")
 INTAKE_FOLDER = os.environ.get("INTAKE_FOLDER", os.path.expanduser("~/Desktop/intake"))
 
 TELEGRAM_ENABLED = os.environ.get("TELEGRAM_ENABLED", "0") == "1"
+
+# ─── API Security ─────────────────────────────────────────────────────────────
+
+# Layer 1: Bearer Token — generated fresh each startup
+API_TOKEN = secrets.token_urlsafe(32)
+
+# Layer 2: Telegram Bot Token for initData HMAC validation
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+# Layer 3: Whitelisted Telegram chat/user IDs
+_wl = os.environ.get("TELEGRAM_WHITELIST", "")
+TELEGRAM_WHITELIST = {int(x.strip()) for x in _wl.split(",") if x.strip().isdigit()} if _wl else set()
+
+# Paths exempt from bearer token auth (static assets + token endpoint)
+AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token"}
+
+
+def validate_telegram_init_data(init_data: str) -> dict:
+    """Validate Telegram Mini App initData using HMAC-SHA256.
+
+    Returns a dict with 'valid' bool and 'user' dict (if present).
+    """
+    try:
+        # Parse the query string
+        from urllib.parse import parse_qs, unquote
+        parsed = parse_qs(init_data, keep_blank_values=True)
+        # parse_qs returns lists; flatten to single values
+        params = {k: v[0] for k, v in parsed.items()}
+
+        received_hash = params.pop("hash", None)
+        if not received_hash:
+            return {"valid": False, "error": "No hash in initData"}
+
+        # Sort params alphabetically and build data_check_string
+        data_check_string = "\n".join(
+            f"{k}={v}" for k, v in sorted(params.items())
+        )
+
+        # secret_key = HMAC-SHA256("WebAppData", bot_token)
+        secret_key = hmac.new(
+            b"WebAppData", TELEGRAM_BOT_TOKEN.encode(), hashlib.sha256
+        ).digest()
+
+        # computed_hash = HMAC-SHA256(data_check_string, secret_key)
+        computed_hash = hmac.new(
+            secret_key, data_check_string.encode(), hashlib.sha256
+        ).hexdigest()
+
+        valid = hmac.compare_digest(computed_hash, received_hash)
+
+        user = None
+        if "user" in params:
+            try:
+                user = json.loads(unquote(params["user"]))
+            except:
+                pass
+
+        return {"valid": valid, "user": user}
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
+
+
+# ─── Chat Bridge (Telegram ↔ Claude Code) ────────────────────────────────────
+
+BRIDGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bridge")
+BRIDGE_INBOX = os.path.join(BRIDGE_DIR, "inbox.jsonl")
+BRIDGE_OUTBOX = os.path.join(BRIDGE_DIR, "outbox.jsonl")
+BRIDGE_INSTRUCTION = os.path.join(BRIDGE_DIR, "current_instruction.md")
+
+os.makedirs(BRIDGE_DIR, exist_ok=True)
+
+
+def bridge_write_inbox(text: str, source: str = "telegram"):
+    """Append a message to inbox.jsonl and write current_instruction.md."""
+    entry = {"text": text, "source": source, "ts": datetime.now(timezone.utc).isoformat()}
+    with open(BRIDGE_INBOX, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+    with open(BRIDGE_INSTRUCTION, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def bridge_read_outbox(since_ts: str = None) -> list:
+    """Read all outbox entries, optionally filtering after since_ts."""
+    if not os.path.exists(BRIDGE_OUTBOX):
+        return []
+    entries = []
+    with open(BRIDGE_OUTBOX, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                if since_ts and entry.get("ts", "") <= since_ts:
+                    continue
+                entries.append(entry)
+            except json.JSONDecodeError:
+                continue
+    return entries
+
+
+def bridge_write_outbox(text: str, source: str = "claude"):
+    """Append a response to outbox.jsonl."""
+    entry = {"text": text, "source": source, "ts": datetime.now(timezone.utc).isoformat()}
+    with open(BRIDGE_OUTBOX, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
 
 def clean_env():
@@ -215,6 +331,16 @@ class RepoDB:
                 path TEXT NOT NULL UNIQUE,
                 access_type TEXT DEFAULT 'read'
             );
+            CREATE TABLE IF NOT EXISTS history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                details TEXT,
+                commit_hash TEXT,
+                state_before TEXT,
+                state_after TEXT,
+                items_snapshot TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
         """)
         self.conn.commit()
 
@@ -327,6 +453,15 @@ class RepoDB:
     def add_permission(self, path, access="read"):
         self.ex("INSERT OR IGNORE INTO permissions (path,access_type) VALUES (?,?)", (path, access))
         self.commit()
+
+    # History
+    def add_history(self, action, details="", commit_hash="", state_before="", state_after="", items_snapshot=""):
+        self.ex("INSERT INTO history (action,details,commit_hash,state_before,state_after,items_snapshot) "
+                "VALUES (?,?,?,?,?,?)", (action, details[:5000], commit_hash, state_before, state_after, items_snapshot))
+        self.commit()
+
+    def get_history(self, limit=50):
+        return self.fetchall("SELECT * FROM history ORDER BY created_at DESC LIMIT ?", (limit,))
 
 
 # ─── Master Database (repo registry) ─────────────────────────────────────────
@@ -1654,7 +1789,37 @@ class API(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Telegram-Init-Data")
+
+    def _check_auth(self):
+        """Three-layer auth check. Returns True if authorized, False if denied (response already sent)."""
+        p = urlparse(self.path).path
+
+        # Exempt paths don't need bearer token
+        if p in AUTH_EXEMPT_PATHS:
+            return True
+
+        # Layer 1: Bearer token required for all /api/* endpoints (except exempted)
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer ") or auth_header[7:] != API_TOKEN:
+            self._json({"error": "Unauthorized — missing or invalid bearer token"}, 401)
+            return False
+
+        # Layer 2 + 3: Telegram initData validation (additional layer, only if header present)
+        tg_init_data = self.headers.get("X-Telegram-Init-Data")
+        if tg_init_data:
+            result = validate_telegram_init_data(tg_init_data)
+            if not result["valid"]:
+                self._json({"error": "Forbidden — Telegram initData validation failed"}, 403)
+                return False
+
+            # Layer 3: Chat ID whitelist (only for requests with Telegram initData)
+            user = result.get("user")
+            if user and user.get("id") not in TELEGRAM_WHITELIST:
+                self._json({"error": "Forbidden — user not whitelisted"}, 403)
+                return False
+
+        return True
 
     def _serve_file(self, filepath):
         """Serve a static file from the project directory."""
@@ -1691,11 +1856,39 @@ class API(BaseHTTPRequestHandler):
         path = p.path
         q = parse_qs(p.query)
 
+        # Auth check (exempt paths handled inside _check_auth)
+        if not self._check_auth():
+            return
+
         # Static file serving
         if path == "/" or path == "/index.html":
             return self._serve_file(os.path.join(STATIC_DIR, "index.html"))
         if path == "/swarm-dashboard.jsx":
             return self._serve_file(os.path.join(STATIC_DIR, "swarm-dashboard.jsx"))
+
+        # Token endpoint — returns current API token (exempt from auth, accessed locally)
+        if path == "/api/token":
+            return self._json({"token": API_TOKEN})
+
+        # Telegram Mini App — serve the self-contained HTML file with token injected
+        if path == "/telegram-app":
+            html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot", "telegram-app.html")
+            try:
+                with open(html_path, "r", encoding="utf-8") as fp:
+                    content = fp.read()
+                # Inject API token so Mini App can authenticate
+                token_script = f'<script>window.__SWARM_API_TOKEN__="{API_TOKEN}";</script>'
+                content = content.replace("</head>", token_script + "</head>", 1)
+                encoded = content.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(encoded)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(encoded)
+            except FileNotFoundError:
+                self._json({"error": "telegram-app.html not found"}, 404)
+            return
 
         if path == "/api/repos":
             repos = manager.master.get_repos()
@@ -1721,6 +1914,9 @@ class API(BaseHTTPRequestHandler):
                         "mistakes": db.fetchone("SELECT COUNT(*) c FROM mistakes")["c"],
                         "audio": db.fetchone("SELECT COUNT(*) c FROM audio_reviews")["c"],
                     }
+                    # Include ruflo config
+                    ruflo_rows = db.fetchall("SELECT key, value FROM memory WHERE namespace='ruflo_config'")
+                    stats["ruflo_config"] = {row["key"]: row["value"] for row in ruflo_rows}
                     r["stats"] = stats
                 except:
                     r["state"] = "idle"
@@ -1741,6 +1937,36 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/logs" and rid:
             db = manager.get_repo_db(rid)
             return self._json(db.fetchall("SELECT * FROM execution_log ORDER BY created_at DESC LIMIT 100") if db else [])
+
+        if path == "/api/history" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json([])
+            # Combine DB history with git log
+            history = db.get_history(100)
+            # Also fetch git log for this repo
+            repo = next((r for r in manager.master.get_repos() if r["id"] == rid), None)
+            if repo and os.path.isdir(os.path.join(repo["path"], ".git")):
+                try:
+                    result = subprocess.run(
+                        ["git", "log", "--oneline", "-30", "--format=%H|%s|%ai"],
+                        cwd=repo["path"], capture_output=True, text=True, timeout=10
+                    )
+                    for line in result.stdout.strip().split("\n"):
+                        if "|" in line:
+                            parts = line.split("|", 2)
+                            if len(parts) == 3:
+                                history.append({
+                                    "id": None, "action": "git_commit",
+                                    "details": parts[1], "commit_hash": parts[0],
+                                    "state_before": "", "state_after": "",
+                                    "items_snapshot": "", "created_at": parts[2]
+                                })
+                except Exception:
+                    pass
+            # Sort by created_at descending
+            history.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            return self._json(history[:100])
 
         if path == "/api/agents" and rid:
             try:
@@ -1809,9 +2035,38 @@ class API(BaseHTTPRequestHandler):
             configs = db.fetchall("SELECT * FROM memory WHERE namespace='ruflo_config'")
             return self._json({c["key"]: c["value"] for c in configs})
 
+        # ─── Chat Bridge GET endpoints ────────────────────────────────────────
+        if path == "/api/bridge/outbox":
+            since = q.get("since", [None])[0]
+            return self._json(bridge_read_outbox(since))
+
+        if path == "/api/bridge/inbox":
+            if not os.path.exists(BRIDGE_INBOX):
+                return self._json([])
+            entries = []
+            with open(BRIDGE_INBOX, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            entries.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
+            return self._json(entries[-50:])
+
+        if path == "/api/bridge/instruction":
+            if os.path.exists(BRIDGE_INSTRUCTION):
+                with open(BRIDGE_INSTRUCTION, "r", encoding="utf-8") as f:
+                    return self._json({"instruction": f.read()})
+            return self._json({"instruction": ""})
+
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):
+        # Auth check
+        if not self._check_auth():
+            return
+
         path = urlparse(self.path).path
         b = self._body()
 
@@ -1891,6 +2146,45 @@ class API(BaseHTTPRequestHandler):
             result = fix_repo_issue(repo, issue)
             return self._json(result)
 
+        if path == "/api/rollback":
+            rid = b.get("repo_id")
+            commit_hash = b.get("commit_hash", "").strip()
+            if not rid or not commit_hash:
+                return self._json({"error": "repo_id and commit_hash required"}, 400)
+            repo = next((r for r in manager.master.get_repos() if r["id"] == rid), None)
+            if not repo:
+                return self._json({"error": "Repo not found"}, 404)
+            if not os.path.isdir(os.path.join(repo["path"], ".git")):
+                return self._json({"error": "Not a git repo"}, 400)
+            try:
+                # Get current HEAD for history
+                head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo["path"],
+                                      capture_output=True, text=True, timeout=10).stdout.strip()
+                # Create a revert commit (safe, doesn't destroy history)
+                result = subprocess.run(
+                    ["git", "revert", "--no-edit", f"{commit_hash}..HEAD"],
+                    cwd=repo["path"], capture_output=True, text=True, timeout=60
+                )
+                if result.returncode != 0:
+                    # Fallback: reset to commit (harder rollback)
+                    subprocess.run(["git", "revert", "--abort"], cwd=repo["path"],
+                                   capture_output=True, timeout=10)
+                    result = subprocess.run(
+                        ["git", "checkout", commit_hash, "--", "."],
+                        cwd=repo["path"], capture_output=True, text=True, timeout=30
+                    )
+                    subprocess.run(["git", "commit", "-m", f"Rollback to {commit_hash[:8]}"],
+                                   cwd=repo["path"], capture_output=True, text=True, timeout=30)
+                # Record in history
+                db = manager.get_repo_db(rid)
+                if db:
+                    db.add_history("rollback", f"Rolled back to {commit_hash[:8]}",
+                                   commit_hash, state_before=head)
+                return self._json({"ok": True, "rolled_back_to": commit_hash,
+                                   "previous_head": head})
+            except Exception as e:
+                return self._json({"error": f"Rollback failed: {str(e)}"}, 500)
+
         if path == "/api/memory/seed":
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)
@@ -1951,6 +2245,57 @@ class API(BaseHTTPRequestHandler):
                 db.mem_store("ruflo_config", k, v)
             return self._json({"ok": True})
 
+        if path == "/api/ruflo-optimize":
+            rid = b.get("repo_id")
+            optimize_all = b.get("all", False)
+            results = []
+            repos_to_opt = manager.master.get_repos() if optimize_all else []
+            if rid and not optimize_all:
+                repo = next((r for r in manager.master.get_repos() if r["id"] == rid), None)
+                if repo:
+                    repos_to_opt = [repo]
+            for repo in repos_to_opt:
+                try:
+                    ptype_info = detect_project_type(repo["path"])
+                    ptype = ptype_info.get("type", "unknown") if isinstance(ptype_info, dict) else str(ptype_info)
+                    db = manager.get_repo_db(repo["id"])
+                    if not db:
+                        continue
+                    # Auto-configure based on project type
+                    defaults = {
+                        "python": {"agents": "10", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "50"},
+                        "node": {"agents": "8", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"},
+                        "node-react": {"agents": "8", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"},
+                        "fullstack": {"agents": "10", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "50"},
+                        "rust": {"agents": "6", "model_arch": "opus", "model_code": "opus", "model_scan": "sonnet", "ralph_iters": "30"},
+                        "static": {"agents": "4", "model_arch": "sonnet", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "20"},
+                    }
+                    config = defaults.get(ptype, {"agents": "8", "model_arch": "opus", "model_code": "sonnet", "model_scan": "haiku", "ralph_iters": "40"})
+                    config["project_type"] = ptype
+                    for k, v in config.items():
+                        db.mem_store("ruflo_config", k, v)
+                    results.append({"repo": repo["name"], "type": ptype, "config": config})
+                except Exception as e:
+                    results.append({"repo": repo.get("name", "?"), "error": str(e)})
+            return self._json({"ok": True, "optimized": len(results), "results": results})
+
+        # ─── Chat Bridge Endpoints ────────────────────────────────────────────
+        if path == "/api/bridge/inbox":
+            text = b.get("text", "").strip()
+            source = b.get("source", "telegram")
+            if not text:
+                return self._json({"error": "text required"}, 400)
+            bridge_write_inbox(text, source)
+            return self._json({"ok": True, "instruction_file": BRIDGE_INSTRUCTION})
+
+        if path == "/api/bridge/outbox":
+            text = b.get("text", "").strip()
+            source = b.get("source", "claude")
+            if not text:
+                return self._json({"error": "text required"}, 400)
+            bridge_write_outbox(text, source)
+            return self._json({"ok": True})
+
         self._json({"error": "Not found"}, 404)
 
     def log_message(self, *a):
@@ -1960,6 +2305,7 @@ class API(BaseHTTPRequestHandler):
 def serve():
     s = HTTPServer(("0.0.0.0", API_PORT), API)
     log.info(f"🌐 API on http://localhost:{API_PORT}")
+    log.info(f"🔑 API Bearer Token: {API_TOKEN}")
     s.serve_forever()
 
 

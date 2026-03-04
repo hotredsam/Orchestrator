@@ -1,7 +1,16 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
 const API = "http://localhost:6969";
-const f = (u, o) => fetch(`${API}${u}`, { ...o, headers: { "Content-Type": "application/json", ...o?.headers } });
+// Auth token — may be set by Telegram Mini App page or fetched from /api/token
+let __authToken = window.__SWARM_API_TOKEN__ || "";
+const f = (u, o) => fetch(`${API}${u}`, {
+  ...o,
+  headers: {
+    "Content-Type": "application/json",
+    ...(__authToken ? { "Authorization": "Bearer " + __authToken } : {}),
+    ...o?.headers,
+  },
+});
 
 const STATES = {
   idle: { label: "IDLE", emoji: "💤", color: "#4ECDC4", desc: "Chillin' in the desert..." },
@@ -88,9 +97,27 @@ function Dashboard() {
   const [chatLoading, setChatLoading] = useState(false);
   const [recording, setRec] = useState(false);
   const [recTime, setRecTime] = useState(0);
+  const [token, setToken] = useState(__authToken);
+  const [history, setHistory] = useState([]);
+  const [rollingBack, setRollingBack] = useState(false);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
+
+  // Fetch API token on mount (if not already set by Telegram Mini App embed)
+  useEffect(() => {
+    if (!__authToken) {
+      fetch(`${API}/api/token`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.token) {
+            __authToken = d.token;
+            setToken(d.token);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -100,16 +127,16 @@ function Dashboard() {
     } catch { setCon(false); }
     if (!sr) return;
     try {
-      const [a,b,c,d,e,g,h] = await Promise.all([
+      const [a,b,c,d,e,g,h,hi] = await Promise.all([
         f(`/api/items?repo_id=${sr}`), f(`/api/plan?repo_id=${sr}`),
         f(`/api/logs?repo_id=${sr}`), f(`/api/agents?repo_id=${sr}`),
         f(`/api/memory?repo_id=${sr}`), f(`/api/mistakes?repo_id=${sr}`),
-        f(`/api/audio?repo_id=${sr}`),
+        f(`/api/audio?repo_id=${sr}`), f(`/api/history?repo_id=${sr}`),
       ]);
       if(a.ok) setItems(await a.json()); if(b.ok) setPlan(await b.json());
       if(c.ok) setLogs(await c.json()); if(d.ok) setAgents(await d.json());
       if(e.ok) setMemory(await e.json()); if(g.ok) setMistakes(await g.json());
-      if(h.ok) setAudio(await h.json());
+      if(h.ok) setAudio(await h.json()); if(hi.ok) setHistory(await hi.json());
     } catch {}
   }, [sr]);
 
@@ -203,20 +230,59 @@ function Dashboard() {
   };
 
   const Card = ({ children, bg = C.white, style, className, ...p }) => (
-    <div className={className} style={{ background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 16, padding: 16, boxShadow: "4px 4px 0 #3D2B1F", ...style }} {...p}>{children}</div>
+    <div className={`hover-card ${className||""}`} style={{ background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, padding: 16, boxShadow: "0 2px 4px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.08), 3px 3px 0 #3D2B1F", transition: "transform .2s ease, box-shadow .2s ease", ...style }} {...p}>{children}</div>
   );
   const Inp = ({ style, ...p }) => (
-    <input style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka', sans-serif", boxSizing: "border-box", outline: "none", ...style }} {...p} />
+    <input style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka', sans-serif", boxSizing: "border-box", outline: "none", transition: "border-color .2s, box-shadow .2s", ...style }} {...p} />
   );
   const Btn = ({ children, bg = C.orange, color = C.white, style, ...p }) => (
-    <button className="hover-pop" style={{ padding: "10px 20px", background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, color, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1.5, boxShadow: "3px 3px 0 #3D2B1F", transition: "transform .15s, filter .15s, box-shadow .15s", ...style }}
+    <button className="hover-pop" style={{ padding: "12px 24px", background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, color, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1.5, boxShadow: "0 2px 4px rgba(0,0,0,.12), 3px 3px 0 #3D2B1F", transition: "transform .15s, filter .15s, box-shadow .15s", ...style }}
       onMouseDown={e => e.target.style.transform = "translate(2px,2px) scale(0.97)"}
       onMouseUp={e => e.target.style.transform = ""} onMouseOut={e => e.target.style.transform = ""} {...p}>{children}</button>
   );
 
   const SectionBg = ({ children, bg, style }) => (
-    <div style={{ background: bg, padding: "24px 20px", ...style }}>{children}</div>
+    <div style={{ background: bg, padding: "28px 24px", ...style }}>{children}</div>
   );
+
+  /* Circular health badge component */
+  const HealthBadge = ({ score, size = 44 }) => {
+    const sc = score >= 80 ? C.green : score >= 50 ? C.orange : C.red;
+    const circ = Math.PI * 2 * 16;
+    const pct = circ - (circ * score / 100);
+    return (
+      <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+        <svg width={size} height={size} viewBox="0 0 40 40">
+          <circle cx="20" cy="20" r="16" fill="none" stroke={C.cream} strokeWidth="4" />
+          <circle cx="20" cy="20" r="16" fill="none" stroke={sc} strokeWidth="4"
+            strokeDasharray={circ} strokeDashoffset={pct}
+            strokeLinecap="round" transform="rotate(-90 20 20)"
+            style={{ transition: "stroke-dashoffset .6s ease" }} />
+          <text x="20" y="22" fill={C.darkBrown} fontSize="9" fontWeight="700" textAnchor="middle" fontFamily="Bangers">{score}%</text>
+        </svg>
+      </div>
+    );
+  };
+
+  /* Action type icons for history */
+  const ActionIcon = ({ action }) => {
+    const icons = {
+      git_commit: { icon: "\uD83D\uDCDD", bg: C.teal },
+      rollback: { icon: "\u23EA", bg: C.red },
+      execute_step: { icon: "\u26A1", bg: C.orange },
+      test_step: { icon: "\uD83E\uDDEA", bg: "#9B59B6" },
+      update_plan: { icon: "\uD83D\uDDFA\uFE0F", bg: C.teal },
+      do_refactor: { icon: "\uD83D\uDD27", bg: "#FF6B6B" },
+      scan_repo: { icon: "\uD83D\uDD0D", bg: C.green },
+      final_optimize: { icon: "\u2728", bg: "#4ECDC4" },
+    };
+    const info = icons[action] || { icon: "\uD83D\uDD04", bg: C.brown };
+    return (
+      <div style={{ width: 36, height: 36, borderRadius: "50%", background: info.bg, border: `2px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0, boxShadow: "0 2px 4px rgba(0,0,0,.15)" }}>
+        {info.icon}
+      </div>
+    );
+  };
 
   const TABS = [
     { id: "home", label: "🏠 Town Square" },
@@ -229,7 +295,9 @@ function Dashboard() {
     { id: "memory", label: "🧠 Memory" },
     { id: "mistakes", label: "💀 Mistakes" },
     { id: "logs", label: "📜 Logs" },
+    { id: "history", label: "⏪ History" },
     { id: "health", label: "🔍 Health Check" },
+    { id: "settings", label: "⚙️ Settings" },
   ];
 
   return (
@@ -238,6 +306,7 @@ function Dashboard() {
         @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka:wght@400;500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:8px} ::-webkit-scrollbar-thumb{background:${C.orange};border-radius:4px;border:2px solid ${C.darkBrown}}
+        ::-webkit-scrollbar-track{background:rgba(0,0,0,.05);border-radius:4px}
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
         @keyframes wiggle{0%,100%{transform:rotate(0)}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
@@ -249,14 +318,25 @@ function Dashboard() {
         @keyframes tumble{0%{transform:translateX(-40px) rotate(0)}100%{transform:translateX(calc(100vw + 40px)) rotate(720deg)}}
         @keyframes sparkle{0%,100%{opacity:0;transform:scale(0)}50%{opacity:1;transform:scale(1)}}
         @keyframes cloudDrift{0%{transform:translateX(-200px)}100%{transform:translateX(calc(100vw + 200px))}}
+        @keyframes glowPulse{0%,100%{box-shadow:0 0 8px rgba(247,148,29,0.3)}50%{box-shadow:0 0 20px rgba(247,148,29,0.7)}}
+        @keyframes tiltIn{from{opacity:0;transform:rotate(-1deg) translateY(8px)}to{opacity:1;transform:rotate(0) translateY(0)}}
+        @keyframes nodeGlow{0%,100%{filter:drop-shadow(0 0 4px rgba(247,148,29,0.4))}50%{filter:drop-shadow(0 0 12px rgba(247,148,29,0.8))}}
         textarea,select{font-family:'Fredoka',sans-serif}
         select option{background:${C.cream};color:${C.darkBrown}}
         @media(max-width:700px){.cactus-right{display:none!important}}
-        .hover-lift:hover{transform:translateY(-4px) scale(1.02)!important;box-shadow:6px 6px 0 #3D2B1F!important}
-        .hover-glow:hover{box-shadow:0 0 12px rgba(247,148,29,0.4), 4px 4px 0 #3D2B1F!important}
+        .hover-card:hover{transform:translateY(-2px)!important;box-shadow:0 4px 8px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.1), 4px 4px 0 #3D2B1F!important}
+        .hover-lift:hover{transform:translateY(-4px) scale(1.02)!important;box-shadow:0 6px 16px rgba(0,0,0,.12), 6px 6px 0 #3D2B1F!important}
+        .hover-glow:hover{box-shadow:0 0 12px rgba(247,148,29,0.4), 0 4px 12px rgba(0,0,0,.08), 4px 4px 0 #3D2B1F!important;transform:translateY(-2px)!important}
         .hover-pop:hover{transform:scale(1.05)!important;filter:brightness(1.1)}
         .nav-tab:hover{background:rgba(255,255,255,0.2)!important}
-        .stat-card:hover{transform:translateY(-3px)!important;box-shadow:5px 5px 0 #3D2B1F!important}
+        .stat-card:hover{transform:translateY(-3px)!important;box-shadow:0 4px 12px rgba(0,0,0,.1), 5px 5px 0 #3D2B1F!important}
+        .bounty-poster{animation:tiltIn .3s ease;transition:transform .2s ease,box-shadow .2s ease}
+        .bounty-poster:hover{transform:translateY(-3px) rotate(-0.5deg)!important;box-shadow:0 6px 20px rgba(0,0,0,.15), 4px 4px 0 #3D2B1F!important}
+        .timeline-entry{position:relative;padding-left:54px;margin-bottom:16px}
+        .timeline-entry::before{content:'';position:absolute;left:17px;top:40px;bottom:-16px;width:2px;background:${C.darkBrown};opacity:0.25}
+        .timeline-entry:last-child::before{display:none}
+        input:focus{border-color:${C.orange}!important;box-shadow:0 0 0 3px rgba(247,148,29,0.2)!important}
+        textarea:focus{border-color:${C.orange}!important;box-shadow:0 0 0 3px rgba(247,148,29,0.2)!important}
       `}</style>
 
       {/* ═══ HEADER — Desert Banner ═══ */}
@@ -339,91 +419,99 @@ function Dashboard() {
         {/* ── HOME / TOWN SQUARE ── */}
         {tab === "home" && (<>
           {/* START ALL banner */}
-          <SectionBg bg={C.cream}>
-            <div style={{ textAlign: "center", marginBottom: 16 }}>
-              <Btn onClick={startAll} bg={C.green} style={{ fontSize: 22, padding: "14px 40px", animation: repos.some(r=>r.running) ? "none" : "wiggle 2s infinite" }}>
-                🚀 START ALL REPOS
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F5E6C8 100%)`}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <Btn onClick={startAll} bg={C.green} style={{ fontSize: 24, padding: "16px 48px", animation: repos.some(r=>r.running) ? "none" : "wiggle 2s infinite" }}>
+                {"\uD83D\uDE80"} START ALL REPOS
               </Btn>
             </div>
 
             {/* Stats row */}
-            <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
               {[
-                { emoji: "📦", label: "Repos", val: repos.length, bg: C.lightOrange },
-                { emoji: "⚡", label: "Running", val: repos.filter(r=>r.running).length, bg: C.lightTeal },
-                { emoji: "📋", label: "Items", val: repos.reduce((s,r)=>(s+(r.stats?.items_total||0)),0), bg: C.yellow },
-                { emoji: "✅", label: "Done", val: repos.reduce((s,r)=>(s+(r.stats?.items_done||0)),0), bg: C.lightTeal },
-                { emoji: "🤠", label: "Agents", val: repos.reduce((s,r)=>(s+(r.stats?.agents||0)),0), bg: C.lightOrange },
+                { emoji: "\uD83D\uDCE6", label: "Repos", val: repos.length, bg: C.lightOrange },
+                { emoji: "\u26A1", label: "Running", val: repos.filter(r=>r.running).length, bg: C.lightTeal },
+                { emoji: "\uD83D\uDCCB", label: "Items", val: repos.reduce((s,r)=>(s+(r.stats?.items_total||0)),0), bg: C.yellow },
+                { emoji: "\u2705", label: "Done", val: repos.reduce((s,r)=>(s+(r.stats?.items_done||0)),0), bg: C.lightTeal },
+                { emoji: "\uD83E\uDD20", label: "Agents", val: repos.reduce((s,r)=>(s+(r.stats?.agents||0)),0), bg: C.lightOrange },
               ].map((s,i) => (
-                <div key={i} className="stat-card" style={{ background: s.bg, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "10px 18px", textAlign: "center", boxShadow: "3px 3px 0 #3D2B1F", minWidth: 90, transition: "transform 0.2s, box-shadow 0.2s", cursor: "default" }}>
-                  <div style={{ fontSize: 24 }}>{s.emoji}</div>
-                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, letterSpacing: 1 }}>{s.val}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: C.brown }}>{s.label}</div>
+                <div key={i} className="stat-card" style={{ background: `linear-gradient(135deg, ${s.bg} 0%, ${s.bg}ee 100%)`, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "12px 20px", textAlign: "center", boxShadow: "0 2px 4px rgba(0,0,0,.1), 3px 3px 0 #3D2B1F", minWidth: 95, transition: "transform 0.2s, box-shadow 0.2s", cursor: "default" }}>
+                  <div style={{ fontSize: 26 }}>{s.emoji}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 32, letterSpacing: 1, lineHeight: 1 }}>{s.val}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.brown, marginTop: 2 }}>{s.label}</div>
                 </div>
               ))}
             </div>
           </SectionBg>
 
-          {/* REPO CARDS — "Meet the Citizens" */}
-          <SectionBg bg={C.teal} style={{ borderTop: `3px solid ${C.darkBrown}` }}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 32, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 16, letterSpacing: 3 }}>
+          {/* REPO CARDS */}
+          <SectionBg bg={`linear-gradient(180deg, ${C.teal} 0%, #009BB8 100%)`} style={{ borderTop: `3px solid ${C.darkBrown}` }}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 20, letterSpacing: 4 }}>
               YOUR REPOS
             </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
               {repos.map(r => {
                 const rst = STATES[r.state] || STATES.idle;
                 const s = r.stats || {};
+                const pctSteps = s.steps_total ? Math.round(s.steps_done/s.steps_total*100) : 0;
+                const hd = healthData.find(h => h.repo_id === r.id);
                 return (
                   <Card key={r.id} bg={sr === r.id ? C.yellow : C.white}
                     className="hover-lift"
-                    style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", position: "relative", overflow: "hidden" }}
+                    style={{
+                      cursor: "pointer", transition: "transform .2s, box-shadow .2s", position: "relative", overflow: "hidden",
+                      backgroundImage: sr === r.id
+                        ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)`
+                        : `linear-gradient(135deg, #FFFFFF 0%, #FDFAF2 100%)`,
+                    }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
-                    {/* Running indicator */}
-                    {r.running && <div style={{ position: "absolute", top: -2, right: -2, background: C.green, border: `2px solid ${C.darkBrown}`, borderRadius: "0 12px 0 10px", padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.white }}>RUNNING</div>}
+                    {/* Subtle card texture */}
+                    <div style={{ position: "absolute", inset: 0, opacity: 0.025, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v20h2V0h2v20h2V0h2v20h2V0h2v20h2V0h2v20.5' fill='%233D2B1F' fill-opacity='.4' fill-rule='evenodd'/%3E%3C/svg%3E\")", pointerEvents: "none" }} />
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: rst.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, transition: "transform 0.3s ease, background 0.3s ease", animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none" }}>
+                    {/* Running indicator */}
+                    {r.running && <div style={{ position: "absolute", top: -1, right: -1, background: `linear-gradient(135deg, ${C.green}, #27ae60)`, border: `2px solid ${C.darkBrown}`, borderRadius: "0 10px 0 10px", padding: "4px 12px", fontSize: 10, fontWeight: 700, color: C.white, letterSpacing: 1, fontFamily: "'Bangers', cursive" }}>RUNNING</div>}
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, position: "relative" }}>
+                      <div style={{ width: 48, height: 48, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, transition: "transform 0.3s ease, background 0.3s ease", animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
                         {rst.emoji}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1.5 }}>{r.name}</div>
-                        <div style={{ fontSize: 10, color: C.brown, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.path}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 1.5, lineHeight: 1.1 }}>{r.name}</div>
+                        <div style={{ fontSize: 10, color: C.brown, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{r.path}</div>
                       </div>
+                      {/* Circular health badge */}
+                      {hd && <HealthBadge score={hd.health_score} />}
                     </div>
 
-                    {/* Mini stats */}
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                    {/* Stats grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
                       {[
                         { l: "Items", v: `${s.items_done||0}/${s.items_total||0}`, bg: C.lightOrange },
                         { l: "Steps", v: `${s.steps_done||0}/${s.steps_total||0}`, bg: C.lightTeal },
                         { l: "Agents", v: s.agents||0, bg: C.yellow },
                         { l: "Cycles", v: r.cycle_count||0, bg: C.cream },
                       ].map((x,i) => (
-                        <div key={i} style={{ background: x.bg, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
-                          {x.l}: {x.v}
+                        <div key={i} style={{ background: x.bg, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 6px", textAlign: "center" }}>
+                          <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, lineHeight: 1 }}>{x.v}</div>
+                          <div style={{ fontSize: 9, color: C.brown, fontWeight: 600 }}>{x.l}</div>
                         </div>
                       ))}
                     </div>
 
                     {/* Progress bar */}
-                    <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 14, overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${s.steps_total ? (s.steps_done/s.steps_total*100) : 0}%`, transition: "width .5s" }} />
+                    <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 16, overflow: "hidden", marginBottom: 10, position: "relative" }}>
+                      <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pctSteps}%`, transition: "width .5s" }} />
+                      {s.steps_total > 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>{pctSteps}%</div>}
                     </div>
 
-                    {/* Health badge + action buttons */}
-                    <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+                    {/* Action buttons + state label */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {r.running
-                        ? <Btn bg={C.red} onClick={e => { e.stopPropagation(); stopRepo(r.id); }} style={{ fontSize: 12, padding: "5px 12px" }}>⏹ Stop</Btn>
-                        : <Btn bg={C.green} onClick={e => { e.stopPropagation(); startRepo(r.id); }} style={{ fontSize: 12, padding: "5px 12px" }}>▶ Start</Btn>}
-                      <div style={{ fontSize: 11, color: C.brown, display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+                        ? <Btn bg={C.red} onClick={e => { e.stopPropagation(); stopRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u23F9"} Stop</Btn>
+                        : <Btn bg={C.green} onClick={e => { e.stopPropagation(); startRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u25B6"} Start</Btn>}
+                      <div style={{ fontSize: 12, color: C.brown, display: "flex", alignItems: "center", gap: 4, flex: 1, fontWeight: 500 }}>
                         {rst.emoji} {rst.label}
                       </div>
-                      {healthData.length > 0 ? (() => {
-                        const h = healthData.find(hd => hd.repo_id === r.id);
-                        if (!h) return null;
-                        const sc = h.health_score >= 80 ? C.green : h.health_score >= 50 ? C.orange : C.red;
-                        return <div style={{ background: sc, color: C.white, borderRadius: 8, padding: "2px 8px", fontSize: 10, fontWeight: 700, border: `2px solid ${C.darkBrown}` }}>{h.health_score}%</div>;
-                      })() : null}
                     </div>
                   </Card>
                 );
@@ -444,53 +532,70 @@ function Dashboard() {
           </SectionBg>
 
           {/* Recent activity */}
-          <SectionBg bg={C.yellow} style={{ borderTop: `3px solid ${C.darkBrown}` }}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 24, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>📜 Recent Activity</h2>
+          <SectionBg bg={`linear-gradient(180deg, ${C.yellow} 0%, #F5D94E 100%)`} style={{ borderTop: `3px solid ${C.darkBrown}` }}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 14, letterSpacing: 2.5 }}>Recent Activity</h2>
             <div style={{ maxWidth: 700, margin: "0 auto" }}>
               {logs.slice(0, 8).map(l => (
-                <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 4, fontSize: 12 }}>
+                <div key={l.id} style={{ display: "flex", gap: 8, padding: "6px 12px", background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 5, fontSize: 12, transition: "transform .15s", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
                   <span style={{ color: C.brown, fontSize: 10, minWidth: 90 }}>{l.created_at}</span>
                   <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 80 }}>{l.state}</span>
                   <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.action}</span>
-                  {l.error && <span style={{ color: C.red, fontSize: 10 }}>⚠ {l.error.slice(0,30)}</span>}
+                  {l.error && <span style={{ color: C.red, fontSize: 10 }}>{"\u26A0"} {l.error.slice(0,30)}</span>}
                 </div>
               ))}
-              {logs.length === 0 && <div style={{ textAlign: "center", padding: 20, color: C.brown }}>No activity yet — start some repos!</div>}
+              {logs.length === 0 && (
+                <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 32, marginBottom: 6 }}>{"\uD83C\uDFDC\uFE0F"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 4 }}>Quiet as a desert breeze</div>
+                  <div style={{ fontSize: 12, color: C.brown }}>Start some repos to see activity roll in!</div>
+                </Card>
+              )}
             </div>
           </SectionBg>
         </>)}
 
         {/* ── MASTER / VIEW ALL ── */}
         {tab === "master" && (
-          <SectionBg bg={C.cream}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 16, letterSpacing: 2 }}>🌐 All Repos — Master View</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>All Repos -- Master View</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>Bird's-eye view of every repo in your swarm</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {repos.map(r => {
                 const rst = STATES[r.state] || STATES.idle;
                 const s = r.stats || {};
                 const pct = s.steps_total ? Math.round(s.steps_done / s.steps_total * 100) : 0;
                 return (
-                  <Card key={r.id} className="hover-lift" bg={C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s" }}
+                  <Card key={r.id} className="hover-lift" bg={C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                      <div style={{ width: 38, height: 38, borderRadius: "50%", background: rst.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                      <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
                         {rst.emoji}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>{r.name}</div>
-                        <div style={{ fontSize: 11, color: C.brown }}>{rst.label} {r.running ? "— RUNNING" : ""}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, lineHeight: 1.1 }}>{r.name}</div>
+                        <div style={{ fontSize: 12, color: C.brown, fontWeight: 500 }}>{rst.label} {r.running ? "-- RUNNING" : ""}</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 24, color: pct === 100 ? C.green : C.orange }}>{pct}%</div>
+                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: pct === 100 ? C.green : C.orange, lineHeight: 1 }}>{pct}%</div>
+                        <div style={{ fontSize: 9, color: C.brown }}>complete</div>
                       </div>
                     </div>
                     {/* Progress bar */}
-                    <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 12, overflow: "hidden", marginBottom: 8 }}>
+                    <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 8, height: 14, overflow: "hidden", marginBottom: 10, position: "relative" }}>
                       <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, transition: "width .5s" }} />
                     </div>
-                    {/* Mini roadmap: show plan steps */}
-                    <div style={{ fontSize: 11, color: C.brown }}>
-                      Items: {s.items_done||0}/{s.items_total||0} | Steps: {s.steps_done||0}/{s.steps_total||0} | Cycles: {r.cycle_count||0}
+                    {/* Stats row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                      {[
+                        { l: "Items", v: `${s.items_done||0}/${s.items_total||0}` },
+                        { l: "Steps", v: `${s.steps_done||0}/${s.steps_total||0}` },
+                        { l: "Cycles", v: r.cycle_count||0 },
+                      ].map((x, i) => (
+                        <div key={i} style={{ textAlign: "center", fontSize: 11 }}>
+                          <div style={{ fontWeight: 700 }}>{x.v}</div>
+                          <div style={{ fontSize: 9, color: C.brown }}>{x.l}</div>
+                        </div>
+                      ))}
                     </div>
                   </Card>
                 );
@@ -500,112 +605,260 @@ function Dashboard() {
         )}
 
         {/* ── FLOW / ROAD MAP ── */}
-        {tab === "flow" && (
-          <SectionBg bg={C.cream}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 4, letterSpacing: 2 }}>
-              🗺️ {repo?.name || "Select a Repo"} — Road Map
+        {tab === "flow" && (() => {
+          const stepsDone = st.steps_done || 0;
+          const stepsTotal = st.steps_total || 0;
+          const itemsPending = items.filter(it => it.status !== "completed").length;
+          const nodeColors = {
+            action: { color: "#FF6B6B", label: "Action (doing work)" },
+            decision: { color: "#FFB347", label: "Decision (checking)" },
+            rest: { color: "#4ECDC4", label: "Idle / Optimize" },
+            error: { color: "#E74C3C", label: "Error / Blocked" },
+          };
+          return (
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F5E6C8 50%, #EDD9B3 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 4, letterSpacing: 3, textShadow: `2px 2px 0 rgba(61,43,31,0.15)` }}>
+              {repo?.name || "Select a Repo"} -- Road Map
             </h2>
-            <p style={{ textAlign: "center", fontSize: 14, color: C.brown, marginBottom: 12 }}>{si.emoji} {si.desc}</p>
+            <p style={{ textAlign: "center", fontSize: 15, color: C.brown, marginBottom: 16 }}>{si.emoji} {si.desc}</p>
+
+            {/* Status Panel */}
+            <Card bg={C.white} style={{ maxWidth: 680, margin: "0 auto 16px", padding: "14px 20px", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: "50%", background: si.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, animation: repo?.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 0 12px ${si.color}44` }}>
+                    {si.emoji}
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 1.5, lineHeight: 1.1 }}>{si.label}</div>
+                    <div style={{ fontSize: 12, color: C.brown }}>{si.desc}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                  {[
+                    { label: "Items Pending", val: itemsPending, bg: itemsPending > 0 ? C.orange : C.green },
+                    { label: "Steps Done", val: `${stepsDone}/${stepsTotal}`, bg: C.teal },
+                    { label: "Cycles", val: repo?.cycle_count || 0, bg: C.brown },
+                  ].map((s, i) => (
+                    <div key={i} style={{ textAlign: "center" }}>
+                      <div style={{ fontFamily: "'Bangers', cursive", fontSize: 24, color: s.bg, lineHeight: 1 }}>{s.val}</div>
+                      <div style={{ fontSize: 10, color: C.brown, fontWeight: 600, letterSpacing: 0.5 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
 
             {/* Action buttons */}
-            <div style={{ textAlign: "center", marginBottom: 12, display: "flex", justifyContent: "center", gap: 8 }}>
-              {repo && !repo.running && <Btn bg={C.green} onClick={() => startRepo(sr)} style={{ padding: "8px 16px" }}>▶ Start</Btn>}
-              {repo?.running && <Btn bg={C.red} onClick={() => stopRepo(sr)} style={{ padding: "8px 16px" }}>⏹ Stop</Btn>}
-              <Btn bg={C.teal} onClick={pushGH} style={{ padding: "8px 16px" }}>↑ Push Git</Btn>
+            <div style={{ textAlign: "center", marginBottom: 16, display: "flex", justifyContent: "center", gap: 10 }}>
+              {repo && !repo.running && <Btn bg={C.green} onClick={() => startRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9654; Start</Btn>}
+              {repo?.running && <Btn bg={C.red} onClick={() => stopRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9209; Stop</Btn>}
+              <Btn bg={C.teal} onClick={pushGH} style={{ padding: "10px 20px", fontSize: 16 }}>&uarr; Push Git</Btn>
             </div>
 
-            <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto" }}>
-              <svg viewBox="0 0 570 500" style={{ width: "100%" }}>
-                <defs>
-                  <marker id="ah" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill={C.brown}/></marker>
-                  <marker id="ahA" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill={C.orange}/></marker>
-                </defs>
-                {FLOW_EDGES.map(([from,to,path,label],i) => {
-                  const active = from === cs;
-                  return (<g key={i}>
-                    <path d={path} fill="none" stroke={active ? C.orange : "#ccc"} strokeWidth={active ? 3 : 1.5} markerEnd={active ? "url(#ahA)" : "url(#ah)"} />
-                    {label && (() => { const pts = path.split(/[ML ]+/).filter(Boolean).map(p=>p.split(",").map(Number)); if(pts.length>=2) return <text x={(pts[0][0]+pts[1][0])/2} y={(pts[0][1]+pts[1][1])/2-4} fill={C.brown} fontSize="9" textAnchor="middle" fontFamily="Fredoka" fontWeight="600">{label}</text>; })()}
-                  </g>);
-                })}
-                {FLOW_NODES.map(n => {
-                  const active = n.id === cs;
-                  const info = STATES[n.id] || {};
-                  return (<g key={n.id}>
-                    <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={n.dec ? 4 : 12}
-                      fill={active ? info.color : C.cream}
-                      stroke={active ? C.darkBrown : "#bbb"} strokeWidth={active ? 3 : 1.5}
-                      strokeDasharray={n.dec ? "5,3" : undefined} />
-                    {active && <rect x={n.x-2} y={n.y-2} width={n.w+4} height={n.h+4} rx={n.dec?6:14}
-                      fill="none" stroke={info.color} strokeWidth={2} opacity={.5}>
-                      <animate attributeName="opacity" values=".7;.2;.7" dur="1.5s" repeatCount="indefinite"/>
-                    </rect>}
-                    <text x={n.x+n.w/2} y={n.y+15} fill={active ? C.white : C.brown} fontSize="12" textAnchor="middle" fontFamily="Fredoka">{info.emoji}</text>
-                    <text x={n.x+n.w/2} y={n.y+29} fill={active ? C.white : C.darkBrown} fontSize="9" textAnchor="middle" fontFamily="Fredoka" fontWeight={active?"700":"500"}>{info.label}</text>
-                  </g>);
-                })}
-              </svg>
+            {/* Flowchart */}
+            <Card bg="transparent" style={{ maxWidth: 680, margin: "0 auto 16px", padding: 0, border: "none", boxShadow: "none", background: "none" }}>
+              <div style={{ background: `linear-gradient(180deg, #F5E0B8 0%, #EDDCBE 40%, #E8D4AE 100%)`, border: `3px solid ${C.darkBrown}`, borderRadius: 12, padding: "20px 16px", boxShadow: "inset 0 2px 8px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.08), 3px 3px 0 #3D2B1F", position: "relative", overflow: "hidden" }}>
+                {/* Parchment texture overlay */}
+                <div style={{ position: "absolute", inset: 0, opacity: 0.04, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%233D2B1F' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")", pointerEvents: "none" }} />
+                <svg viewBox="0 0 570 500" style={{ width: "100%", position: "relative", zIndex: 1 }}>
+                  <defs>
+                    <marker id="ah" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill={C.brown}/></marker>
+                    <marker id="ahA" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill={C.orange}/></marker>
+                    <filter id="nodeGlow">
+                      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                    <filter id="activeGlow">
+                      <feGaussianBlur stdDeviation="4" result="blur"/>
+                      <feFlood floodColor={si.color} floodOpacity="0.5" result="color"/>
+                      <feComposite in="color" in2="blur" operator="in" result="shadow"/>
+                      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                  </defs>
+                  {FLOW_EDGES.map(([from,to,path,label],i) => {
+                    const active = from === cs;
+                    return (<g key={i}>
+                      <path d={path} fill="none" stroke={active ? C.orange : "rgba(93,64,55,0.3)"} strokeWidth={active ? 3 : 1.5} markerEnd={active ? "url(#ahA)" : "url(#ah)"} style={active ? { filter: "drop-shadow(0 0 3px rgba(247,148,29,0.4))" } : {}} />
+                      {label && (() => { const pts = path.split(/[ML ]+/).filter(Boolean).map(p=>p.split(",").map(Number)); if(pts.length>=2) return <text x={(pts[0][0]+pts[1][0])/2} y={(pts[0][1]+pts[1][1])/2-5} fill={active ? C.orange : C.brown} fontSize="9" textAnchor="middle" fontFamily="Fredoka" fontWeight="700"><tspan style={{ background: "#F5E0B8" }}>{label}</tspan></text>; })()}
+                    </g>);
+                  })}
+                  {FLOW_NODES.map(n => {
+                    const active = n.id === cs;
+                    const info = STATES[n.id] || {};
+                    const isDecision = !!n.dec;
+                    return (<g key={n.id} style={active ? { filter: "url(#activeGlow)" } : {}}>
+                      {/* Signpost effect: small post below action nodes */}
+                      {!isDecision && <rect x={n.x+n.w/2-3} y={n.y+n.h-2} width={6} height={6} rx={1} fill={active ? info.color : "#D4C5A9"} stroke={active ? C.darkBrown : "#bbb"} strokeWidth={1} />}
+                      <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={isDecision ? 4 : 10}
+                        fill={active ? info.color : "#FAF0D7"}
+                        stroke={active ? C.darkBrown : "#C4B896"} strokeWidth={active ? 3 : 1.5}
+                        strokeDasharray={isDecision ? "5,3" : undefined} />
+                      {/* More prominent glow for active node */}
+                      {active && <>
+                        <rect x={n.x-3} y={n.y-3} width={n.w+6} height={n.h+6} rx={isDecision?6:13}
+                          fill="none" stroke={info.color} strokeWidth={2.5} opacity={.6}>
+                          <animate attributeName="opacity" values=".8;.15;.8" dur="1.2s" repeatCount="indefinite"/>
+                        </rect>
+                        <rect x={n.x-6} y={n.y-6} width={n.w+12} height={n.h+12} rx={isDecision?8:16}
+                          fill="none" stroke={info.color} strokeWidth={1.5} opacity={.3}>
+                          <animate attributeName="opacity" values=".4;.05;.4" dur="1.8s" repeatCount="indefinite"/>
+                        </rect>
+                      </>}
+                      <text x={n.x+n.w/2} y={n.y+15} fill={active ? C.white : C.brown} fontSize="12" textAnchor="middle" fontFamily="Fredoka">{info.emoji}</text>
+                      <text x={n.x+n.w/2} y={n.y+29} fill={active ? C.white : C.darkBrown} fontSize="9" textAnchor="middle" fontFamily="Fredoka" fontWeight={active?"700":"500"}>{info.label}</text>
+                    </g>);
+                  })}
+                </svg>
+              </div>
             </Card>
+
+            {/* Legend + Current State Info */}
+            <div style={{ maxWidth: 680, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              {/* Legend */}
+              <Card bg={C.white} style={{ padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, color: C.darkBrown }}>Map Legend</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {Object.entries(nodeColors).map(([key, val]) => (
+                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 18, height: 12, borderRadius: key === "decision" ? 2 : 6, background: val.color, border: `1.5px solid ${C.darkBrown}`, flexShrink: 0, ...(key === "decision" ? { borderStyle: "dashed" } : {}) }} />
+                      <span style={{ fontSize: 11, color: C.brown, fontWeight: 500 }}>{val.label}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                    <div style={{ width: 18, height: 12, borderRadius: 6, background: si.color, border: `2px solid ${C.darkBrown}`, flexShrink: 0, boxShadow: `0 0 6px ${si.color}66` }} />
+                    <span style={{ fontSize: 11, color: C.brown, fontWeight: 600 }}>Currently Active (glowing)</span>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Current State Detail */}
+              <Card bg={C.white} style={{ padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, color: C.darkBrown }}>Current State</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: si.color, border: `2px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{si.emoji}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{si.label}</div>
+                    <div style={{ fontSize: 11, color: C.brown }}>{si.desc}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: C.brown, lineHeight: 1.6 }}>
+                  {repo?.running ? (
+                    <span style={{ color: C.green, fontWeight: 600 }}>Orchestrator is running -- agents are active and processing.</span>
+                  ) : (
+                    <span style={{ color: C.orange, fontWeight: 600 }}>Orchestrator is paused. Hit Start to kick things off!</span>
+                  )}
+                  {stepsTotal > 0 && <div style={{ marginTop: 4 }}>Progress: {stepsDone} of {stepsTotal} steps complete ({stepsTotal > 0 ? Math.round(stepsDone/stepsTotal*100) : 0}%)</div>}
+                </div>
+              </Card>
+            </div>
           </SectionBg>
-        )}
+          );
+        })()}
 
         {/* ── BOUNTY BOARD (Issues + Features) ── */}
         {tab === "items" && (
-          <SectionBg bg={C.cream}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>📋 Bounty Board</h2>
-            <Card bg={C.yellow} style={{ maxWidth: 600, margin: "0 auto 16px" }}>
-              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, marginBottom: 8, letterSpacing: 1 }}>Post a Bounty</div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.12)" }}>Bounty Board</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Post features and issues for the swarm to wrangle</p>
+            <Card bg={C.yellow} style={{ maxWidth: 620, margin: "0 auto 20px", background: `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` }}>
+              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>Post a Bounty</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                 <select value={ni.type} onChange={e => setNI(p=>({...p,type:e.target.value}))}
-                  style={{ padding: "8px 12px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, fontSize: 13, fontFamily: "'Fredoka',sans-serif", fontWeight: 600, outline: "none" }}>
-                  <option value="feature">🌟 Feature</option><option value="issue">🐛 Issue</option>
+                  style={{ padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, fontSize: 13, fontFamily: "'Fredoka',sans-serif", fontWeight: 600, outline: "none", cursor: "pointer" }}>
+                  <option value="feature">{"\uD83C\uDF1F"} Feature</option><option value="issue">{"\uD83D\uDC1B"} Issue</option>
                 </select>
                 <select value={ni.priority} onChange={e => setNI(p=>({...p,priority:e.target.value}))}
-                  style={{ padding: "8px 12px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, fontSize: 13, fontFamily: "'Fredoka',sans-serif", fontWeight: 600, outline: "none" }}>
-                  {["low","medium","high","critical"].map(p => <option key={p} value={p}>{p}</option>)}
+                  style={{ padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, fontSize: 13, fontFamily: "'Fredoka',sans-serif", fontWeight: 600, outline: "none", cursor: "pointer" }}>
+                  {["low","medium","high","critical"].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
                 </select>
               </div>
-              <Inp placeholder="Title" value={ni.title} onChange={e => setNI(p=>({...p,title:e.target.value}))} style={{ marginBottom: 6 }} />
-              <textarea placeholder="Description..." value={ni.description} onChange={e => setNI(p=>({...p,description:e.target.value}))}
-                style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka',sans-serif", minHeight: 60, resize: "vertical", outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
-              <Btn onClick={addItem}>Post {ni.type === "issue" ? "🐛" : "🌟"} Bounty</Btn>
+              <Inp placeholder="Bounty title..." value={ni.title} onChange={e => setNI(p=>({...p,title:e.target.value}))} style={{ marginBottom: 8 }} />
+              <textarea placeholder="Describe the bounty in detail..." value={ni.description} onChange={e => setNI(p=>({...p,description:e.target.value}))}
+                style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka',sans-serif", minHeight: 70, resize: "vertical", outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
+              <Btn onClick={addItem} style={{ fontSize: 16, padding: "12px 28px" }}>Post {ni.type === "issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"} Bounty</Btn>
             </Card>
-            <div style={{ maxWidth: 600, margin: "0 auto" }}>
-              {items.length === 0 ? <Card bg={C.white} style={{ textAlign: "center", padding: 30 }}>No bounties posted yet</Card> :
-                items.map(it => (
-                  <Card key={it.id} bg={it.status==="completed" ? C.lightTeal : C.white} style={{ marginBottom: 6, padding: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 22 }}>{it.type==="issue" ? "🐛" : "🌟"}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{it.title}</div>
-                        <div style={{ fontSize: 11, color: C.brown }}>{it.description}</div>
+            <div style={{ maxWidth: 620, margin: "0 auto" }}>
+              {items.length === 0 ? (
+                <Card bg={C.white} style={{ textAlign: "center", padding: 40 }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83C\uDFDC\uFE0F"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>The board's empty, partner</div>
+                  <div style={{ fontSize: 13, color: C.brown }}>Post a bounty above to get the swarm working!</div>
+                </Card>
+              ) :
+                items.map((it, idx) => {
+                  const prioConfig = {
+                    critical: { bg: C.red, icon: "\uD83D\uDD34", label: "CRITICAL", size: 13 },
+                    high: { bg: C.orange, icon: "\uD83D\uDFE0", label: "HIGH", size: 12 },
+                    medium: { bg: C.teal, icon: "\uD83D\uDD35", label: "MEDIUM", size: 11 },
+                    low: { bg: "#A0ADB5", icon: "\u26AA", label: "LOW", size: 11 },
+                  }[it.priority] || { bg: "#ccc", icon: "", label: it.priority, size: 11 };
+                  return (
+                    <div key={it.id} className="bounty-poster" style={{
+                      background: it.status === "completed"
+                        ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)`
+                        : `linear-gradient(135deg, #FFF8E7 0%, #F5E6C8 100%)`,
+                      border: `3px solid ${C.darkBrown}`,
+                      borderRadius: 12,
+                      padding: "14px 16px",
+                      marginBottom: 10,
+                      boxShadow: "0 2px 4px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06), 3px 3px 0 #3D2B1F",
+                      position: "relative",
+                      transform: idx % 3 === 1 ? "rotate(0.3deg)" : idx % 3 === 2 ? "rotate(-0.3deg)" : "none",
+                    }}>
+                      {/* Priority ribbon */}
+                      <div style={{ position: "absolute", top: -1, right: 12, background: prioConfig.bg, color: C.white, fontFamily: "'Bangers', cursive", fontSize: prioConfig.size, fontWeight: 700, letterSpacing: 1.5, padding: "4px 12px 6px", borderRadius: "0 0 8px 8px", border: `2px solid ${C.darkBrown}`, borderTop: "none", boxShadow: "0 2px 4px rgba(0,0,0,.15)" }}>
+                        {prioConfig.icon} {prioConfig.label}
                       </div>
-                      <div style={{ background: {critical:C.red,high:C.orange,medium:C.teal,low:"#ccc"}[it.priority], border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "2px 8px", fontSize: 10, fontWeight: 700, color: C.white }}>{it.priority}</div>
-                      <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "#ccc", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "2px 8px", fontSize: 10, fontWeight: 700, color: C.white }}>{it.status}</div>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingRight: 80 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: it.type === "issue" ? "#FFE0E0" : "#FFF3CD", border: `2px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
+                          {it.type==="issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: "'Bangers', cursive", fontSize: 17, letterSpacing: 1, marginBottom: 2, lineHeight: 1.2 }}>{it.title}</div>
+                          <div style={{ fontSize: 12, color: C.brown, lineHeight: 1.4 }}>{it.description}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                        <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
+                          {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}
+                        </div>
+                      </div>
                     </div>
-                  </Card>
-                ))}
+                  );
+                })}
             </div>
           </SectionBg>
         )}
 
         {/* ── PLAN ── */}
         {tab === "plan" && (
-          <SectionBg bg={C.lightTeal}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>⚡ Build Plan</h2>
-            <div style={{ maxWidth: 600, margin: "0 auto" }}>
-              {plan.length === 0 ? <Card><div style={{ textAlign: "center", padding: 20 }}>No plan yet — add items first!</div></Card> :
+          <SectionBg bg={`linear-gradient(180deg, ${C.lightTeal} 0%, #9DE4ED 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Build Plan</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>The step-by-step blueprint your swarm is following</p>
+            <div style={{ maxWidth: 620, margin: "0 auto" }}>
+              {plan.length === 0 ? (
+                <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83D\uDDFA\uFE0F"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>No plan drawn up yet</div>
+                  <div style={{ fontSize: 13, color: C.brown }}>Add items to the Bounty Board first -- the swarm will draw up a plan!</div>
+                </Card>
+              ) :
                 plan.map((s,i) => {
                   const done = s.status==="completed";
                   return (
-                    <div key={s.id} style={{ display: "flex", gap: 10, marginBottom: 4 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: done ? C.green : C.cream, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontFamily: "'Bangers',cursive", flexShrink: 0 }}>
-                        {done ? "✓" : i+1}
+                    <div key={s.id} style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: done ? `linear-gradient(135deg, ${C.green}, #27ae60)` : C.cream, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontFamily: "'Bangers',cursive", flexShrink: 0, color: done ? C.white : C.darkBrown, boxShadow: done ? `0 2px 8px ${C.green}44` : "none" }}>
+                          {done ? "\u2713" : i+1}
+                        </div>
+                        {i < plan.length - 1 && <div style={{ width: 2, flex: 1, background: done ? C.green : `${C.darkBrown}33`, marginTop: 4 }} />}
                       </div>
-                      <Card bg={done ? C.lightTeal : C.white} style={{ flex: 1, padding: 10, marginBottom: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: done ? 400 : 600 }}>{s.description}</div>
-                        <div style={{ display: "flex", gap: 6, marginTop: 3 }}>
-                          {s.agent_type && <span style={{ fontSize: 10, background: C.lightOrange, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "1px 6px" }}>{s.agent_type}</span>}
-                          {done && <span style={{ fontSize: 10, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "1px 6px" }}>✅ {s.tests_passed}/{s.tests_written}</span>}
+                      <Card bg={done ? C.lightTeal : C.white} style={{ flex: 1, padding: 12, marginBottom: 0, background: done ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                        <div style={{ fontSize: 13, fontWeight: done ? 400 : 600, lineHeight: 1.4 }}>{s.description}</div>
+                        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                          {s.agent_type && <span style={{ fontSize: 10, background: C.lightOrange, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83E\uDD20"} {s.agent_type}</span>}
+                          {done && <span style={{ fontSize: 10, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u2705"} Tests: {s.tests_passed}/{s.tests_written}</span>}
                         </div>
                       </Card>
                     </div>
@@ -617,30 +870,36 @@ function Dashboard() {
 
         {/* ── AUDIO ── */}
         {tab === "audio" && (
-          <SectionBg bg={C.cream}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>🎙️ Voice Review — {repo?.name}</h2>
-            <Card bg={C.yellow} style={{ maxWidth: 500, margin: "0 auto 16px", textAlign: "center" }}>
-              <p style={{ fontSize: 13, color: C.brown, marginBottom: 10 }}>Record or upload. Whisper transcribes. Items auto-extracted.</p>
-              <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Voice Review</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Record or upload audio for {repo?.name || "your repo"}. Whisper transcribes, items auto-extracted.</p>
+            <Card bg={C.yellow} style={{ maxWidth: 520, margin: "0 auto 20px", textAlign: "center", padding: 20, background: `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` }}>
+              <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
                 {!recording
-                  ? <Btn bg={C.red} onClick={startRecording}>🔴 Record</Btn>
-                  : <Btn bg={C.red} onClick={stopRecording} style={{ animation: "wiggle 0.5s infinite" }}>⏹ Stop {fmt(recTime)}</Btn>}
+                  ? <Btn bg={C.red} onClick={startRecording} style={{ fontSize: 16, padding: "12px 24px" }}>{"\uD83D\uDD34"} Record</Btn>
+                  : <Btn bg={C.red} onClick={stopRecording} style={{ animation: "wiggle 0.5s infinite", fontSize: 16, padding: "12px 24px" }}>{"\u23F9"} Stop {fmt(recTime)}</Btn>}
                 <label>
-                  <Btn bg={C.teal} as="span">📁 Upload File</Btn>
+                  <Btn bg={C.teal} as="span" style={{ fontSize: 16, padding: "12px 24px" }}>{"\uD83D\uDCC1"} Upload File</Btn>
                   <input type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm" onChange={uploadAudio} style={{ display: "none" }} />
                 </label>
               </div>
             </Card>
-            <div style={{ maxWidth: 500, margin: "0 auto" }}>
-              {audio.length===0 ? <Card style={{ textAlign: "center" }}>No audio yet</Card> :
+            <div style={{ maxWidth: 520, margin: "0 auto" }}>
+              {audio.length===0 ? (
+                <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 32, marginBottom: 6 }}>{"\uD83C\uDFA4"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 4 }}>No recordings yet</div>
+                  <div style={{ fontSize: 12, color: C.brown }}>Hit Record or Upload to feed audio to the swarm.</div>
+                </Card>
+              ) :
                 audio.map(a => (
-                  <Card key={a.id} style={{ marginBottom: 4, padding: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 20 }}>🎤</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{a.filename?.split("/").pop()}</span>
-                      <span style={{ fontSize: 10, background: a.status==="processed"?C.green:a.status==="transcribed"?C.orange:"#ccc", color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "1px 6px" }}>{a.status}</span>
+                  <Card key={a.id} style={{ marginBottom: 8, padding: 12, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: a.status==="processed" ? C.green : a.status==="transcribed" ? C.orange : C.cream, border: `2px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{"\uD83C\uDFA4"}</div>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{a.filename?.split("/").pop()}</span>
+                      <span style={{ fontSize: 11, background: a.status==="processed"?C.green:a.status==="transcribed"?C.orange:"#ccc", color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 10px", fontWeight: 600 }}>{a.status}</span>
                     </div>
-                    {a.transcript && <div style={{ fontSize: 11, color: C.brown, background: C.cream, borderRadius: 8, padding: 6, marginTop: 4, maxHeight: 60, overflow: "auto" }}>{a.transcript.slice(0,300)}</div>}
+                    {a.transcript && <div style={{ fontSize: 12, color: C.brown, background: C.cream, borderRadius: 8, padding: 8, marginTop: 6, maxHeight: 80, overflow: "auto", lineHeight: 1.4, border: `1px solid ${C.darkBrown}22` }}>{a.transcript.slice(0,300)}</div>}
                   </Card>
                 ))}
             </div>
@@ -649,16 +908,23 @@ function Dashboard() {
 
         {/* ── AGENTS ── */}
         {tab === "agents" && (
-          <SectionBg bg={C.orange}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 12, letterSpacing: 2 }}>🤠 The Crew — Min 10 Agents</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8, maxWidth: 700, margin: "0 auto" }}>
-              {agents.length===0 ? <Card style={{ gridColumn: "1/-1", textAlign: "center" }}>No active agents</Card> :
+          <SectionBg bg={`linear-gradient(180deg, ${C.orange} 0%, #E8851A 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 6, letterSpacing: 3 }}>The Crew</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.cream, marginBottom: 16 }}>Your autonomous agents, saddled up and ready to ride</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 10, maxWidth: 750, margin: "0 auto" }}>
+              {agents.length===0 ? (
+                <Card style={{ gridColumn: "1/-1", textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 40, marginBottom: 8 }}>{"\uD83C\uDFDC\uFE0F"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 1, marginBottom: 4 }}>The crew's on break</div>
+                  <div style={{ fontSize: 13, color: C.brown }}>Start a repo to see them ride!</div>
+                </Card>
+              ) :
                 agents.map((a,i) => (
-                  <Card key={a.id||i} bg={C.white} style={{ padding: 10, textAlign: "center" }}>
-                    <div style={{ fontSize: 28, animation: "bounce 2s infinite", animationDelay: `${i*0.2}s` }}>🤠</div>
-                    <div style={{ fontFamily: "'Bangers',cursive", fontSize: 16, letterSpacing: 1 }}>{a.agent_type}</div>
-                    <div style={{ fontSize: 9, color: C.brown }}>{a.agent_id}</div>
-                    {a.task && <div style={{ fontSize: 10, marginTop: 3 }}>{a.task?.slice(0,40)}</div>}
+                  <Card key={a.id||i} bg={C.white} style={{ padding: 12, textAlign: "center", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                    <div style={{ fontSize: 32, animation: "bounce 2s infinite", animationDelay: `${i*0.2}s` }}>{"\uD83E\uDD20"}</div>
+                    <div style={{ fontFamily: "'Bangers',cursive", fontSize: 17, letterSpacing: 1, marginTop: 2 }}>{a.agent_type}</div>
+                    <div style={{ fontSize: 9, color: C.brown, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.agent_id}</div>
+                    {a.task && <div style={{ fontSize: 10, marginTop: 4, background: C.lightOrange, borderRadius: 6, padding: "3px 6px", border: `1px solid ${C.orange}` }}>{a.task?.slice(0,40)}</div>}
                   </Card>
                 ))}
             </div>
@@ -667,20 +933,23 @@ function Dashboard() {
 
         {/* ── MEMORY ── */}
         {tab === "memory" && (
-          <SectionBg bg={C.lightTeal}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>🧠 Agent Memory</h2>
-            <p style={{ textAlign: "center", fontSize: 12, color: C.brown, marginBottom: 12 }}>Ruflo memory — stores plans, execution results, configs. Populated as repos run through the orchestrator.</p>
-            <div style={{ textAlign: "center", marginBottom: 12 }}>
-              <Btn bg={C.teal} onClick={async () => { await f("/api/memory/seed", { method: "POST", body: JSON.stringify({ repo_id: sr }) }); load(); }} style={{ fontSize: 12, padding: "6px 14px" }}>🔄 Seed Memory from Repo State</Btn>
+          <SectionBg bg={`linear-gradient(180deg, ${C.lightTeal} 0%, #9DE4ED 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Agent Memory</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Ruflo memory -- stores plans, execution results, and configs</p>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <Btn bg={C.teal} onClick={async () => { await f("/api/memory/seed", { method: "POST", body: JSON.stringify({ repo_id: sr }) }); load(); }} style={{ fontSize: 15, padding: "10px 20px" }}>{"\uD83D\uDD04"} Seed Memory from Repo State</Btn>
             </div>
             <div style={{ maxWidth: 700, margin: "0 auto" }}>
-              {memory.length===0 ? <Card style={{ textAlign: "center", padding: 20 }}>
-                <div style={{ fontSize: 16, marginBottom: 6 }}>No memory entries yet</div>
-                <div style={{ fontSize: 12, color: C.brown }}>Start a repo to generate plans, track executions, and build Ruflo memory. You can also click "Seed Memory" above to populate from current repo state.</div>
-              </Card> :
+              {memory.length===0 ? (
+                <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83E\uDDE0"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>Memory banks are empty</div>
+                  <div style={{ fontSize: 13, color: C.brown }}>Start a repo to generate plans and build Ruflo memory. Or click "Seed Memory" above.</div>
+                </Card>
+              ) :
                 memory.map(m => (
-                  <div key={m.id} className="hover-glow" style={{ display: "flex", gap: 6, padding: "6px 10px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 3, fontSize: 12, transition: "box-shadow 0.2s" }}>
-                    <span style={{ background: C.orange, color: C.white, borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{m.namespace}</span>
+                  <div key={m.id} className="hover-glow" style={{ display: "flex", gap: 8, padding: "7px 12px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 10, marginBottom: 4, fontSize: 12, transition: "box-shadow 0.2s, transform 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+                    <span style={{ background: C.orange, color: C.white, borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{m.namespace}</span>
                     <span style={{ fontWeight: 700, minWidth: 80 }}>{m.key}</span>
                     <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.value?.slice(0,80)}</span>
                   </div>
@@ -691,19 +960,26 @@ function Dashboard() {
 
         {/* ── MISTAKES ── */}
         {tab === "mistakes" && (
-          <SectionBg bg={C.cream}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>💀 Mistake Graveyard</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 12 }}>Ruflo memory — injected into prompts so agents don't repeat mistakes</p>
-            <div style={{ maxWidth: 600, margin: "0 auto" }}>
-              {mistakes.length===0 ? <Card style={{ textAlign: "center" }}>No mistakes yet — clean run! 🎉</Card> :
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Mistake Graveyard</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Lessons learned -- injected into prompts so agents don't repeat mistakes</p>
+            <div style={{ maxWidth: 620, margin: "0 auto" }}>
+              {mistakes.length===0 ? (
+                <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83C\uDF1F"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>Clean run, partner!</div>
+                  <div style={{ fontSize: 13, color: C.brown }}>No mistakes on the books -- the swarm is riding clean.</div>
+                </Card>
+              ) :
                 mistakes.map(m => (
-                  <Card key={m.id} bg={C.white} style={{ marginBottom: 4, padding: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                      <span style={{ background: C.red, color: C.white, borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 700, border: `2px solid ${C.darkBrown}` }}>{m.error_type}</span>
-                      <span style={{ fontSize: 10, color: C.brown }}>{m.created_at}</span>
+                  <Card key={m.id} bg={C.white} style={{ marginBottom: 8, padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, #FFF5F5 100%)` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.red, border: `2px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{"\uD83D\uDC80"}</div>
+                      <span style={{ background: C.red, color: C.white, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700, border: `2px solid ${C.darkBrown}`, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>{m.error_type}</span>
+                      <span style={{ fontSize: 10, color: C.brown, marginLeft: "auto" }}>{m.created_at}</span>
                     </div>
-                    <div style={{ fontSize: 12 }}>{m.description}</div>
-                    {m.resolution && <div style={{ fontSize: 11, color: C.green, marginTop: 2, fontWeight: 600 }}>✅ {m.resolution}</div>}
+                    <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{m.description}</div>
+                    {m.resolution && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, background: "#E8F8E8", borderRadius: 8, padding: "4px 10px", border: `1px solid ${C.green}33` }}>{"\u2705"} {m.resolution}</div>}
                   </Card>
                 ))}
             </div>
@@ -712,19 +988,88 @@ function Dashboard() {
 
         {/* ── LOGS ── */}
         {tab === "logs" && (
-          <SectionBg bg={C.yellow}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 12, letterSpacing: 2 }}>📜 Town Logs</h2>
+          <SectionBg bg={`linear-gradient(180deg, ${C.yellow} 0%, #F5D94E 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Town Logs</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Every action, every decision -- all on record</p>
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
-              {logs.length===0 ? <Card style={{ textAlign: "center" }}>No logs yet</Card> :
+              {logs.length===0 ? (
+                <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 32, marginBottom: 6 }}>{"\uD83D\uDCDC"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 4 }}>No logs on the books yet</div>
+                  <div style={{ fontSize: 12, color: C.brown }}>Logs appear as the orchestrator works its magic.</div>
+                </Card>
+              ) :
                 logs.map(l => (
-                  <div key={l.id} style={{ display: "flex", gap: 6, padding: "4px 8px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, marginBottom: 2, fontSize: 11 }}>
+                  <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, marginBottom: 3, fontSize: 11, boxShadow: "0 1px 3px rgba(0,0,0,.04)", transition: "transform .15s" }}>
                     <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
                     <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
-                    <span style={{ minWidth: 80 }}>{l.action}</span>
-                    {l.agent_count>0 && <span style={{ color: C.orange, fontSize: 9 }}>🤠×{l.agent_count}</span>}
-                    {l.duration_sec>0 && <span style={{ color: C.teal, fontSize: 9 }}>{l.duration_sec.toFixed(1)}s</span>}
-                    {l.error && <span style={{ color: C.red, fontSize: 9 }}>💀{l.error.slice(0,30)}</span>}
+                    <span style={{ minWidth: 80, fontWeight: 500 }}>{l.action}</span>
+                    {l.agent_count>0 && <span style={{ color: C.orange, fontSize: 9, background: C.lightOrange, borderRadius: 4, padding: "0 4px" }}>{"\uD83E\uDD20"}{"\u00D7"}{l.agent_count}</span>}
+                    {l.duration_sec>0 && <span style={{ color: C.teal, fontSize: 9, background: C.lightTeal, borderRadius: 4, padding: "0 4px" }}>{l.duration_sec.toFixed(1)}s</span>}
+                    {l.error && <span style={{ color: C.red, fontSize: 9 }}>{"\uD83D\uDC80"}{l.error.slice(0,30)}</span>}
                     <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.result?.slice(0,50)}</span>
+                  </div>
+                ))}
+            </div>
+          </SectionBg>
+        )}
+
+        {/* ── HISTORY ── */}
+        {tab === "history" && (
+          <SectionBg bg={`linear-gradient(180deg, ${C.yellow} 0%, #F5D94E 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Repo History</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>A trail of every move your swarm has made</p>
+            <div style={{ maxWidth: 700, margin: "0 auto" }}>
+              {history.length === 0 ? (
+                <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>{"\uD83D\uDCDC"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 4 }}>No trail to follow yet</div>
+                  <div style={{ fontSize: 13, color: C.brown }}>History is recorded as the orchestrator works through steps.</div>
+                </Card>
+              ) :
+                history.map((h, i) => (
+                  <div key={i} className="timeline-entry">
+                    {/* Timeline icon */}
+                    <div style={{ position: "absolute", left: 0, top: 4 }}>
+                      <ActionIcon action={h.action} />
+                    </div>
+                    <Card className="hover-glow" style={{ padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, lineHeight: 1.2 }}>
+                            {h.action?.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                          </div>
+                          <div style={{ fontSize: 12, color: C.brown, marginTop: 3, lineHeight: 1.4 }}>{h.details}</div>
+                          {h.commit_hash && (
+                            <code style={{ display: "inline-block", fontSize: 10, background: C.lightTeal, padding: "2px 8px", borderRadius: 6, color: C.teal, fontWeight: 600, marginTop: 4, border: `1px solid ${C.teal}33` }}>
+                              {h.commit_hash.slice(0, 8)}
+                            </code>
+                          )}
+                          {h.state_before && h.state_after && (
+                            <div style={{ fontSize: 11, marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ background: STATES[h.state_before]?.color || C.brown, color: C.white, borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 600 }}>{STATES[h.state_before]?.emoji} {h.state_before}</span>
+                              <span style={{ color: C.brown, fontWeight: 700 }}>{"\u2192"}</span>
+                              <span style={{ background: STATES[h.state_after]?.color || C.brown, color: C.white, borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 600 }}>{STATES[h.state_after]?.emoji} {h.state_after}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 10, color: C.brown, fontWeight: 500 }}>{h.created_at}</div>
+                          {h.commit_hash && h.action === "git_commit" && (
+                            <Btn style={{ marginTop: 6, fontSize: 10, padding: "4px 10px", background: C.red, color: C.white }}
+                              onClick={async () => {
+                                if (!confirm(`Rollback to commit ${h.commit_hash.slice(0, 8)}? This will revert all changes after this commit.`)) return;
+                                setRollingBack(true);
+                                const res = await f("/api/rollback", { method: "POST", body: JSON.stringify({ repo_id: sr, commit_hash: h.commit_hash }) });
+                                setRollingBack(false);
+                                if (res.ok) { const d = await res.json(); alert(d.ok ? "Rollback complete!" : d.error || "Rollback failed"); }
+                              }}>
+                              {rollingBack ? "Rolling back..." : "\u23EA Rollback"}
+                            </Btn>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
                   </div>
                 ))}
             </div>
@@ -733,16 +1078,17 @@ function Dashboard() {
 
         {/* ── HEALTH CHECK ── */}
         {tab === "health" && (
-          <SectionBg bg={C.cream}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, textAlign: "center", marginBottom: 16, letterSpacing: 2 }}>🔍 Health Check</h2>
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Health Check</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>Scan your repos for issues and auto-fix what you can</p>
 
             {/* Scan + Fix buttons */}
-            <div style={{ textAlign: "center", marginBottom: 20, display: "flex", justifyContent: "center", gap: 12 }}>
-              <Btn onClick={scanAll} bg={C.teal} style={{ fontSize: 18, padding: "12px 30px" }}>
-                {scanning ? "⏳ Scanning..." : "🔍 SCAN ALL REPOS"}
+            <div style={{ textAlign: "center", marginBottom: 24, display: "flex", justifyContent: "center", gap: 14 }}>
+              <Btn onClick={scanAll} bg={C.teal} style={{ fontSize: 18, padding: "14px 32px" }}>
+                {scanning ? "\u23F3 Scanning..." : "\uD83D\uDD0D SCAN ALL REPOS"}
               </Btn>
-              <Btn onClick={fixAll} bg={C.green} style={{ fontSize: 18, padding: "12px 30px" }}>
-                {fixing ? "⏳ Fixing..." : "🔧 FIX ALL AUTO-FIXABLE"}
+              <Btn onClick={fixAll} bg={C.green} style={{ fontSize: 18, padding: "14px 32px" }}>
+                {fixing ? "\u23F3 Fixing..." : "\uD83D\uDD27 FIX ALL AUTO-FIXABLE"}
               </Btn>
             </div>
 
@@ -844,6 +1190,69 @@ function Dashboard() {
                 <Btn onClick={sendChat} bg={C.teal}>Send</Btn>
               </div>
             </Card>
+          </SectionBg>
+        )}
+
+        {/* ── SETTINGS ── */}
+        {tab === "settings" && (
+          <SectionBg bg={`linear-gradient(180deg, ${C.sand} 0%, #E8C84E 100%)`}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Ruflo Settings</h2>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>Configure your swarm's model routing and optimization</p>
+            <div style={{ maxWidth: 700, margin: "0 auto" }}>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 20 }}>
+                <Btn bg={C.orange} style={{ fontSize: 17, padding: "14px 28px" }} onClick={async () => {
+                  const res = await f("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ all: true }) });
+                  if (res.ok) { const d = await res.json(); alert(`Optimized ${d.optimized} repos!`); load(); }
+                }}>{"\uD83D\uDD04"} Re-Optimize All Repos</Btn>
+                <Btn bg={C.teal} style={{ fontSize: 17, padding: "14px 28px" }} onClick={async () => {
+                  if (!sr) return;
+                  const res = await f("/api/ruflo-optimize", { method: "POST", body: JSON.stringify({ repo_id: sr }) });
+                  if (res.ok) { const d = await res.json(); alert(`Optimized ${d.optimized} repo(s)!`); load(); }
+                }}>{"\u26A1"} Optimize Selected</Btn>
+              </div>
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, ${C.cream} 0%, #FFF3CD 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>Model Routing</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  {[
+                    { label: "Architecture", model: "Opus", icon: "\uD83C\uDFDB\uFE0F", bg: C.lightOrange },
+                    { label: "Coding", model: "Sonnet", icon: "\uD83D\uDCBB", bg: C.lightTeal },
+                    { label: "Scanning", model: "Haiku", icon: "\uD83D\uDD0D", bg: "#E8E0F0" },
+                  ].map((m, i) => (
+                    <div key={i} style={{ background: m.bg, border: `2px solid ${C.darkBrown}`, borderRadius: 10, padding: "10px 12px", textAlign: "center" }}>
+                      <div style={{ fontSize: 20, marginBottom: 2 }}>{m.icon}</div>
+                      <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1 }}>{m.model}</div>
+                      <div style={{ fontSize: 10, color: C.brown, fontWeight: 600 }}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+              {repos.map(r => {
+                const cfg = r.stats?.ruflo_config || {};
+                return (
+                  <Card key={r.id} className="hover-lift" style={{ marginBottom: 10, padding: 16, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>{r.name}</div>
+                      <span style={{ fontSize: 12, color: C.teal, background: C.lightTeal, padding: "3px 12px", borderRadius: 8, border: `2px solid ${C.teal}`, fontWeight: 600 }}>
+                        {cfg.project_type || "auto-detect"}
+                      </span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                      {[
+                        { label: "Agents", val: cfg.agents || "8", bg: C.lightOrange },
+                        { label: "Arch", val: cfg.model_arch || "opus", bg: C.lightTeal },
+                        { label: "Code", val: cfg.model_code || "sonnet", bg: C.cream },
+                        { label: "Scan", val: cfg.model_scan || "haiku", bg: "#E8E0F0" },
+                      ].map((x, i) => (
+                        <div key={i} style={{ background: x.bg, borderRadius: 8, padding: "6px 8px", textAlign: "center", border: `1.5px solid ${C.darkBrown}44` }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{x.val}</div>
+                          <div style={{ fontSize: 9, color: C.brown, fontWeight: 600 }}>{x.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
           </SectionBg>
         )}
 

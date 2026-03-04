@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 800px;
+    min-height: 1000px;
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: #e8e6f0;
+    padding: 40px;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  .header h1 {
+    font-size: 38px;
+    background: linear-gradient(90deg, #f7971e, #ffd200);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .header .subtitle {
+    font-size: 16px;
+    color: #a8a4c0;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .hub {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+    margin: 0 auto 32px;
+    max-width: 420px;
+    position: relative;
+  }
+  .hub .icon { font-size: 40px; margin-bottom: 8px; }
+  .hub h2 { font-size: 22px; color: #ffd200; margin-bottom: 4px; }
+  .hub p { font-size: 13px; color: #9a96b0; }
+
+  .arrow-down {
+    text-align: center;
+    font-size: 28px;
+    color: #ffd200;
+    margin: -8px 0 -4px;
+  }
+
+  .tools-row {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-bottom: 32px;
+  }
+
+  .tool-card {
+    flex: 1;
+    max-width: 230px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+  }
+  .tool-card .emoji { font-size: 32px; margin-bottom: 8px; }
+  .tool-card h3 { font-size: 16px; color: #fff; margin-bottom: 4px; }
+  .tool-card p { font-size: 11px; color: #8e8aaa; line-height: 1.5; }
+  .tool-card.claude { border-color: rgba(247, 151, 30, 0.4); }
+  .tool-card.codex  { border-color: rgba(0, 200, 120, 0.4); }
+  .tool-card.gemini { border-color: rgba(66, 133, 244, 0.4); }
+
+  .section {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 22px 24px;
+    margin-bottom: 24px;
+  }
+  .section h3 {
+    font-size: 16px;
+    color: #ffd200;
+    margin-bottom: 14px;
+    letter-spacing: 1px;
+  }
+
+  .feat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .feat {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .feat .dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .feat .dot.send  { background: rgba(247,151,30,0.2); }
+  .feat .dot.photo { background: rgba(66,133,244,0.2); }
+  .feat .dot.file  { background: rgba(0,200,120,0.2); }
+  .feat .dot.read  { background: rgba(200,50,200,0.2); }
+  .feat .dot.info  { background: rgba(255,210,0,0.2); }
+  .feat .text h4 { font-size: 13px; color: #fff; margin-bottom: 2px; }
+  .feat .text p  { font-size: 11px; color: #8e8aaa; line-height: 1.4; }
+
+  .code-block {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #c8c4e0;
+    margin-top: 10px;
+  }
+  .code-block .kw  { color: #ffd200; }
+  .code-block .str { color: #98c379; }
+  .code-block .cmt { color: #5c5980; }
+
+  .flow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .flow-box {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    font-size: 12px;
+    min-width: 130px;
+  }
+  .flow-box .emoji { font-size: 22px; display: block; margin-bottom: 4px; }
+  .flow-box .label { color: #fff; font-weight: 600; }
+  .flow-arrow { color: #ffd200; font-size: 22px; }
+
+  .footer {
+    text-align: center;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .footer p {
+    font-size: 12px;
+    color: #6a668a;
+  }
+  .footer .brand {
+    font-size: 14px;
+    color: #ffd200;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Telegram MCP Server</h1>
+    <div class="subtitle">Universal AI CLI Notifications</div>
+  </div>
+
+  <!-- Hub -->
+  <div class="hub">
+    <div class="icon">🤖</div>
+    <h2>telegram-mcp-server.js</h2>
+    <p>Node.js MCP server — works with any AI CLI tool</p>
+  </div>
+
+  <div class="arrow-down">▼ ▼ ▼</div>
+
+  <!-- Tools Row -->
+  <div class="tools-row">
+    <div class="tool-card claude">
+      <div class="emoji">🟠</div>
+      <h3>Claude Code</h3>
+      <p>Anthropic CLI<br>Global MCP config</p>
+    </div>
+    <div class="tool-card codex">
+      <div class="emoji">🟢</div>
+      <h3>Codex CLI</h3>
+      <p>OpenAI CLI<br>.codex/config.json</p>
+    </div>
+    <div class="tool-card gemini">
+      <div class="emoji">🔵</div>
+      <h3>Gemini CLI</h3>
+      <p>Google CLI<br>~/.gemini/settings.json</p>
+    </div>
+  </div>
+
+  <!-- Flow -->
+  <div class="section">
+    <h3>HOW IT WORKS</h3>
+    <div class="flow-row">
+      <div class="flow-box">
+        <span class="emoji">💻</span>
+        <span class="label">AI Agent</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">
+        <span class="emoji">🔌</span>
+        <span class="label">MCP Server</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">
+        <span class="emoji">📡</span>
+        <span class="label">Bot API</span>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">
+        <span class="emoji">📱</span>
+        <span class="label">Your Phone</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="section">
+    <h3>AVAILABLE TOOLS</h3>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="dot send">📨</div>
+        <div class="text">
+          <h4>telegram_send_message</h4>
+          <p>Send text with Markdown formatting and bold headers</p>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="dot photo">📸</div>
+        <div class="text">
+          <h4>telegram_send_photo</h4>
+          <p>Send screenshots, charts, or any image file</p>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="dot file">📎</div>
+        <div class="text">
+          <h4>telegram_send_document</h4>
+          <p>Send logs, configs, or any file type</p>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="dot read">📥</div>
+        <div class="text">
+          <h4>telegram_get_updates</h4>
+          <p>Read recent incoming messages from Telegram</p>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="dot info">ℹ️</div>
+        <div class="text">
+          <h4>telegram_get_chat_info</h4>
+          <p>Get chat metadata and details</p>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="dot send">🏷️</div>
+        <div class="text">
+          <h4>header parameter</h4>
+          <p>Bold prefix tag so you know which session sent it</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Setup -->
+  <div class="section">
+    <h3>QUICK SETUP</h3>
+    <div class="code-block">
+      <span class="cmt"># 1. Set environment variables</span><br>
+      <span class="kw">export</span> TELEGRAM_BOT_TOKEN=<span class="str">"your_token"</span><br>
+      <span class="kw">export</span> TELEGRAM_CHAT_ID=<span class="str">"your_chat_id"</span><br><br>
+      <span class="cmt"># 2. Add to Claude Code global MCP config</span><br>
+      <span class="cmt"># ~/.claude/settings.json → mcpServers</span><br><br>
+      <span class="cmt"># 3. Use from any session</span><br>
+      <span class="str">"Send me a Telegram message saying build complete"</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p class="brand">SWARM TOWN</p>
+    <p>Autonomous Multi-Repo Orchestrator</p>
+  </div>
+
+</body>
+</html>
