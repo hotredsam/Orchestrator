@@ -610,6 +610,12 @@ class RepoDB:
         except Exception as e:
             log.warning("Error closing DB %s: %s", self.path, e)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     def transaction(self, retries=3):
         """Context manager for atomic multi-statement operations with deadlock retry."""
         db = self
@@ -1728,6 +1734,8 @@ class Manager:
         self.master = MasterDB(MASTER_DB)
         self.orchestrators: Dict[int, RepoOrchestrator] = {}
         self.threads: Dict[int, threading.Thread] = {}
+        self._db_cache: Dict[str, RepoDB] = {}
+        self._db_cache_lock = threading.Lock()
 
     def start_repo(self, repo_id):
         if repo_id in self.threads and self.threads[repo_id].is_alive():
@@ -1775,19 +1783,31 @@ class Manager:
         # Wait for threads to finish (5s max per thread)
         for rid, t in list(self.threads.items()):
             t.join(timeout=5)
-        # Close database connections
+        # Close orchestrator database connections
         for rid, orch in list(self.orchestrators.items()):
             orch.cleanup()
         self.orchestrators.clear()
         self.threads.clear()
+        # Close cached DB connections
+        with self._db_cache_lock:
+            for db_path, db in self._db_cache.items():
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            self._db_cache.clear()
 
     def get_repo_db(self, repo_id) -> Optional[RepoDB]:
         repos = self.master.get_repos()
         repo = next((r for r in repos if r["id"] == repo_id), None)
         if not repo:
             return None
-        os.makedirs(os.path.dirname(repo["db_path"]), exist_ok=True)
-        return RepoDB(repo["db_path"])
+        db_path = repo["db_path"]
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        with self._db_cache_lock:
+            if db_path not in self._db_cache:
+                self._db_cache[db_path] = RepoDB(db_path)
+            return self._db_cache[db_path]
 
     def get_repo_state(self, repo_id) -> dict:
         db = self.get_repo_db(repo_id)
@@ -2618,7 +2638,9 @@ class API(BaseHTTPRequestHandler):
             # Enrich with state — batch counts in single query per repo
             for r in repos:
                 try:
-                    db = RepoDB(r["db_path"])
+                    db = manager.get_repo_db(r["id"])
+                    if not db:
+                        continue
                     st = db.load_state()
                     r["state"] = st.current_state.value
                     r["cycle_count"] = st.cycle_count
@@ -2880,7 +2902,7 @@ class API(BaseHTTPRequestHandler):
                 score = 100
                 issues = []
                 try:
-                    db = RepoDB(repo["db_path"]) if repo.get("db_path") and os.path.exists(repo["db_path"]) else None
+                    db = manager.get_repo_db(repo["id"])
                     if not db:
                         scores.append({"repo": repo["name"], "score": 0, "issues": ["DB not found"]})
                         continue
@@ -3241,7 +3263,9 @@ class API(BaseHTTPRequestHandler):
             comparison = []
             for r in repos:
                 try:
-                    db = RepoDB(r["db_path"])
+                    db = manager.get_repo_db(r["id"])
+                    if not db:
+                        continue
                     items_done = db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"]
                     items_total = db.fetchone("SELECT COUNT(*) c FROM items")["c"]
                     errors_row = db.fetchone("SELECT COUNT(*) c FROM mistakes")
@@ -3943,7 +3967,7 @@ def generate_daily_digest() -> str:
 
     for r in repos:
         try:
-            db = RepoDB(r["db_path"]) if r.get("db_path") and os.path.exists(r["db_path"]) else None
+            db = manager.get_repo_db(r["id"])
             if not db:
                 continue
             items = db.fetchall("SELECT * FROM items")
@@ -4068,16 +4092,30 @@ def main():
         manager.start_all()
         log.info("🚀 All repos started. Press Ctrl+C to stop.")
 
+    # Graceful shutdown handler for SIGTERM (Docker, systemd, etc.)
+    _shutdown_event = threading.Event()
+
+    def _graceful_shutdown(signum, frame):
+        sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+        log.info("Received %s, initiating graceful shutdown...", sig_name)
+        _shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, _graceful_shutdown)
+    if hasattr(signal, "SIGBREAK"):  # Windows Ctrl+Break
+        signal.signal(signal.SIGBREAK, _graceful_shutdown)
+
     try:
-        while True:
+        while not _shutdown_event.is_set():
             time.sleep(1)
     except KeyboardInterrupt:
-        log.info("\n⏹️ Shutting down...")
-        manager.stop_all()
-        # Drain SSE clients
-        with _sse_lock:
-            _sse_clients.clear()
-        log.info("Shutdown complete.")
+        pass
+
+    log.info("\n⏹️ Shutting down...")
+    manager.stop_all()
+    # Drain SSE clients
+    with _sse_lock:
+        _sse_clients.clear()
+    log.info("Shutdown complete.")
 
 
 if __name__ == "__main__":
