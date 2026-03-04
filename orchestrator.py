@@ -2420,6 +2420,8 @@ def _check_rate_limit(ip, path):
 
 _metrics = {"total": 0, "endpoints": {}, "errors": 0, "rate_limited": 0, "latencies": {}}
 _metrics_lock = threading.Lock()
+_request_log = []  # ring buffer of last N requests
+_request_log_max = 200
 
 
 def _record_metric(path, status_code=200, latency_ms=0):
@@ -2439,6 +2441,15 @@ def _record_metric(path, status_code=200, latency_ms=0):
             # Keep only last 100 measurements per endpoint
             if len(lat) > 100:
                 _metrics["latencies"][path] = lat[-100:]
+        # Append to ring buffer (skip SSE/events to avoid noise)
+        if path != "/api/events":
+            _request_log.append({
+                "path": path, "status": status_code,
+                "latency_ms": round(latency_ms, 1),
+                "ts": datetime.now(timezone.utc).isoformat(),
+            })
+            if len(_request_log) > _request_log_max:
+                del _request_log[:len(_request_log) - _request_log_max]
 
 
 # Simple in-memory response cache (TTL-based)
@@ -2522,16 +2533,26 @@ class API(BaseHTTPRequestHandler):
             self._json({"error": "Not found"}, 404)
 
     def _json(self, data, status=200):
+        import gzip as _gzip
         path = urlparse(self.path).path
         latency = (time.time() - getattr(self, "_req_start", time.time())) * 1000
         _record_metric(path, status, latency)
         req_id = getattr(self, "_req_id", secrets.token_hex(8))
-        self.send_response(status)
+        body = json.dumps(data, indent=2, default=str).encode()
+        # Compress responses > 1KB if client supports gzip
+        accept_enc = self.headers.get("Accept-Encoding", "")
+        if len(body) > 1024 and "gzip" in accept_enc:
+            body = _gzip.compress(body)
+            self.send_response(status)
+            self.send_header("Content-Encoding", "gzip")
+        else:
+            self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Request-ID", req_id)
         self._cors()
         self.end_headers()
-        self.wfile.write(json.dumps(data, indent=2, default=str).encode())
+        self.wfile.write(body)
 
     MAX_BODY_SIZE = 50 * 1024 * 1024  # 50 MB
 
@@ -3162,6 +3183,20 @@ class API(BaseHTTPRequestHandler):
                 "top_endpoints": dict(top_endpoints),
                 "latency": latency_stats,
             })
+
+        if path == "/api/request-log":
+            limit = min(int(q.get("limit", ["50"])[0]), _request_log_max)
+            status_filter = q.get("status", [None])[0]
+            with _metrics_lock:
+                entries = list(_request_log)
+            if status_filter:
+                try:
+                    sf = int(status_filter)
+                    entries = [e for e in entries if e["status"] == sf]
+                except ValueError:
+                    if status_filter == "error":
+                        entries = [e for e in entries if e["status"] >= 400]
+            return self._json({"requests": entries[-limit:], "total": len(entries)})
 
         # Daily digest — generate on demand
         if path == "/api/digest":
