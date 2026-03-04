@@ -891,6 +891,19 @@ function Dashboard() {
                 ))}
               </Card>
             )}
+            {/* Circuit Breaker Alert */}
+            {circuitBreakers.filter(cb => cb.state !== "closed").length > 0 && (
+              <Card bg="#FFEBEE" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.red}` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1, marginBottom: 6, color: C.red }}>{"\u26A1"} {circuitBreakers.filter(cb => cb.state !== "closed").length} Circuit Breaker{circuitBreakers.filter(cb => cb.state !== "closed").length > 1 ? "s" : ""} Tripped</div>
+                {circuitBreakers.filter(cb => cb.state !== "closed").map((cb, i) => (
+                  <div key={i} style={{ fontSize: 11, padding: "2px 0", display: "flex", gap: 8 }}>
+                    <span style={{ fontWeight: 600, color: cb.state === "open" ? C.red : C.orange, minWidth: 80 }}>{cb.repo_name}</span>
+                    <span>{cb.state.toUpperCase()} ({cb.failures}/{cb.threshold})</span>
+                    {cb.last_failure_ago && <span style={{ color: C.brown, fontSize: 10 }}>{cb.last_failure_ago}s ago</span>}
+                  </div>
+                ))}
+              </Card>
+            )}
             {/* Recent Activity Feed */}
             {logs.length > 0 && (
               <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto", padding: 14 }}>

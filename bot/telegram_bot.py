@@ -873,6 +873,30 @@ def cmd_circuit_breakers():
     return "\n".join(lines)
 
 
+def cmd_cost_history():
+    """Show daily cost totals for the last 7 days."""
+    data = _orch_get("/api/costs/history?days=7")
+    if not isinstance(data, dict):
+        return "Could not fetch cost history."
+    history = data.get("history", [])
+    if not history:
+        return "No cost history data yet. Costs are persisted daily at digest time."
+    # Aggregate by date
+    by_date = {}
+    for r in history:
+        d = r.get("date", "?")
+        by_date[d] = by_date.get(d, 0) + r.get("cost", 0)
+    lines = ["\U0001F4C8 *Cost History (7 days)*", ""]
+    for d in sorted(by_date.keys()):
+        cost = by_date[d]
+        bar_len = min(int(cost / max(max(by_date.values()), 0.001) * 15), 15)
+        bar = "\u2588" * bar_len + "\u2591" * (15 - bar_len)
+        lines.append(f"  `{d[5:]}` `{bar}` ${cost:.3f}")
+    total = sum(by_date.values())
+    lines.append(f"\n*Total:* ${total:.3f}")
+    return "\n".join(lines)
+
+
 def cmd_snapshot(name):
     """Get a snapshot summary of a specific repo's data."""
     rid = _resolve_repo(name)
@@ -996,6 +1020,7 @@ def cmd_help():
 `stale` — Show items stuck in_progress for 2+ hours
 `breakers` — Circuit breaker states across repos
 `snapshot [repo]` — Quick data snapshot with pending items
+`cost-history` — Daily cost totals for last 7 days
 `app` — Open Mini App
 `help` — This message
 
@@ -1195,6 +1220,8 @@ def handle_message(msg):
         reply = cmd_stale()
     elif t in ("breakers", "circuit-breakers", "circuit"):
         reply = cmd_circuit_breakers()
+    elif t in ("cost-history", "cost history", "costs history"):
+        reply = cmd_cost_history()
     elif t.startswith("snapshot "):
         reply = cmd_snapshot(t[9:].strip())
     elif t.startswith("tags"):
