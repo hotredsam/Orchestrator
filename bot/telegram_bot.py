@@ -196,15 +196,29 @@ def take_screenshot(url=None, output_path=None):
 
 # ─── Orchestrator API Helpers ────────────────────────────────────────────────
 
+_cached_token = ""
+_cached_token_ts = 0
+_TOKEN_TTL = 300  # 5 minutes
+
+
 def _fetch_api_token():
-    """Fetch the Bearer token from the orchestrator's /api/token endpoint."""
+    """Fetch the Bearer token from the orchestrator's /api/token endpoint.
+
+    Cached for 5 minutes to avoid hitting the endpoint on every API call.
+    """
+    global _cached_token, _cached_token_ts
+    now = time.time()
+    if _cached_token and (now - _cached_token_ts) < _TOKEN_TTL:
+        return _cached_token
     try:
         resp = urlopen(f"{ORCH_URL}/api/token", timeout=5)
         data = json.loads(resp.read())
-        return data.get("token", "")
+        _cached_token = data.get("token", "")
+        _cached_token_ts = now
+        return _cached_token
     except Exception as e:
         log.error("Failed to fetch API token: %s", e)
-        return ""
+        return _cached_token or ""
 
 
 def _orch_get(path):

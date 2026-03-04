@@ -1317,6 +1317,14 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
     def stop(self):
         self.stop_event.set()
 
+    def cleanup(self):
+        """Close the per-repo database connection."""
+        if hasattr(self, "db") and self.db:
+            try:
+                self.db.conn.close()
+            except Exception:
+                pass
+
 
 # ─── Orchestrator Manager ────────────────────────────────────────────────────
 
@@ -1359,6 +1367,14 @@ class Manager:
     def stop_all(self):
         for rid in list(self.orchestrators):
             self.stop_repo(rid)
+        # Wait for threads to finish (5s max per thread)
+        for rid, t in list(self.threads.items()):
+            t.join(timeout=5)
+        # Close database connections
+        for rid, orch in list(self.orchestrators.items()):
+            orch.cleanup()
+        self.orchestrators.clear()
+        self.threads.clear()
 
     def get_repo_db(self, repo_id) -> Optional[RepoDB]:
         repos = self.master.get_repos()
@@ -2610,6 +2626,10 @@ def main():
     except KeyboardInterrupt:
         log.info("\n⏹️ Shutting down...")
         manager.stop_all()
+        # Drain SSE clients
+        with _sse_lock:
+            _sse_clients.clear()
+        log.info("Shutdown complete.")
 
 
 if __name__ == "__main__":

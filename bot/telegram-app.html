@@ -553,7 +553,13 @@
   <div id="app">
     <!-- Header -->
     <div class="header">
-      <h1>🌵 Swarm Town</h1>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h1>🌵 Swarm Town</h1>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span id="costBadge" style="display:none; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; background:rgba(46,204,113,0.15); color:var(--green); border:2px solid var(--green);"></span>
+          <button onclick="toggleDarkMode()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px;" id="darkToggle">🌙</button>
+        </div>
+      </div>
       <div class="header-subtitle" id="headerSubtitle">Multi-Repo Orchestrator</div>
     </div>
 
@@ -663,6 +669,7 @@
           <div class="stat-card"><div class="stat-emoji">💀</div><div class="stat-number" id="statMistakes">-</div><div class="stat-label">Mistakes</div></div>
           <div class="stat-card"><div class="stat-emoji">🧠</div><div class="stat-number" id="statMemory">-</div><div class="stat-label">Memory Entries</div></div>
           <div class="stat-card"><div class="stat-emoji">📂</div><div class="stat-number" id="statRepos">-</div><div class="stat-label">Repos</div></div>
+          <div class="stat-card"><div class="stat-emoji">💰</div><div class="stat-number" id="statCost">-</div><div class="stat-label">Total Cost</div></div>
         </div>
         <h2 class="section-title" style="margin-top:16px;">Per-Repo Breakdown</h2>
         <div id="statsBreakdown"></div>
@@ -735,6 +742,23 @@
       fetch(API_BASE + '/api/token').then(r=>r.json()).then(d=>{if(d.token)__apiToken=d.token;}).catch(()=>{});
     }
 
+    // ─── Dark Mode Toggle ──────────────────────────────────────────────────────
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      document.getElementById('darkToggle').textContent = isDark ? '☀️' : '🌙';
+      try { localStorage.setItem('swarm-dark', isDark ? '1' : '0'); } catch(e) {}
+    }
+
+    // Restore saved preference
+    try {
+      const saved = localStorage.getItem('swarm-dark');
+      if (saved === '1' && !document.body.classList.contains('dark')) {
+        document.body.classList.add('dark');
+        document.getElementById('darkToggle').textContent = '☀️';
+      }
+    } catch(e) {}
+
     // ─── State ────────────────────────────────────────────────────────────────
     let repos = [];
     let currentTab = 'home';
@@ -742,6 +766,8 @@
     let addPriority = 'medium';
     let pollTimer = null;
     let chatHistory = [];
+    let totalCost = 0;
+    let sseSource = null;
 
     // ─── Tab Navigation ───────────────────────────────────────────────────────
     function switchTab(tab) {
@@ -1094,6 +1120,7 @@
       document.getElementById('statMistakes').textContent = totalMistakes;
       document.getElementById('statMemory').textContent = totalMemory;
       document.getElementById('statRepos').textContent = data.length;
+      document.getElementById('statCost').textContent = totalCost > 0 ? '$' + totalCost.toFixed(2) : '-';
       document.getElementById('statsBreakdown').innerHTML = breakdowns.join('') || '<div class="empty-state"><p>No repos yet</p></div>';
     }
 
@@ -1125,14 +1152,52 @@
       return 'var(--red)';
     }
 
-    // ─── Polling ──────────────────────────────────────────────────────────────
+    // ─── SSE Real-Time Events ──────────────────────────────────────────────────
+    function connectSSE() {
+      if (sseSource) sseSource.close();
+      const es = new EventSource(API_BASE + '/api/events');
+      sseSource = es;
+      es.addEventListener('state_change', () => {
+        if (currentTab === 'home') refreshHome();
+        if (currentTab === 'flow') loadFlowMap();
+        if (currentTab === 'stats') refreshStats();
+      });
+      es.addEventListener('log', (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.cost) {
+            totalCost += d.cost;
+            updateCostBadge();
+          }
+        } catch(e) {}
+      });
+      es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    function updateCostBadge() {
+      const badge = document.getElementById('costBadge');
+      if (totalCost > 0) {
+        badge.textContent = '$' + totalCost.toFixed(2);
+        badge.style.display = 'inline-block';
+      }
+    }
+
+    async function fetchCosts() {
+      const data = await api('/api/costs');
+      if (data && data.total) {
+        totalCost = data.total;
+        updateCostBadge();
+      }
+    }
+
+    // ─── Polling (fallback, reduced frequency with SSE) ──────────────────────
     function startPolling() {
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(() => {
         if (currentTab === 'home') refreshHome();
         if (currentTab === 'flow') loadFlowMap();
         if (currentTab === 'stats') refreshStats();
-      }, 3000);
+      }, 10000); // Reduced to 10s since SSE handles real-time
     }
 
     // ─── Init ─────────────────────────────────────────────────────────────────
@@ -1151,8 +1216,10 @@
       overlay.classList.add('hidden');
       setTimeout(() => overlay.remove(), 300);
 
-      // Start auto-refresh
+      // Connect SSE for real-time updates + start fallback polling
+      connectSSE();
       startPolling();
+      fetchCosts();
 
       // Update subtitle with repo count
       if (repos.length) {
