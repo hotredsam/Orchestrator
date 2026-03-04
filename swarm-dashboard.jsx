@@ -120,6 +120,9 @@ function Dashboard() {
   });
   const [uptime, setUptime] = useState("");
   const [browserNotifs, setBrowserNotifs] = useState(() => localStorage.getItem("swarm-notifs") === "1");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [mistakeAnalysis, setMistakeAnalysis] = useState(null);
+  const [selectedItems, setSelectedItems] = useState(new Set());
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -227,11 +230,14 @@ function Dashboard() {
       if (full || t === "home" || t === "logs") { fetches.push(f(`/api/logs?repo_id=${sr}`)); keys.push("logs"); }
       if (full || t === "agents") { fetches.push(f(`/api/agents?repo_id=${sr}`)); keys.push("agents"); }
       if (full || t === "memory") { fetches.push(f(`/api/memory?repo_id=${sr}`)); keys.push("memory"); }
-      if (full || t === "mistakes") { fetches.push(f(`/api/mistakes?repo_id=${sr}`)); keys.push("mistakes"); }
+      if (full || t === "mistakes") {
+        fetches.push(f(`/api/mistakes?repo_id=${sr}`)); keys.push("mistakes");
+        fetches.push(f(`/api/mistakes/analysis?repo_id=${sr}`)); keys.push("mistakeAnalysis");
+      }
       if (full || t === "audio") { fetches.push(f(`/api/audio?repo_id=${sr}`)); keys.push("audio"); }
       if (full || t === "history") { fetches.push(f(`/api/history?repo_id=${sr}`)); keys.push("history"); }
       const results = await Promise.all(fetches);
-      const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, memory: setMemory, mistakes: setMistakes, audio: setAudio, history: setHistory };
+      const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, memory: setMemory, mistakes: setMistakes, mistakeAnalysis: setMistakeAnalysis, audio: setAudio, history: setHistory };
       for (let i = 0; i < keys.length; i++) {
         if (results[i].ok) { const d = await results[i].json(); setters[keys[i]](d); }
       }
@@ -316,6 +322,18 @@ function Dashboard() {
     if (!sr) return;
     if (!confirm("Re-queue all completed items back to pending?")) return;
     await apiAction("/api/items/retry", { method: "POST", body: JSON.stringify({ repo_id: sr, status: "completed" }) }, "All completed items re-queued");
+  };
+  const bulkUpdateItems = async (action, value) => {
+    if (!sr || selectedItems.size === 0) return;
+    const label = action === "delete" ? "Delete" : `Set ${action.replace("change_", "")} to ${value}`;
+    if (!confirm(`${label} for ${selectedItems.size} items?`)) return;
+    await apiAction("/api/items/bulk-update", { method: "POST", body: JSON.stringify({ repo_id: sr, item_ids: [...selectedItems], action, value }) }, `${selectedItems.size} items updated`);
+    setSelectedItems(new Set());
+  };
+  const toggleSelectItem = (id) => setSelectedItems(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleSelectAll = () => {
+    const visible = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter));
+    setSelectedItems(prev => prev.size === visible.length ? new Set() : new Set(visible.map(it => it.id)));
   };
   const addRepo = async () => {
     if (!nr.name || !nr.path) return;
@@ -1139,7 +1157,7 @@ function Dashboard() {
               </div>
             )}
             {items.length > 0 && (
-              <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center" }}>
+              <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                 {["all", "pending", "in_progress", "completed"].map(f => (
                   <button key={f} onClick={() => setItemFilter(f)} style={{
                     padding: "5px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
@@ -1149,6 +1167,25 @@ function Dashboard() {
                     border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
                   }}>{f === "all" ? "All" : f === "in_progress" ? "Active" : f.charAt(0).toUpperCase() + f.slice(1)}</button>
                 ))}
+                <span style={{ fontSize: 11, color: C.brown, alignSelf: "center" }}>|</span>
+                {["all", "manual", "audio", "error_detected"].map(s => (
+                  <button key={s} onClick={() => setSourceFilter(s)} style={{
+                    padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                    fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
+                    background: sourceFilter === s ? C.teal : C.cream,
+                    color: sourceFilter === s ? C.white : C.darkBrown,
+                    border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
+                  }}>{s === "all" ? "Any Source" : s === "error_detected" ? "Error" : s.charAt(0).toUpperCase() + s.slice(1)}</button>
+                ))}
+              </div>
+            )}
+            {selectedItems.size > 0 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", background: C.yellow, borderRadius: 10, padding: "8px 12px", border: `2px solid ${C.darkBrown}` }}>
+                <span style={{ fontSize: 12, fontWeight: 700, alignSelf: "center" }}>{selectedItems.size} selected:</span>
+                <Btn bg={C.teal} onClick={() => bulkUpdateItems("change_priority", "high")} style={{ fontSize: 11, padding: "4px 10px" }}>Priority: High</Btn>
+                <Btn bg="#A0ADB5" onClick={() => bulkUpdateItems("change_status", "pending")} style={{ fontSize: 11, padding: "4px 10px" }}>Re-queue</Btn>
+                <Btn bg={C.red} onClick={() => bulkUpdateItems("delete")} style={{ fontSize: 11, padding: "4px 10px" }}>Delete</Btn>
+                <button onClick={() => setSelectedItems(new Set())} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14 }}>{"\u2716"}</button>
               </div>
             )}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
@@ -1159,7 +1196,8 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Post a bounty above to get the swarm working!</div>
                 </Card>
               ) :
-                items.filter(it => itemFilter === "all" || it.status === itemFilter).map((it, idx) => {
+                (() => { const vis = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter)); return vis.length > 0 && <div style={{ textAlign: "center", marginBottom: 6 }}><button onClick={toggleSelectAll} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>{selectedItems.size === vis.length ? "Deselect All" : `Select All (${vis.length})`}</button></div>; })()}
+                {items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter)).map((it, idx) => {
                   const prioConfig = {
                     critical: { bg: C.red, icon: "\uD83D\uDD34", label: "CRITICAL", size: 13 },
                     high: { bg: C.orange, icon: "\uD83D\uDFE0", label: "HIGH", size: 12 },
@@ -1184,6 +1222,7 @@ function Dashboard() {
                         {prioConfig.icon} {prioConfig.label}
                       </div>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingRight: 80 }}>
+                        <input type="checkbox" checked={selectedItems.has(it.id)} onChange={() => toggleSelectItem(it.id)} style={{ marginTop: 12, cursor: "pointer", accentColor: C.orange, flexShrink: 0 }} />
                         <div style={{ width: 40, height: 40, borderRadius: 10, background: it.type === "issue" ? "#FFE0E0" : "#FFF3CD", border: `2px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
                           {it.type==="issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"}
                         </div>
@@ -1364,6 +1403,44 @@ function Dashboard() {
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F0E2CA 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Mistake Graveyard</h2>
             <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>Lessons learned -- injected into prompts so agents don't repeat mistakes</p>
+            {mistakeAnalysis && mistakeAnalysis.total > 0 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+                <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: C.red }}>{mistakeAnalysis.total}</div>
+                  <div style={{ fontSize: 11, color: C.brown }}>Total Mistakes</div>
+                </Card>
+                <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: C.green }}>{mistakeAnalysis.resolution_rate}%</div>
+                  <div style={{ fontSize: 11, color: C.brown }}>Resolved</div>
+                </Card>
+                <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: C.orange }}>{mistakeAnalysis.chronic_patterns?.length || 0}</div>
+                  <div style={{ fontSize: 11, color: C.brown }}>Chronic (3+)</div>
+                </Card>
+                <Card bg={C.white} style={{ padding: 12, textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: C.teal }}>{mistakeAnalysis.top_5?.length || 0}</div>
+                  <div style={{ fontSize: 11, color: C.brown }}>Error Types</div>
+                </Card>
+              </div>
+            )}
+            {mistakeAnalysis && mistakeAnalysis.top_5?.length > 0 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 16px" }}>
+                <Card bg={C.white} style={{ padding: 14 }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 8 }}>Top Error Types</div>
+                  {mistakeAnalysis.top_5.map((t, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, minWidth: 24 }}>#{i+1}</span>
+                      <div style={{ flex: 1, background: C.cream, borderRadius: 6, height: 20, overflow: "hidden", border: `1px solid ${C.darkBrown}33` }}>
+                        <div style={{ height: "100%", background: i === 0 ? C.red : i === 1 ? C.orange : C.teal, width: `${Math.min(100, (t.count / (mistakeAnalysis.top_5[0]?.count || 1)) * 100)}%`, borderRadius: 6, display: "flex", alignItems: "center", paddingLeft: 6 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: C.white, whiteSpace: "nowrap" }}>{t.error_type}</span>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, minWidth: 24 }}>{t.count}</span>
+                    </div>
+                  ))}
+                </Card>
+              </div>
+            )}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
               {mistakes.length===0 ? (
                 <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>

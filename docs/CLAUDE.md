@@ -110,6 +110,11 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Master quick actions** — Start/Stop/Pause/Resume/Push buttons directly on master view cards
 - **Sticky tab bar** — tab navigation bar stays fixed at top when scrolling
 - **Item metadata** — bounty board shows source badge (audio/error_detected) and created date
+- **Mistake pattern analysis** — `/api/mistakes/analysis` returns error type breakdown, resolution rate, chronic patterns (3+ repeats), top 5 errors
+- **Mistake insights UI** — dashboard mistakes tab shows summary cards (total, resolution %, chronic count) + top error types bar chart
+- **Source filter** — bounty board items filterable by source (Manual/Audio/Error) alongside status filter. API supports `?source=` param
+- **Bulk item operations** — `/api/items/bulk-update` for batch change_priority, change_status, or delete. Dashboard has select/deselect all + bulk action toolbar
+- **Item selection** — checkboxes on bounty board items for multi-select, with bulk priority/re-queue/delete actions
 
 ## Commands
 ```bash
@@ -151,7 +156,7 @@ POST /api/resume                   — Resume repo {repo_id}
 POST /api/push                     — Git push {repo_id, message}
 
 # Items
-GET  /api/items?repo_id=N&limit=200&offset=0&status=pending — Issues + features (paginated, filterable)
+GET  /api/items?repo_id=N&limit=200&offset=0&status=pending&source=audio — Issues + features (paginated, filterable by status + source)
 POST /api/items                    — Add {repo_id, type, title, description, priority}
 POST /api/items/bulk               — Add multiple {repo_id, items: [...]}
 POST /api/items/update             — Update {repo_id, item_id, status, priority, ...}
@@ -159,6 +164,7 @@ POST /api/items/delete             — Delete {repo_id, item_id}
 POST /api/items/clear              — Clear items {repo_id, status?} (optional status filter)
 POST /api/items/dedupe             — Remove duplicate pending items {repo_id}
 POST /api/items/retry              — Re-queue items to pending {repo_id, item_id?} or {repo_id, status}
+POST /api/items/bulk-update        — Batch update {repo_id, item_ids[], action, value}
 
 # Data
 GET  /api/plan?repo_id=N           — Plan steps
@@ -166,6 +172,7 @@ GET  /api/logs?repo_id=N&limit=200&offset=0 — Execution log (paginated)
 GET  /api/agents?repo_id=N         — Active agents
 GET  /api/memory?repo_id=N&q=term  — Memory (with search)
 GET  /api/mistakes?repo_id=N       — Mistake memory
+GET  /api/mistakes/analysis?repo_id=N — Error type breakdown, resolution rate, chronic patterns
 GET  /api/audio?repo_id=N          — Audio reviews
 POST /api/audio                    — Upload {repo_id, filename, audio_data(b64)}
 GET  /api/history?repo_id=N        — Combined DB + git history

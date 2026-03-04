@@ -2536,16 +2536,21 @@ class API(BaseHTTPRequestHandler):
         limit = min(int(q.get("limit", [200])[0]), 1000)
         offset = max(int(q.get("offset", [0])[0]), 0)
         status_filter = q.get("status", [None])[0]
+        source_filter = q.get("source", [None])[0]
 
         if path == "/api/items" and rid:
             db = manager.get_repo_db(rid)
             if not db: return self._json([])
+            where_parts, params = [], []
             if status_filter:
-                return self._json(db.fetchall(
-                    "SELECT * FROM items WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                    (status_filter, limit, offset)))
+                where_parts.append("status=?"); params.append(status_filter)
+            if source_filter:
+                where_parts.append("source=?"); params.append(source_filter)
+            where_clause = " WHERE " + " AND ".join(where_parts) if where_parts else ""
+            params.extend([limit, offset])
             return self._json(db.fetchall(
-                "SELECT * FROM items ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)))
+                f"SELECT * FROM items{where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                tuple(params)))
 
         if path == "/api/plan" and rid:
             db = manager.get_repo_db(rid)
@@ -2627,6 +2632,30 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/mistakes" and rid:
             db = manager.get_repo_db(rid)
             return self._json(db.get_mistakes(50) if db else [])
+
+        if path == "/api/mistakes/analysis" and rid:
+            db = manager.get_repo_db(rid)
+            if not db:
+                return self._json({"error_types": [], "total": 0, "resolution_rate": 0})
+            all_m = db.fetchall("SELECT error_type, resolution, created_at FROM mistakes ORDER BY created_at DESC")
+            # Count by error type
+            type_counts = {}
+            resolved = 0
+            for m in all_m:
+                et = m.get("error_type", "unknown")
+                type_counts[et] = type_counts.get(et, 0) + 1
+                if m.get("resolution"):
+                    resolved += 1
+            sorted_types = sorted(type_counts.items(), key=lambda x: -x[1])
+            chronic = [{"error_type": et, "count": c} for et, c in sorted_types if c >= 3]
+            return self._json({
+                "error_types": [{"error_type": et, "count": c} for et, c in sorted_types],
+                "total": len(all_m),
+                "resolved": resolved,
+                "resolution_rate": round(resolved / len(all_m) * 100, 1) if all_m else 0,
+                "chronic_patterns": chronic,
+                "top_5": [{"error_type": et, "count": c} for et, c in sorted_types[:5]],
+            })
 
         if path == "/api/audio" and rid:
             db = manager.get_repo_db(rid)
@@ -2949,6 +2978,31 @@ class API(BaseHTTPRequestHandler):
                 db.ex("UPDATE items SET status='pending' WHERE status=?", (status,))
             db.commit()
             return self._json({"ok": True})
+
+        if path == "/api/items/bulk-update":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            item_ids = b.get("item_ids", [])
+            action = b.get("action", "")
+            value = b.get("value", "")
+            if not item_ids or not action:
+                return self._json({"error": "item_ids and action required"}, 400)
+            updated = 0
+            placeholders = ",".join("?" for _ in item_ids)
+            if action == "change_status" and value in ("pending", "in_progress", "completed"):
+                db.ex(f"UPDATE items SET status=? WHERE id IN ({placeholders})", [value] + list(item_ids))
+                updated = len(item_ids)
+            elif action == "change_priority" and value in ("low", "medium", "high", "critical"):
+                db.ex(f"UPDATE items SET priority=? WHERE id IN ({placeholders})", [value] + list(item_ids))
+                updated = len(item_ids)
+            elif action == "delete":
+                db.ex(f"DELETE FROM items WHERE id IN ({placeholders})", list(item_ids))
+                updated = len(item_ids)
+            else:
+                return self._json({"error": f"Invalid action '{action}' or value '{value}'"}, 400)
+            db.commit()
+            return self._json({"ok": True, "updated": updated})
 
         if path == "/api/audio":
             rid = b.get("repo_id")
