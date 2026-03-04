@@ -151,6 +151,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Tag filter** — master view has tag filter chips auto-populated from all repos' tags
 - **Tags API** — `/api/repos/tags` POST to set repo tags, auto-migration adds column to existing DBs
 - **Command palette** — Ctrl+K opens command palette for quick navigation, actions, search. Chip suggestions for common commands
+- **Toast history** — notification bell in header shows past 50 toasts with timestamps, color-coded by type, clearable
+- **Notification badge** — bell icon shows unread count badge
 - **Stale item detection** — `/api/stale-items?hours=2` finds items stuck in_progress across all repos, warning banner on Town Square
 - **Execution timeline** — `/api/timeline?repo_id=N` returns state transition history for debugging
 

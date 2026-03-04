@@ -142,9 +142,12 @@ function Dashboard() {
   const sseRef = useRef(null);
 
   // Toast notification system
+  const [toastHistory, setToastHistory] = useState([]);
+  const [showToastHistory, setShowToastHistory] = useState(false);
   const showToast = useCallback((message, type = "info") => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev.slice(-4), { id, message, type }]);
+    setToastHistory(prev => [...prev.slice(-49), { id, message, type, time: new Date().toLocaleTimeString() }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
@@ -716,6 +719,10 @@ function Dashboard() {
               ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}
             </div>
           )}
+          <button onClick={() => setShowToastHistory(prev => !prev)} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1, position: "relative" }} title="Notification history">
+            {"\uD83D\uDD14"}
+            {toastHistory.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: C.red, color: C.white, borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{Math.min(toastHistory.length, 99)}</span>}
+          </button>
           <button onClick={toggleDark} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1 }} title="Toggle dark mode">
             {darkMode ? "\uD83C\uDF19" : "\u2600\uFE0F"}
           </button>
@@ -724,6 +731,25 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Toast History Dropdown */}
+      {showToastHistory && (
+        <div style={{ position: "fixed", top: 60, right: 16, width: 340, maxHeight: 400, overflowY: "auto", zIndex: 200, background: dark ? "#2D2D2D" : C.white, border: `3px solid ${C.darkBrown}`, borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1 }}>Notifications</span>
+            <button onClick={() => { setToastHistory([]); setShowToastHistory(false); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.brown, textDecoration: "underline" }}>Clear All</button>
+          </div>
+          {toastHistory.length === 0 ? (
+            <div style={{ textAlign: "center", fontSize: 12, color: C.brown, padding: 20 }}>No notifications yet.</div>
+          ) : [...toastHistory].reverse().map((t, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 8px", borderBottom: `1px solid ${C.darkBrown}11`, fontSize: 11 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: t.type === "error" ? C.red : t.type === "warning" ? C.orange : t.type === "success" ? C.green : C.teal }} />
+              <span style={{ flex: 1, color: dark ? "#E0E0E0" : C.darkBrown }}>{t.message}</span>
+              <span style={{ fontSize: 9, color: C.brown, minWidth: 55 }}>{t.time}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ═══ NAV TABS ═══ */}
       <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: `3px solid ${C.darkBrown}`, gap: 0, position: "sticky", top: 0, zIndex: 100 }}>
