@@ -113,6 +113,7 @@ function Dashboard() {
   const [logSearch, setLogSearch] = useState("");
   const [memSearch, setMemSearch] = useState("");
   const [toasts, setToasts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -197,8 +198,8 @@ function Dashboard() {
       const r = await f("/api/repos");
       if (r.ok) { const d = await r.json(); setRepos(d); if (!sr && d.length) setSR(d[0].id); }
       setCon(true);
-    } catch(err) { console.warn("Server connection lost:", err.message); setCon(false); }
-    if (!sr) return;
+    } catch(err) { console.warn("Server connection lost:", err.message); setCon(false); setLoading(false); return; }
+    if (!sr) { setLoading(false); return; }
     try {
       const [a,b,c,d,e,g,h,hi] = await Promise.all([
         f(`/api/items?repo_id=${sr}`), f(`/api/plan?repo_id=${sr}`),
@@ -215,6 +216,7 @@ function Dashboard() {
       try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
       try { const br = await f("/api/budget"); if(br.ok) { const bd = await br.json(); setBudgetLimit(bd.budget_limit || 0); } } catch {}
     } catch(err) { console.warn("Data fetch error:", err.message); }
+    setLoading(false);
   }, [sr]);
 
   useEffect(() => { load(); const i = setInterval(load, 3000); return () => clearInterval(i); }, [load]);
@@ -282,6 +284,20 @@ function Dashboard() {
   const resumeRepo = async id => { await apiAction("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo resumed"); };
   const deleteRepo = async id => { if(confirm("Remove this repo from Swarm Town? (files on disk are kept)")) { await apiAction("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo removed"); } };
   const pushGH = async () => { if(sr) await apiAction("/api/push", { method: "POST", body: JSON.stringify({ repo_id: sr, message: "manual push" }) }, "Push sent"); };
+
+  const exportLogs = () => {
+    const repoName = repo?.name || "repo";
+    const data = logs.map(l => ({
+      time: l.created_at, state: l.state, action: l.action,
+      result: l.result, error: l.error, cost: l.cost_usd, duration: l.duration_sec,
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `swarm-logs-${repoName}-${new Date().toISOString().slice(0,10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast(`Exported ${logs.length} log entries`, "success");
+  };
 
   const scanAll = async () => {
     setScanning(true);
@@ -596,6 +612,17 @@ function Dashboard() {
 
       {/* ═══ CONTENT ═══ */}
       <div style={{ maxHeight: `calc(100vh - ${connected ? 150 : 192}px)`, overflow: "auto" }}>
+
+        {/* Loading skeleton */}
+        {loading && repos.length === 0 && (
+          <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F5E6C8 100%)`}>
+            <div style={{ textAlign: "center", padding: 60 }}>
+              <div style={{ fontSize: 48, marginBottom: 12, animation: "wiggle 2s infinite" }}>{"\uD83C\uDFDC\uFE0F"}</div>
+              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, letterSpacing: 2, marginBottom: 8 }}>Loading Swarm Town...</div>
+              <div style={{ fontSize: 13, color: C.brown }}>Connecting to the orchestrator on port 6969</div>
+            </div>
+          </SectionBg>
+        )}
 
         {/* ── HOME / TOWN SQUARE ── */}
         {tab === "home" && (<>
@@ -1260,10 +1287,14 @@ function Dashboard() {
               </div>
               <span style={{ fontSize: 11, color: C.brown }}>{logs.length} entries</span>
             </div>
-            <div style={{ maxWidth: 800, margin: "0 auto 10px", display: "flex", justifyContent: "center" }}>
+            <div style={{ maxWidth: 800, margin: "0 auto 10px", display: "flex", justifyContent: "center", gap: 8, alignItems: "center" }}>
               <Inp placeholder="Search logs..." value={logSearch} onChange={e => setLogSearch(e.target.value)}
                 style={{ maxWidth: 400, fontSize: 12, padding: "8px 14px" }} />
+              <Btn onClick={exportLogs} bg={C.teal} style={{ fontSize: 11, padding: "8px 14px" }}>{"\u2B07"} Export</Btn>
             </div>
+            {logSearch && (() => { const ct = logs.filter(l => [l.state,l.action,l.result,l.error].join(" ").toLowerCase().includes(logSearch.toLowerCase())).length; return (
+              <div style={{ textAlign: "center", fontSize: 11, color: C.brown, marginBottom: 6 }}>Showing {ct} of {logs.length} entries</div>
+            ); })()}
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               {logs.length===0 ? (
                 <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
@@ -1359,10 +1390,10 @@ function Dashboard() {
 
             {/* Scan + Fix buttons */}
             <div style={{ textAlign: "center", marginBottom: 24, display: "flex", justifyContent: "center", gap: 14 }}>
-              <Btn onClick={scanAll} bg={C.teal} style={{ fontSize: 18, padding: "14px 32px" }}>
+              <Btn onClick={scanAll} bg={scanning ? "#999" : C.teal} style={{ fontSize: 18, padding: "14px 32px", opacity: scanning ? 0.7 : 1, pointerEvents: scanning ? "none" : "auto" }}>
                 {scanning ? "\u23F3 Scanning..." : "\uD83D\uDD0D SCAN ALL REPOS"}
               </Btn>
-              <Btn onClick={fixAll} bg={C.green} style={{ fontSize: 18, padding: "14px 32px" }}>
+              <Btn onClick={fixAll} bg={fixing ? "#999" : C.green} style={{ fontSize: 18, padding: "14px 32px", opacity: fixing ? 0.7 : 1, pointerEvents: fixing ? "none" : "auto" }}>
                 {fixing ? "\u23F3 Fixing..." : "\uD83D\uDD27 FIX ALL AUTO-FIXABLE"}
               </Btn>
             </div>

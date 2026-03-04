@@ -89,6 +89,10 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Safe int parsing** — all repo_id parameters validated with safe int conversion, returns 400 on bad input
 - **Path sanitization** — repo import rejects paths outside home directory
 - **Field length limits** — item titles capped at 200 chars, descriptions at 5000 chars
+- **Loading skeleton** — dashboard shows loading state on initial connect before data arrives
+- **Disabled async buttons** — scan/fix buttons disable during operation to prevent double-click
+- **Log export** — download logs as JSON from the logs tab
+- **Filtered count** — logs tab shows "Showing X of Y" when search filter is active
 
 ## Commands
 ```bash
