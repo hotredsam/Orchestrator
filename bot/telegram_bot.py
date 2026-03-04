@@ -289,15 +289,36 @@ def _find_repo(name):
 
 # ─── Command Handlers ────────────────────────────────────────────────────────
 
+def _progress_bar(done, total, width=10):
+    """Generate a Unicode progress bar."""
+    if total <= 0:
+        return "░" * width
+    filled = int((done / total) * width)
+    return "█" * filled + "░" * (width - filled)
+
+
 def cmd_status():
-    """Return status of all repos."""
+    """Return status of all repos with progress bars."""
     repos = _orch_get("/api/repos")
     if isinstance(repos, dict) and "error" in repos:
         return f"Error: {repos['error']}"
     if not repos:
         return "No repos registered."
 
-    lines = ["*Swarm Town Status*\n"]
+    # Get uptime from /api/status
+    status_data = _orch_get("/api/status")
+    uptime = ""
+    if isinstance(status_data, dict):
+        uptime = status_data.get("uptime", "")
+
+    running_count = sum(1 for r in repos if r.get("running"))
+    paused_count = sum(1 for r in repos if r.get("paused"))
+
+    lines = [f"*Swarm Town Status* ({len(repos)} repos)"]
+    if uptime:
+        lines.append(f"Uptime: {uptime} | Running: {running_count} | Paused: {paused_count}")
+    lines.append("")
+
     for r in repos:
         state = r.get("state", "idle")
         stats = r.get("stats", {})
@@ -307,16 +328,38 @@ def cmd_status():
         steps_total = stats.get("steps_total", 0)
         agents = r.get("active_agents", 0)
         cycles = r.get("cycle_count", 0)
+        paused = r.get("paused", False)
 
         status_emoji = {
             "idle": "💤", "execute_step": "⚡", "test_step": "🧪",
             "do_refactor": "🔧", "credits_exhausted": "💳", "error": "💀",
+            "update_plan": "📐", "scan_repo": "🔍", "final_optimize": "🚀",
         }.get(state, "🔄")
 
-        lines.append(f"{status_emoji} *{r['name']}* [{state}]")
-        lines.append(f"  Items: {items_done}/{items_total} | Steps: {steps_done}/{steps_total}")
+        state_label = state.replace("_", " ")
+        if paused:
+            state_label = "PAUSED"
+            status_emoji = "⏸️"
+
+        lines.append(f"{status_emoji} *{r['name']}* `{state_label}`")
+
+        # Items progress bar
+        items_bar = _progress_bar(items_done, items_total)
+        items_pct = f"{int(items_done/items_total*100)}%" if items_total > 0 else "0%"
+        lines.append(f"  Items: {items_bar} {items_done}/{items_total} ({items_pct})")
+
+        # Steps progress bar
+        steps_bar = _progress_bar(steps_done, steps_total)
+        steps_pct = f"{int(steps_done/steps_total*100)}%" if steps_total > 0 else "0%"
+        lines.append(f"  Steps: {steps_bar} {steps_done}/{steps_total} ({steps_pct})")
+
+        extra = []
         if agents:
-            lines.append(f"  Agents: {agents} | Cycles: {cycles}")
+            extra.append(f"{agents} agents")
+        if cycles:
+            extra.append(f"{cycles} cycles")
+        if extra:
+            lines.append(f"  {' | '.join(extra)}")
         lines.append("")
 
     return "\n".join(lines)

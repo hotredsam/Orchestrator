@@ -487,6 +487,36 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Toast notifications */
+    #toastContainer {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .toast {
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.7s forwards;
+      max-width: 280px;
+      text-align: center;
+    }
+    .toast-info { background: var(--teal); }
+    .toast-success { background: var(--green); }
+    .toast-warning { background: var(--orange); }
+    .toast-error { background: var(--red); }
+    @keyframes toastIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes toastOut { from { opacity:1; } to { opacity:0; transform:translateY(-10px); } }
+
     /* Loading overlay */
     .loading-overlay {
       position: fixed;
@@ -542,6 +572,8 @@
   </style>
 </head>
 <body>
+  <!-- Toast notifications -->
+  <div id="toastContainer"></div>
   <!-- Loading overlay -->
   <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-cactus">🌵</div>
@@ -692,7 +724,18 @@
         </div>
       </div>
 
-      <!-- Screen 8: Logs -->
+      <!-- Screen 8: Plan -->
+      <div class="screen" id="screen-plan">
+        <h2 class="section-title">Plan Steps</h2>
+        <div class="btn-row mb-12">
+          <select class="input" id="planRepoSelect" onchange="loadPlan()" style="flex:1;"></select>
+        </div>
+        <div id="planList">
+          <div class="empty-state"><div class="empty-emoji">📐</div><p>Select a repo to view plan</p></div>
+        </div>
+      </div>
+
+      <!-- Screen 9: Logs -->
       <div class="screen" id="screen-logs">
         <h2 class="section-title">Execution Logs</h2>
         <div class="btn-row mb-12">
@@ -719,6 +762,9 @@
       </button>
       <button class="tab-btn" data-tab="flow" onclick="switchTab('flow')">
         <span>🗺️</span><span class="tab-label">Flow</span>
+      </button>
+      <button class="tab-btn" data-tab="plan" onclick="switchTab('plan')">
+        <span>📐</span><span class="tab-label">Plan</span>
       </button>
       <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">
         <span>📜</span><span class="tab-label">Logs</span>
@@ -826,6 +872,7 @@
       if (tab === 'add') populateRepoDropdowns();
       if (tab === 'items') { populateRepoDropdowns(); loadItems(); }
       if (tab === 'flow') { populateRepoDropdowns(); loadFlowMap(); }
+      if (tab === 'plan') { populateRepoDropdowns(); loadPlan(); }
       if (tab === 'logs') { populateRepoDropdowns(); loadLogs(); }
       if (tab === 'stats') refreshStats();
       if (tab === 'chat') loadChatHistory();
@@ -993,7 +1040,7 @@
     }
 
     function populateRepoDropdowns() {
-      const selects = ['addRepoSelect', 'flowRepoSelect', 'itemsRepoSelect', 'logsRepoSelect'];
+      const selects = ['addRepoSelect', 'flowRepoSelect', 'itemsRepoSelect', 'planRepoSelect', 'logsRepoSelect'];
       selects.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1050,7 +1097,53 @@
       loadItems();
     }
 
-    // ─── Screen 8: Logs ─────────────────────────────────────────────────────
+    // ─── Screen 8: Plan Steps ─────────────────────────────────────────────────
+    async function loadPlan() {
+      const repoId = document.getElementById('planRepoSelect')?.value;
+      const el = document.getElementById('planList');
+      if (!repoId || !repos.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-emoji">📐</div><p>No repo selected</p></div>';
+        return;
+      }
+
+      const data = await api('/api/plan?repo_id=' + repoId);
+      if (!data || !data.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-emoji">📐</div><p>No plan steps yet</p></div>';
+        return;
+      }
+
+      const completed = data.filter(s => s.status === 'completed').length;
+      const pct = Math.round((completed / data.length) * 100);
+
+      el.innerHTML = `
+        <div style="margin-bottom:12px;">
+          <div class="flex-between" style="font-size:13px;margin-bottom:4px;">
+            <span>${completed}/${data.length} steps done</span>
+            <span style="font-weight:600;">${pct}%</span>
+          </div>
+          <div style="background:var(--input-bg);border-radius:8px;height:8px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:var(--green);border-radius:8px;transition:width .3s;"></div>
+          </div>
+        </div>
+        ${data.map((step, i) => {
+          const done = step.status === 'completed';
+          const icon = done ? '✅' : '⏳';
+          const agentBadge = step.agent_type ? `<span style="font-size:10px;padding:1px 6px;border-radius:6px;background:var(--teal);color:#fff;">${step.agent_type}</span>` : '';
+          return `
+            <div style="padding:8px 0;border-bottom:1px solid var(--shadow);display:flex;gap:8px;align-items:flex-start;${done ? 'opacity:0.6;' : ''}">
+              <span style="font-size:14px;min-width:24px;text-align:center;">${icon}</span>
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:500;">${esc(step.description || '')}</div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">
+                  Step ${i + 1} ${agentBadge}
+                  ${step.tests_written ? ` | ${step.tests_passed}/${step.tests_written} tests` : ''}
+                </div>
+              </div>
+            </div>`;
+        }).join('')}`;
+    }
+
+    // ─── Screen 9: Logs ─────────────────────────────────────────────────────
     async function loadLogs() {
       const repoId = document.getElementById('logsRepoSelect')?.value;
       const el = document.getElementById('logsList');
@@ -1294,15 +1387,32 @@
       return 'var(--red)';
     }
 
+    // ─── Toast Notifications ────────────────────────────────────────────────────
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast toast-' + type;
+      toast.textContent = message;
+      container.appendChild(toast);
+      haptic(type === 'error' ? 'heavy' : type === 'warning' ? 'medium' : 'light');
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 3000);
+    }
+
     // ─── SSE Real-Time Events ──────────────────────────────────────────────────
     function connectSSE() {
       if (sseSource) sseSource.close();
       const es = new EventSource(API_BASE + '/api/events');
       sseSource = es;
-      es.addEventListener('state_change', () => {
+      es.addEventListener('state_change', (e) => {
         if (currentTab === 'home') refreshHome();
         if (currentTab === 'flow') loadFlowMap();
         if (currentTab === 'stats') refreshStats();
+        try {
+          const d = JSON.parse(e.data);
+          if (d.repo_name && d.new_state) {
+            showToast(`${d.repo_name}: ${formatState(d.new_state)}`, 'info');
+          }
+        } catch(e) {}
       });
       es.addEventListener('log', (e) => {
         try {
@@ -1311,6 +1421,19 @@
             totalCost += d.cost;
             updateCostBadge();
           }
+        } catch(e) {}
+      });
+      es.addEventListener('watchdog', (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          showToast(`Watchdog restarted ${d.repo_name}`, 'warning');
+          if (currentTab === 'home') refreshHome();
+        } catch(e) {}
+      });
+      es.addEventListener('error_event', (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          showToast(`Error: ${d.repo_name || ''} ${d.message || ''}`.trim(), 'error');
         } catch(e) {}
       });
       es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
