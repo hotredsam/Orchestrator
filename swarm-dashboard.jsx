@@ -225,6 +225,7 @@ function Dashboard() {
   const [editingItem, setEditingItem] = useState(null); // { id, title, priority }
   const [planSearch, setPlanSearch] = useState("");
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
+  const [expandedLog, setExpandedLog] = useState(null); // log id
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -1421,6 +1422,8 @@ function Dashboard() {
                           {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); return ago < 60 ? "active just now" : ago < 3600 ? `active ${Math.floor(ago/60)}m ago` : ago < 86400 ? `active ${Math.floor(ago/3600)}h ago` : `active ${Math.floor(ago/86400)}d ago`; })()}
                         </div>}
                       </div>
+                      {/* Item progress ring */}
+                      {(s.items_total || 0) > 0 && <ProgressRing done={s.items_done || 0} total={s.items_total} size={28} strokeWidth={3} color={(s.items_done || 0) === s.items_total ? C.green : C.teal} />}
                       {/* Circular health badge */}
                       {hd && <HealthBadge score={hd.health_score} />}
                     </div>
@@ -2759,15 +2762,31 @@ function Dashboard() {
                 </Card>
               ) :
                 visibleLogs.map((l, i) => (
-                  <div key={l.id} style={{ display: "flex", gap: 8, padding: "5px 10px", background: i === 0 ? "#FFFDE7" : C.white, border: `2px solid ${i === 0 ? C.orange : C.darkBrown}`, borderRadius: 8, marginBottom: 3, fontSize: 11, boxShadow: i === 0 ? `0 0 8px ${C.orange}44` : "0 1px 3px rgba(0,0,0,.04)", transition: "transform .15s, background .3s, border-color .3s" }}>
-                    <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
-                    <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
-                    <span style={{ minWidth: 80, fontWeight: 500 }}>{l.action}</span>
-                    {l.agent_count>0 && <span style={{ color: C.orange, fontSize: 9, background: C.lightOrange, borderRadius: 4, padding: "0 4px" }}>{"\uD83E\uDD20"}{"\u00D7"}{l.agent_count}</span>}
-                    {l.cost_usd > 0 && <span style={{ color: "#2E7D32", fontSize: 9, background: "#E8F5E9", borderRadius: 4, padding: "0 4px" }}>${l.cost_usd.toFixed(3)}</span>}
-                    {l.duration_sec>0 && <span style={{ color: C.teal, fontSize: 9, background: C.lightTeal, borderRadius: 4, padding: "0 4px" }}>{l.duration_sec.toFixed(1)}s</span>}
-                    {l.error && <span style={{ color: C.red, fontSize: 9 }}>{"\uD83D\uDC80"}{l.error.slice(0,30)}</span>}
-                    <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.result?.slice(0,50)}</span>
+                  <div key={l.id}>
+                    <div onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)} style={{ display: "flex", gap: 8, padding: "5px 10px", background: i === 0 ? "#FFFDE7" : expandedLog === l.id ? `${C.lightTeal}66` : C.white, border: `2px solid ${i === 0 ? C.orange : expandedLog === l.id ? C.teal : C.darkBrown}`, borderRadius: expandedLog === l.id ? "8px 8px 0 0" : 8, marginBottom: expandedLog === l.id ? 0 : 3, fontSize: 11, boxShadow: i === 0 ? `0 0 8px ${C.orange}44` : "0 1px 3px rgba(0,0,0,.04)", cursor: "pointer", transition: "background .15s" }}>
+                      <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
+                      <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
+                      <span style={{ minWidth: 80, fontWeight: 500 }}>{l.action}</span>
+                      {l.agent_count>0 && <span style={{ color: C.orange, fontSize: 9, background: C.lightOrange, borderRadius: 4, padding: "0 4px" }}>{"\uD83E\uDD20"}{"\u00D7"}{l.agent_count}</span>}
+                      {l.cost_usd > 0 && <span style={{ color: "#2E7D32", fontSize: 9, background: "#E8F5E9", borderRadius: 4, padding: "0 4px" }}>${l.cost_usd.toFixed(3)}</span>}
+                      {l.duration_sec>0 && <span style={{ color: C.teal, fontSize: 9, background: C.lightTeal, borderRadius: 4, padding: "0 4px" }}>{l.duration_sec.toFixed(1)}s</span>}
+                      {l.error && <span style={{ color: C.red, fontSize: 9 }}>{"\uD83D\uDC80"}{l.error.slice(0,30)}</span>}
+                      <span style={{ color: C.brown, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.result?.slice(0,50)}</span>
+                    </div>
+                    {expandedLog === l.id && (
+                      <div style={{ background: C.cream, border: `2px solid ${C.teal}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "8px 12px", marginBottom: 3, fontSize: 11 }}>
+                        {l.result && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.teal }}>Result:</span> <span style={{ color: C.darkBrown }}>{l.result}</span></div>}
+                        {l.error && <div style={{ marginBottom: 4 }}><span style={{ fontWeight: 700, color: C.red }}>Error:</span> <span style={{ color: C.red }}>{l.error}</span></div>}
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", color: C.brown, fontSize: 10 }}>
+                          {l.model && <span>Model: {l.model}</span>}
+                          {l.tokens_in > 0 && <span>Tokens in: {l.tokens_in}</span>}
+                          {l.tokens_out > 0 && <span>Tokens out: {l.tokens_out}</span>}
+                          {l.agent_count > 0 && <span>Agents: {l.agent_count}</span>}
+                          {l.cost_usd > 0 && <span>Cost: ${l.cost_usd.toFixed(4)}</span>}
+                          {l.duration_sec > 0 && <span>Duration: {l.duration_sec.toFixed(2)}s</span>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               {filteredLogs.length > logPageSize && (
