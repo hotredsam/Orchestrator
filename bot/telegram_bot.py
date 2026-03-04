@@ -823,6 +823,27 @@ def cmd_search(query):
     return "\n".join(lines)
 
 
+def cmd_circuit_breakers():
+    """Show circuit breaker states across all repos."""
+    data = _orch_get("/api/circuit-breakers")
+    if not isinstance(data, dict):
+        return "Could not fetch circuit breaker states."
+    cbs = data.get("circuit_breakers", [])
+    if not cbs:
+        return "No circuit breaker data available."
+    open_cbs = [cb for cb in cbs if cb["state"] != "closed"]
+    if not open_cbs:
+        return "\u2705 All circuit breakers closed — everything healthy!"
+    lines = [f"*\u26A1 {len(open_cbs)} Circuit Breaker(s) Tripped*", ""]
+    for cb in open_cbs:
+        state = cb["state"].upper()
+        emoji = "\U0001F534" if cb["state"] == "open" else "\U0001F7E1"
+        lines.append(f"  {emoji} *{cb['repo_name']}*: {state} ({cb['failures']}/{cb['threshold']} failures)")
+        if cb.get("last_failure_ago"):
+            lines.append(f"     Last failure: {cb['last_failure_ago']}s ago")
+    return "\n".join(lines)
+
+
 def cmd_stale():
     """Show items stuck in_progress for 2+ hours."""
     data = _orch_get("/api/stale-items?hours=2")
@@ -916,6 +937,7 @@ def cmd_help():
 `search [query]` — Search items/logs/mistakes across all repos
 `tags` / `tags repo` / `tags repo: tag1,tag2` — View/set tags
 `stale` — Show items stuck in_progress for 2+ hours
+`breakers` — Circuit breaker states across repos
 `app` — Open Mini App
 `help` — This message
 
@@ -1113,6 +1135,8 @@ def handle_message(msg):
         reply = cmd_search(t[7:].strip())
     elif t in ("stale", "stuck"):
         reply = cmd_stale()
+    elif t in ("breakers", "circuit-breakers", "circuit"):
+        reply = cmd_circuit_breakers()
     elif t.startswith("tags"):
         reply = cmd_tags(t[4:].strip())
     elif t in ("app", "dashboard", "open"):
