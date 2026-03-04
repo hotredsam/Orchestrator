@@ -134,11 +134,22 @@ BRIDGE_INSTRUCTION = os.path.join(BRIDGE_DIR, "current_instruction.md")
 os.makedirs(BRIDGE_DIR, exist_ok=True)
 
 
+BRIDGE_MAX_LINES = int(os.environ.get("BRIDGE_MAX_LINES", "200"))
+
 def bridge_write_inbox(text: str, source: str = "telegram"):
     """Append a message to inbox.jsonl and write current_instruction.md."""
     entry = {"text": text, "source": source, "ts": datetime.now(timezone.utc).isoformat()}
     with open(BRIDGE_INBOX, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+    # Trim inbox if it exceeds max lines
+    try:
+        with open(BRIDGE_INBOX, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) > BRIDGE_MAX_LINES:
+            with open(BRIDGE_INBOX, "w", encoding="utf-8") as f:
+                f.writelines(lines[-BRIDGE_MAX_LINES:])
+    except Exception:
+        pass
     with open(BRIDGE_INSTRUCTION, "w", encoding="utf-8") as f:
         f.write(text)
 
@@ -2347,7 +2358,12 @@ class API(BaseHTTPRequestHandler):
 
     def _body(self):
         n = int(self.headers.get("Content-Length", 0))
-        return json.loads(self.rfile.read(n)) if n else {}
+        if not n:
+            return {}
+        try:
+            return json.loads(self.rfile.read(n))
+        except (json.JSONDecodeError, ValueError):
+            return {}
 
     def do_OPTIONS(self):
         self.send_response(204); self._cors(); self.end_headers()
@@ -2763,7 +2779,9 @@ class API(BaseHTTPRequestHandler):
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
-            db.add_item(b.get("type","feature"), b.get("title",""), b.get("description",""),
+            title = (b.get("title") or "").strip()
+            if not title: return self._json({"error": "title required"}, 400)
+            db.add_item(b.get("type","feature"), title, b.get("description",""),
                         b.get("priority","medium"), b.get("source","manual"))
             return self._json({"ok": True}, 201)
 
@@ -2772,13 +2790,19 @@ class API(BaseHTTPRequestHandler):
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             items = b.get("items", [])
-            added = 0
+            if not isinstance(items, list):
+                return self._json({"error": "items must be a list"}, 400)
+            added, skipped = 0, 0
             for item in items:
-                db.add_item(item.get("type","feature"), item.get("title",""),
+                title = (item.get("title") or "").strip()
+                if not title:
+                    skipped += 1
+                    continue
+                db.add_item(item.get("type","feature"), title,
                             item.get("description",""), item.get("priority","medium"),
                             item.get("source","manual"))
                 added += 1
-            return self._json({"ok": True, "added": added}, 201)
+            return self._json({"ok": True, "added": added, "skipped": skipped}, 201)
 
         if path == "/api/items/update":
             rid = b.get("repo_id")
@@ -2845,9 +2869,13 @@ class API(BaseHTTPRequestHandler):
             fname = b.get("filename", f"review_{int(time.time())}.webm")
             data = b.get("audio_data", "")
             if data:
+                try:
+                    decoded = base64.b64decode(data)
+                except Exception:
+                    return self._json({"error": "Invalid base64 audio data"}, 400)
                 fpath = os.path.join(AUDIO_DIR, fname)
                 with open(fpath, "wb") as fp:
-                    fp.write(base64.b64decode(data))
+                    fp.write(decoded)
                 db.add_audio(fpath)
             return self._json({"ok": True, "filename": fname}, 201)
 
@@ -3082,7 +3110,10 @@ class API(BaseHTTPRequestHandler):
             global BUDGET_LIMIT
             limit = b.get("limit")
             if limit is not None:
-                BUDGET_LIMIT = float(limit)
+                try:
+                    BUDGET_LIMIT = max(0.0, float(limit))
+                except (ValueError, TypeError):
+                    return self._json({"error": "limit must be a number"}, 400)
             return self._json({"ok": True, "budget_limit": BUDGET_LIMIT,
                                "total_cost": sum(get_costs().values()),
                                "costs": get_costs()})
@@ -3187,7 +3218,7 @@ def generate_daily_digest() -> str:
 def digest_scheduler():
     """Background thread that sends daily digest at 9 AM."""
     last_digest_day = None
-    digest_hour = int(os.environ.get("DIGEST_HOUR", "9"))
+    digest_hour = max(0, min(23, int(os.environ.get("DIGEST_HOUR", "9"))))
     while True:
         now = datetime.now()
         if now.hour == digest_hour and now.date() != last_digest_day:

@@ -82,6 +82,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Budget limits** — configurable cost budget via `AGENT_BUDGET_LIMIT` env var or API. Auto-pauses repos when exceeded
 - **Budget UI** — dashboard Settings has budget limit input with real-time enforcement
 - **Master view cost** — repo cards in master view show per-repo cost alongside items/steps/cycles
+- **Input validation** — title required on item add/bulk, budget limit validated as non-negative number, base64 audio validated
+- **Bridge inbox trim** — inbox.jsonl auto-trimmed to BRIDGE_MAX_LINES (default 200) to prevent unbounded growth
+- **Digest hour clamp** — DIGEST_HOUR env var clamped to 0-23 range
 
 ## Commands
 ```bash
