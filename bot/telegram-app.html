@@ -1597,6 +1597,8 @@
     async function refreshStats() {
       const data = await api('/api/repos');
       if (!data) return;
+      const costsData = await api('/api/costs', undefined, { silent: true });
+      const repoCosts = costsData && costsData.repos ? costsData.repos : {};
 
       let totalItems = 0, totalAgents = 0, totalCycles = 0, totalMistakes = 0, totalMemory = 0;
       const breakdowns = [];
@@ -1608,12 +1610,14 @@
         totalCycles += r.cycle_count || 0;
         totalMistakes += s.mistakes || 0;
         totalMemory += s.memory || 0;
+        const rCost = repoCosts[r.name] || s.cost || 0;
 
         breakdowns.push(`
           <div class="card">
             <div class="card-title">${esc(r.name)}</div>
             <div class="card-row"><span class="card-label">Items</span><span class="card-value">${s.items_done || 0}/${s.items_total || 0}</span></div>
             <div class="card-row"><span class="card-label">Steps</span><span class="card-value">${s.steps_done || 0}/${s.steps_total || 0}</span></div>
+            <div class="card-row"><span class="card-label">Cost</span><span class="card-value" style="color:var(--red);font-weight:700;">$${(typeof rCost === 'number' ? rCost : 0).toFixed(4)}</span></div>
             <div class="card-row"><span class="card-label">Agents</span><span class="card-value">${s.agents || 0}</span></div>
             <div class="card-row"><span class="card-label">Mistakes</span><span class="card-value">${s.mistakes || 0}</span></div>
             <div class="card-row"><span class="card-label">Memory</span><span class="card-value">${s.memory || 0}</span></div>

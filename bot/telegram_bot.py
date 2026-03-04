@@ -1502,6 +1502,16 @@ def handle_callback_query(cbq):
     # Acknowledge the callback to remove the loading spinner
     _api("answerCallbackQuery", {"callback_query_id": cbq_id})
 
+    # Handle confirm_remove callbacks
+    if data.startswith("confirm_remove:"):
+        repo_name = data[len("confirm_remove:"):]
+        reply = cmd_remove_repo(repo_name)
+        send_message(reply, chat_id=chat_id)
+        return
+    if data == "cancel_remove":
+        send_message("Removal cancelled.", chat_id=chat_id)
+        return
+
     # Dispatch to command handlers
     cmd_map = {
         "cmd_status": cmd_status,
@@ -1627,7 +1637,22 @@ def handle_message(msg):
     elif t.startswith("add repo "):
         reply = cmd_add_repo(text[9:])  # use original case
     elif t.startswith("remove "):
-        reply = cmd_remove_repo(t[7:])
+        repo_name = t[7:].strip()
+        repo = _find_repo(repo_name)
+        if not repo:
+            reply = f"Repo '{repo_name}' not found."
+        else:
+            send_message(
+                f"\u26A0\uFE0F *Remove {repo['name']}?*\nThis will unregister it from Swarm Town. Files on disk are kept.",
+                chat_id=chat_id,
+                reply_markup={
+                    "inline_keyboard": [[
+                        {"text": "\u274C Confirm Remove", "callback_data": f"confirm_remove:{repo['name']}"},
+                        {"text": "\u21A9\uFE0F Cancel", "callback_data": "cancel_remove"},
+                    ]]
+                },
+            )
+            reply = None
     elif t == "digest":
         reply = cmd_digest()
     elif t == "costs":
@@ -1717,6 +1742,9 @@ def handle_message(msg):
                     {"text": "\U0001F4CA Status", "callback_data": "cmd_status"},
                     {"text": "\U0001F4B0 Costs", "callback_data": "cmd_costs"},
                     {"text": "\U0001F3C6 Leaderboard", "callback_data": "cmd_leaderboard"},
+                ], [
+                    {"text": "\U0001F4C8 Forecast", "callback_data": "cmd_forecast"},
+                    {"text": "\U0001F4CB Summary", "callback_data": "cmd_summary"},
                 ]],
             },
         )
