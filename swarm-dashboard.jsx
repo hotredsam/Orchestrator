@@ -471,6 +471,7 @@ function Dashboard() {
       if (e.key === "Escape") { setShowHelp(false); setSelectedItems(new Set()); setConfirmDialog(null); }
       if (e.key === "?") setShowHelp(prev => !prev);
       if (e.key === "f" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
+      if (e.key === "n" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTab("items"); setTimeout(() => { const el = document.querySelector("input[placeholder*='Bounty title']"); if (el) el.focus(); }, 100); }
       if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
       if (e.key === "[") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci > 0) setTab(TABS_LIST[ci - 1]); }
       if (e.key === "]") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci < TABS_LIST.length - 1) setTab(TABS_LIST[ci + 1]); }
@@ -2355,6 +2356,7 @@ function Dashboard() {
                     {done}/{plan.length} steps done
                     {totalCost > 0 && <> {"\u00B7"} ${totalCost.toFixed(2)} total cost</>}
                     {totalDur > 0 && <> {"\u00B7"} {Math.round(totalDur/60)}m total time</>}
+                    {(() => { const tp = plan.reduce((a, s) => a + (s.tests_passed || 0), 0); const tw = plan.reduce((a, s) => a + (s.tests_written || 0), 0); return tw > 0 ? <> {"\u00B7"} {tp}/{tw} tests passed</> : null; })()}
                     {etaMins > 0 && <div style={{ fontSize: 11, marginTop: 2 }}>{"\u23F3"} ~{etaMins}m ETA (${(remaining * avgCost).toFixed(2)} est.)</div>}
                   </div>
                 </div>
@@ -2917,13 +2919,15 @@ function Dashboard() {
                           <div style={{ fontSize: 10, color: C.brown, fontWeight: 500 }}>{h.created_at}</div>
                           {h.commit_hash && h.action === "git_commit" && (
                             <Btn style={{ marginTop: 6, fontSize: 10, padding: "4px 10px", background: C.red, color: C.white }}
-                              onClick={async () => {
-                                if (!confirm(`Rollback to commit ${h.commit_hash.slice(0, 8)}? This will revert all changes after this commit.`)) return;
-                                setRollingBack(true);
-                                const res = await f("/api/rollback", { method: "POST", body: JSON.stringify({ repo_id: sr, commit_hash: h.commit_hash }) });
-                                setRollingBack(false);
-                                if (res.ok) { const d = await res.json(); showToast(d.ok ? "Rollback complete!" : d.error || "Rollback failed", d.ok ? "success" : "error"); load(); }
-                                else showToast("Rollback request failed", "error");
+                              onClick={() => {
+                                const hash = h.commit_hash;
+                                setConfirmDialog({ message: `Rollback to commit ${hash.slice(0, 8)}? This will revert all changes after this commit.`, onConfirm: async () => {
+                                  setRollingBack(true);
+                                  const res = await f("/api/rollback", { method: "POST", body: JSON.stringify({ repo_id: sr, commit_hash: hash }) });
+                                  setRollingBack(false);
+                                  if (res.ok) { const d = await res.json(); showToast(d.ok ? "Rollback complete!" : d.error || "Rollback failed", d.ok ? "success" : "error"); load(); }
+                                  else showToast("Rollback request failed", "error");
+                                }});
                               }}>
                               {rollingBack ? "Rolling back..." : "\u23EA Rollback"}
                             </Btn>
@@ -3935,6 +3939,7 @@ function Dashboard() {
                 ["D", "Toggle dark mode"],
                 ["/", "Focus command center"],
                 ["Ctrl+K", "Command palette"],
+                ["N", "New bounty (focus item title)"],
                 ["F", "Focus search/filter input"],
                 ["C", "Clear all filters"],
                 ["[ / ]", "Previous / Next tab"],
