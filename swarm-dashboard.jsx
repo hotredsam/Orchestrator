@@ -3406,6 +3406,22 @@ function Dashboard() {
                     </div>
                   </Card>
                 )}
+                {/* 7-Day Cost Projection */}
+                {costHistory.length >= 3 && (() => {
+                  const recent = costHistory.slice(-7);
+                  const avgDaily = recent.reduce((s, d) => s + (d.cost || 0), 0) / recent.length;
+                  const projected7 = (avgDaily * 7).toFixed(2);
+                  const projected30 = (avgDaily * 30).toFixed(2);
+                  return (
+                    <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, background: `linear-gradient(135deg, ${C.white}, #E3F2FD)` }}>
+                      <div style={{ display: "flex", justifyContent: "space-around", textAlign: "center" }}>
+                        <div><div style={{ fontSize: 10, color: C.brown, fontWeight: 600 }}>Avg/Day</div><div style={{ fontFamily: "'Bangers', cursive", fontSize: 20 }}>${avgDaily.toFixed(3)}</div></div>
+                        <div><div style={{ fontSize: 10, color: C.brown, fontWeight: 600 }}>7-Day Forecast</div><div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, color: C.teal }}>${projected7}</div></div>
+                        <div><div style={{ fontSize: 10, color: C.brown, fontWeight: 600 }}>30-Day Forecast</div><div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, color: C.orange }}>${projected30}</div></div>
+                      </div>
+                    </Card>
+                  );
+                })()}
                 {trends.daily?.length > 0 && (
                   <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 16px", padding: 14 }}>
                     <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 10 }}>Daily Breakdown</div>

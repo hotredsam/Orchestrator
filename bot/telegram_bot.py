@@ -1555,6 +1555,28 @@ def cmd_queue():
     return "\n".join(lines)
 
 
+def cmd_fastest():
+    """Show fastest completed steps across all repos."""
+    repos = _get("/api/repos") or []
+    all_steps = []
+    for r in repos:
+        plan = _get(f"/api/plan?repo_id={r['id']}") or []
+        for s in plan:
+            if s.get("status") == "completed" and s.get("duration_sec", 0) > 0:
+                s["_repo"] = r["name"]
+                all_steps.append(s)
+    if not all_steps:
+        return "No completed steps with timing data yet."
+    all_steps.sort(key=lambda x: x.get("duration_sec", 9999))
+    lines = [f"\u26A1 *Fastest Steps* (top 10 of {len(all_steps)}):\n"]
+    for s in all_steps[:10]:
+        dur = s.get("duration_sec", 0)
+        cost = s.get("cost_usd", 0)
+        desc = (s.get("description") or "")[:45]
+        lines.append(f"  \U0001F3C3 *{s['_repo']}*: {dur:.0f}s ${cost:.3f} — {desc}")
+    return "\n".join(lines)
+
+
 def cmd_pin(name: str = ""):
     """Pin a repo as default context for commands."""
     global _pinned_repo
@@ -1658,6 +1680,7 @@ def cmd_help():
 `changelog [repo]` — Recent git commits
 `timeline [repo]` — Execution state transition timeline
 `queue` — Top priority pending items across all repos
+`fastest` — Fastest completed steps across all repos
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -1938,6 +1961,8 @@ def handle_message(msg):
         reply = cmd_search(t[7:].strip())
     elif t in ("active", "running", "live"):
         reply = cmd_active()
+    elif t in ("fastest", "speed", "quickest"):
+        reply = cmd_fastest()
     elif t in ("stale", "stuck"):
         reply = cmd_stale()
     elif t in ("breakers", "circuit-breakers", "circuit"):

@@ -673,11 +673,13 @@
         </div>
         <div class="input-group">
           <label class="input-label">Title</label>
-          <input type="text" class="input" id="addTitle" placeholder="Short descriptive title..." onkeydown="if(event.key==='Enter'){event.preventDefault();submitItem();}">
+          <input type="text" class="input" id="addTitle" placeholder="Short descriptive title..." maxlength="80" oninput="document.getElementById('titleCount').textContent=this.value.length+'/80'" onkeydown="if(event.key==='Enter'){event.preventDefault();submitItem();}">
+          <div style="text-align:right;font-size:9px;color:var(--text-secondary);margin-top:2px;"><span id="titleCount">0/80</span></div>
         </div>
         <div class="input-group">
           <label class="input-label">Description</label>
-          <textarea id="addDesc" placeholder="Detailed description..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitItem();}"></textarea>
+          <textarea id="addDesc" placeholder="Detailed description..." maxlength="500" oninput="document.getElementById('descCount').textContent=this.value.length+'/500'" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitItem();}"></textarea>
+          <div style="text-align:right;font-size:9px;color:var(--text-secondary);margin-top:2px;"><span id="descCount">0/500</span></div>
         </div>
         <div class="input-group">
           <label class="input-label">Priority</label>
