@@ -101,9 +101,11 @@ function Dashboard() {
   const [history, setHistory] = useState([]);
   const [rollingBack, setRollingBack] = useState(false);
   const [selOptItems, setSelOptItems] = useState([]);
+  const [costs, setCosts] = useState({});
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
+  const sseRef = useRef(null);
 
   // Fetch API token on mount (if not already set by Telegram Mini App embed)
   useEffect(() => {
@@ -118,6 +120,31 @@ function Dashboard() {
         })
         .catch(() => {});
     }
+  }, []);
+
+  // SSE — real-time event stream for instant updates
+  useEffect(() => {
+    const connect = () => {
+      if (sseRef.current) sseRef.current.close();
+      const es = new EventSource(`${API}/api/events`);
+      sseRef.current = es;
+      es.addEventListener("state_change", (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.cost) setCosts(prev => ({ ...prev, [d.repo_id]: d.cost }));
+          load(); // Refresh data on state change
+        } catch {}
+      });
+      es.addEventListener("log", (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.cost) setCosts(prev => ({ ...prev, [d.repo_id]: (prev[d.repo_id] || 0) + d.cost }));
+        } catch {}
+      });
+      es.onerror = () => { es.close(); setTimeout(connect, 5000); };
+    };
+    connect();
+    return () => { if (sseRef.current) sseRef.current.close(); };
   }, []);
 
   const load = useCallback(async () => {
@@ -394,6 +421,11 @@ function Dashboard() {
             style={{ padding: "5px 10px", background: C.yellow, border: `3px solid ${C.darkBrown}`, borderRadius: 12, fontSize: 13, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 180 }}>
             {repos.map(r => <option key={r.id} value={r.id}>{r.name} [{r.state || "idle"}]</option>)}
           </select>}
+          {Object.keys(costs).length > 0 && (
+            <div style={{ background: "#E8F5E9", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#2E7D32" }}>
+              ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}
+            </div>
+          )}
           <div style={{ background: connected ? C.green : C.red, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: C.white, animation: connected ? "none" : "pulse 1s infinite" }}>
             {connected ? "● LIVE" : "● OFFLINE"}
           </div>
@@ -498,12 +530,13 @@ function Dashboard() {
                     </div>
 
                     {/* Stats grid */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
                       {[
                         { l: "Items", v: `${s.items_done||0}/${s.items_total||0}`, bg: C.lightOrange },
                         { l: "Steps", v: `${s.steps_done||0}/${s.steps_total||0}`, bg: C.lightTeal },
                         { l: "Agents", v: s.agents||0, bg: C.yellow },
                         { l: "Cycles", v: r.cycle_count||0, bg: C.cream },
+                        { l: "Cost", v: `$${(costs[r.id]||0).toFixed(2)}`, bg: "#E8F5E9" },
                       ].map((x,i) => (
                         <div key={i} style={{ background: x.bg, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 6px", textAlign: "center" }}>
                           <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, lineHeight: 1 }}>{x.v}</div>

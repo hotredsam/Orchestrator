@@ -16,7 +16,7 @@ SWARM ORCHESTRATOR v3 — Full Autonomous Multi-Repo
 • Ralph loop for persistent autonomous execution
 """
 
-import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging, hmac, secrets
+import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging, hmac, secrets, queue
 import logging.handlers
 import threading, shutil, base64, signal, traceback
 from datetime import datetime, timezone
@@ -72,7 +72,7 @@ _wl = os.environ.get("TELEGRAM_WHITELIST", "")
 TELEGRAM_WHITELIST = {int(x.strip()) for x in _wl.split(",") if x.strip().isdigit()} if _wl else set()
 
 # Paths exempt from bearer token auth (static assets + token endpoint)
-AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token"}
+AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token", "/api/events"}
 
 
 def validate_telegram_init_data(init_data: str) -> dict:
@@ -164,6 +164,61 @@ def bridge_write_outbox(text: str, source: str = "claude"):
     entry = {"text": text, "source": source, "ts": datetime.now(timezone.utc).isoformat()}
     with open(BRIDGE_OUTBOX, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+# ─── SSE Event Bus ────────────────────────────────────────────────────────────
+
+_sse_clients: list = []
+_sse_lock = threading.Lock()
+
+
+def sse_broadcast(event_type: str, data: dict):
+    """Push an event to all connected SSE clients."""
+    payload = json.dumps({"type": event_type, **data, "ts": datetime.now(timezone.utc).isoformat()}, default=str)
+    msg = f"event: {event_type}\ndata: {payload}\n\n"
+    with _sse_lock:
+        dead = []
+        for q in _sse_clients:
+            try:
+                q.put_nowait(msg)
+            except queue.Full:
+                dead.append(q)
+        for q in dead:
+            _sse_clients.remove(q)
+
+
+def sse_register() -> queue.Queue:
+    """Register a new SSE client and return its queue."""
+    q = queue.Queue(maxsize=100)
+    with _sse_lock:
+        _sse_clients.append(q)
+    return q
+
+
+def sse_unregister(q: queue.Queue):
+    """Remove an SSE client."""
+    with _sse_lock:
+        if q in _sse_clients:
+            _sse_clients.remove(q)
+
+
+# ─── Cost Tracking ────────────────────────────────────────────────────────────
+
+_cost_totals: Dict[int, float] = {}
+_cost_lock = threading.Lock()
+
+
+def track_cost(repo_id: int, cost: float):
+    """Accumulate cost for a repo."""
+    if cost and cost > 0:
+        with _cost_lock:
+            _cost_totals[repo_id] = _cost_totals.get(repo_id, 0.0) + cost
+
+
+def get_costs() -> Dict[int, float]:
+    """Get all repo cost totals."""
+    with _cost_lock:
+        return dict(_cost_totals)
 
 
 def clean_env():
@@ -706,6 +761,10 @@ class RepoOrchestrator:
 
     def log(self, action, result="", agents=0, cost=0, dur=0, error=""):
         self.db.log_exec(self.state.current_state.value, action, result, agents, cost, dur, error)
+        if cost:
+            track_cost(self.repo["id"], cost)
+            sse_broadcast("log", {"repo": self.repo["name"], "repo_id": self.repo["id"],
+                                  "action": action, "cost": cost})
 
     def _handle_credits(self, result):
         """Check if credits exhausted, pause if so."""
@@ -1174,16 +1233,24 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
     }
 
     def _telegram_notify(self, old_state, new_state):
-        """Send Telegram notification on state transition (if enabled)."""
+        """Send SSE + Telegram notification on state transition."""
+        old_val = old_state.value if hasattr(old_state, 'value') else str(old_state)
+        new_val = new_state.value if hasattr(new_state, 'value') else str(new_state)
+
+        # Always broadcast via SSE (regardless of Telegram)
+        if old_val != new_val or new_val != "idle":
+            sse_broadcast("state_change", {
+                "repo": self.repo["name"], "repo_id": self.repo["id"],
+                "from": old_val, "to": new_val,
+                "cost": get_costs().get(self.repo["id"], 0),
+            })
+
         if not TELEGRAM_ENABLED:
             return
         try:
             from telegram_bot import (notify_state_change, notify_cycle_complete,
                                        notify_credits_exhausted, notify_credits_restored,
                                        notify_error)
-            old_val = old_state.value if hasattr(old_state, 'value') else str(old_state)
-            new_val = new_state.value if hasattr(new_state, 'value') else str(new_state)
-
             # Only notify on meaningful transitions (skip idle->idle)
             if old_val == new_val == "idle":
                 return
@@ -1888,6 +1955,39 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/token":
             return self._json({"token": API_TOKEN})
 
+        # SSE — Server-Sent Events for real-time dashboard updates
+        if path == "/api/events":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self._cors()
+            self.end_headers()
+            client_q = sse_register()
+            try:
+                # Send initial heartbeat
+                self.wfile.write(b"event: connected\ndata: {}\n\n")
+                self.wfile.flush()
+                while True:
+                    try:
+                        msg = client_q.get(timeout=15)
+                        self.wfile.write(msg.encode())
+                        self.wfile.flush()
+                    except queue.Empty:
+                        # Send keepalive
+                        self.wfile.write(b": keepalive\n\n")
+                        self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                sse_unregister(client_q)
+            return
+
+        # Cost tracking — per-repo API costs
+        if path == "/api/costs":
+            costs = get_costs()
+            return self._json({"costs": costs, "total": sum(costs.values())})
+
         # Telegram Mini App — serve the self-contained HTML file with token injected
         if path == "/telegram-app":
             html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot", "telegram-app.html")
@@ -2078,6 +2178,10 @@ class API(BaseHTTPRequestHandler):
                 with open(BRIDGE_INSTRUCTION, "r", encoding="utf-8") as f:
                     return self._json({"instruction": f.read()})
             return self._json({"instruction": ""})
+
+        # Daily digest — generate on demand
+        if path == "/api/digest":
+            return self._json({"digest": generate_daily_digest()})
 
         self._json({"error": "Not found"}, 404)
 
@@ -2364,6 +2468,99 @@ class API(BaseHTTPRequestHandler):
         pass
 
 
+# ─── Daily Telegram Digest ────────────────────────────────────────────────────
+
+def generate_daily_digest() -> str:
+    """Generate a daily progress summary with mini ASCII charts."""
+    master = MasterDB()
+    repos = master.get_repos()
+    if not repos:
+        return "No repos registered."
+
+    lines = ["📊 *SWARM TOWN — Daily Digest*", f"📅 {datetime.now().strftime('%B %d, %Y')}", ""]
+
+    total_items_done = 0
+    total_items = 0
+    total_steps_done = 0
+    total_steps = 0
+    total_mistakes = 0
+    total_cost = 0.0
+    repo_summaries = []
+
+    costs = get_costs()
+
+    for r in repos:
+        try:
+            db = RepoDB(r["db_path"]) if r.get("db_path") and os.path.exists(r["db_path"]) else None
+            if not db:
+                continue
+            items = db.fetchall("SELECT * FROM items")
+            done = [i for i in items if i["status"] == "completed"]
+            steps = db.all_steps()
+            steps_done = [s for s in steps if s["status"] == "completed"]
+            mistakes = db.get_mistakes(1000)
+            cost = costs.get(r["id"], 0)
+
+            total_items_done += len(done)
+            total_items += len(items)
+            total_steps_done += len(steps_done)
+            total_steps += len(steps)
+            total_mistakes += len(mistakes)
+            total_cost += cost
+
+            # Progress bar
+            pct = int(len(done) / max(len(items), 1) * 100)
+            bar_filled = pct // 10
+            bar = "█" * bar_filled + "░" * (10 - bar_filled)
+
+            repo_summaries.append(
+                f"*{r['name']}*  `[{bar}]` {pct}%\n"
+                f"  Items: {len(done)}/{len(items)} | Steps: {len(steps_done)}/{len(steps)} | "
+                f"Mistakes: {len(mistakes)} | Cost: ${cost:.2f}"
+            )
+        except Exception:
+            continue
+
+    # Overall stats
+    overall_pct = int(total_items_done / max(total_items, 1) * 100)
+    lines.append(f"🎯 *Overall Progress:* {total_items_done}/{total_items} items ({overall_pct}%)")
+    lines.append(f"🔧 *Steps:* {total_steps_done}/{total_steps}")
+    lines.append(f"💀 *Mistakes:* {total_mistakes}")
+    lines.append(f"💰 *Cost:* ${total_cost:.2f}")
+    lines.append(f"📦 *Repos:* {len(repos)}")
+    lines.append("")
+
+    # Mini ASCII chart of progress per repo
+    lines.append("*Per-Repo Breakdown:*")
+    lines.append("")
+    for s in repo_summaries:
+        lines.append(s)
+
+    lines.append("")
+    lines.append("_Generated by Swarm Town Orchestrator_")
+    return "\n".join(lines)
+
+
+def digest_scheduler():
+    """Background thread that sends daily digest at 9 AM."""
+    last_digest_day = None
+    digest_hour = int(os.environ.get("DIGEST_HOUR", "9"))
+    while True:
+        now = datetime.now()
+        if now.hour == digest_hour and now.date() != last_digest_day:
+            last_digest_day = now.date()
+            if TELEGRAM_ENABLED:
+                try:
+                    from telegram_bot import send_message as tg_send
+                    digest = generate_daily_digest()
+                    tg_send(digest)
+                    log.info("📊 Daily digest sent to Telegram")
+                except Exception as e:
+                    log.warning(f"Failed to send daily digest: {e}")
+            sse_broadcast("digest", {"message": "Daily digest generated"})
+        time.sleep(300)  # Check every 5 minutes
+
+
 def serve():
     s = HTTPServer(("0.0.0.0", API_PORT), API)
     log.info(f"🌐 API on http://localhost:{API_PORT}")
@@ -2388,6 +2585,10 @@ def main():
     # Start API server
     st = threading.Thread(target=serve, daemon=True)
     st.start()
+
+    # Start daily digest scheduler
+    dt = threading.Thread(target=digest_scheduler, daemon=True)
+    dt.start()
 
     # Start Telegram bot if requested
     if args.telegram:
