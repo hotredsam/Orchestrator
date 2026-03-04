@@ -77,11 +77,12 @@ def main():
         {"command": "push", "description": "Git push a repo (e.g. /push blog)"},
         {"command": "digest", "description": "Show the daily digest summary"},
         {"command": "costs", "description": "Show per-repo API costs and total"},
+        {"command": "health", "description": "Health scan all repos"},
         {"command": "help", "description": "Show all available commands"},
         {"command": "app", "description": "Open the Swarm Town Mini App"},
     ])
     if result.get("ok"):
-        print("   Done! 12 commands registered")
+        print("   Done! 13 commands registered")
 
     # 3. Set bot description
     print("3. Setting bot description...")

@@ -611,6 +611,27 @@ def cmd_costs():
     return "\n".join(lines)
 
 
+def cmd_health():
+    """Fetch health scan from orchestrator and show summary."""
+    data = _orch_get("/api/health-scan")
+    if isinstance(data, dict) and "error" in data:
+        return f"Error running health scan: {data['error']}"
+    if not isinstance(data, list) or not data:
+        return "No repos found for health scan."
+    lines = ["*Health Scan*\n"]
+    for r in data[:15]:
+        name = r.get("name", "?")
+        score = r.get("health_score", 0)
+        issues = r.get("issues", [])
+        bar = _progress_bar(score, 100)
+        emoji = "\u2705" if score >= 80 else "\u26A0\uFE0F" if score >= 50 else "\u274C"
+        lines.append(f"{emoji} *{name}*  `[{bar}]` {score}%")
+        if issues:
+            for iss in issues[:3]:
+                lines.append(f"    \u2022 {iss.get('title', '?')}")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -639,6 +660,7 @@ def cmd_help():
 `screenshot` / `show me` — Dashboard photo
 `digest` — Daily digest summary
 `costs` — Per-repo API costs
+`health` — Health scan all repos
 `app` — Open Mini App
 `help` — This message
 
@@ -754,13 +776,19 @@ def handle_message(msg):
     if not text:
         return
 
+    # Strip leading / for Telegram command format and @bot suffix
     t = text.lower()
+    if t.startswith("/"):
+        t = t[1:]
+        # Remove @bot suffix (e.g. /status@SwarmTownBot -> status)
+        if "@" in t:
+            t = t[:t.index("@")]
 
     if t == "status":
         reply = cmd_status()
-    elif t == "start all":
+    elif t in ("start all", "start_all", "startall"):
         reply = cmd_start_all()
-    elif t == "stop all":
+    elif t in ("stop all", "stop_all", "stopall"):
         reply = cmd_stop_all()
     elif t.startswith("start "):
         reply = cmd_start_repo(t[6:])
@@ -798,6 +826,8 @@ def handle_message(msg):
         reply = cmd_digest()
     elif t == "costs":
         reply = cmd_costs()
+    elif t in ("health", "healthcheck", "health_scan"):
+        reply = cmd_health()
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):
