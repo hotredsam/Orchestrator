@@ -192,6 +192,7 @@ function Dashboard() {
   const [healthScores, setHealthScores] = useState(null);
   const [sparklines, setSparklines] = useState({});
   const [etas, setEtas] = useState({});
+  const [heatmap, setHeatmap] = useState(null);
   const [masterFocus, setMasterFocus] = useState(-1);
   const [compactMaster, setCompactMaster] = useState(() => localStorage.getItem("swarm-compact-master") === "1");
   const [compactItems, setCompactItems] = useState(false);
@@ -358,6 +359,7 @@ function Dashboard() {
         try { const hs = await f("/api/health/detailed"); if(hs.ok) setHealthScores(await hs.json()); } catch {}
         try { const sp = await f("/api/sparklines"); if(sp.ok) { const sd = await sp.json(); setSparklines(sd.sparklines || {}); } } catch {}
         try { const et = await f("/api/eta"); if(et.ok) { const ed = await et.json(); setEtas(ed.etas || {}); } } catch {}
+        try { const hm = await f("/api/heatmap"); if(hm.ok) setHeatmap(await hm.json()); } catch {}
       }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -1020,6 +1022,47 @@ function Dashboard() {
                 })}
               </div>
             )}
+            {/* Activity Heatmap */}
+            {heatmap && Object.keys(heatmap.grid || {}).length > 0 && (
+              <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 12px", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>7-Day Activity Heatmap</div>
+                {(() => {
+                  const grid = heatmap.grid;
+                  const days = [...new Set(Object.keys(grid).map(k => k.split("|")[0]))].sort();
+                  const maxVal = Math.max(...Object.values(grid), 1);
+                  const hours = Array.from({ length: 24 }, (_, i) => i);
+                  return (
+                    <div style={{ overflowX: "auto" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: `60px repeat(24, 1fr)`, gap: 1, fontSize: 8 }}>
+                        <div />
+                        {hours.map(h => <div key={h} style={{ textAlign: "center", color: C.brown, fontWeight: 600 }}>{h}</div>)}
+                        {days.slice(-7).map(day => (
+                          <React.Fragment key={day}>
+                            <div style={{ fontSize: 9, color: C.brown, fontWeight: 600, display: "flex", alignItems: "center" }}>{day.slice(5)}</div>
+                            {hours.map(h => {
+                              const val = grid[`${day}|${h}`] || 0;
+                              const intensity = val / maxVal;
+                              return (
+                                <div key={h} title={`${day} ${h}:00 - ${val} actions`}
+                                  style={{ aspectRatio: "1", borderRadius: 2, background: val === 0 ? `${C.darkBrown}08` : `rgba(78, 205, 196, ${0.15 + intensity * 0.85})`, transition: "background 0.3s" }} />
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 6, fontSize: 9, color: C.brown }}>
+                        <span>Less</span>
+                        {[0.1, 0.3, 0.5, 0.7, 1].map((v, i) => (
+                          <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: `rgba(78, 205, 196, ${0.15 + v * 0.85})` }} />
+                        ))}
+                        <span>More</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </Card>
+            )}
+
             {/* Stale Items Warning */}
             {staleItems.length > 0 && (
               <Card bg="#FFF3E0" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.orange}` }}>

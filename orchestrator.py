@@ -3438,6 +3438,30 @@ class API(BaseHTTPRequestHandler):
                 },
             })
 
+        if path == "/api/heatmap":
+            # Activity heatmap: 7 days x 24 hours grid across all repos
+            days = int(q.get("days", [7])[0])
+            grid = {}  # "day|hour" -> count
+            repos = manager.master.get_repos()
+            for repo in repos:
+                db = manager.get_repo_db(repo["id"])
+                if not db:
+                    continue
+                try:
+                    rows = db.fetchall(
+                        "SELECT date(created_at) as day, "
+                        "CAST(strftime('%%H', created_at) AS INTEGER) as hour, "
+                        "COUNT(*) as cnt "
+                        "FROM execution_log WHERE created_at >= datetime('now', ?) "
+                        "GROUP BY day, hour",
+                        (f"-{days} days",))
+                    for r in rows:
+                        key = f"{r['day']}|{r['hour']}"
+                        grid[key] = grid.get(key, 0) + r["cnt"]
+                except Exception:
+                    pass
+            return self._json({"grid": grid, "days": days})
+
         if path == "/api/notes" and rid:
             db = manager.get_repo_db(rid)
             if not db:
