@@ -2271,12 +2271,12 @@ def _check_rate_limit(ip, path):
 
 # ─── Request Metrics ──────────────────────────────────────────────────────────
 
-_metrics = {"total": 0, "endpoints": {}, "errors": 0, "rate_limited": 0}
+_metrics = {"total": 0, "endpoints": {}, "errors": 0, "rate_limited": 0, "latencies": {}}
 _metrics_lock = threading.Lock()
 
 
-def _record_metric(path, status_code=200):
-    """Record a request metric."""
+def _record_metric(path, status_code=200, latency_ms=0):
+    """Record a request metric with optional latency."""
     with _metrics_lock:
         _metrics["total"] += 1
         _metrics["endpoints"][path] = _metrics["endpoints"].get(path, 0) + 1
@@ -2284,6 +2284,14 @@ def _record_metric(path, status_code=200):
             _metrics["errors"] += 1
         if status_code == 429:
             _metrics["rate_limited"] += 1
+        if latency_ms > 0:
+            if path not in _metrics["latencies"]:
+                _metrics["latencies"][path] = []
+            lat = _metrics["latencies"][path]
+            lat.append(latency_ms)
+            # Keep only last 100 measurements per endpoint
+            if len(lat) > 100:
+                _metrics["latencies"][path] = lat[-100:]
 
 
 class API(BaseHTTPRequestHandler):
@@ -2349,7 +2357,8 @@ class API(BaseHTTPRequestHandler):
 
     def _json(self, data, status=200):
         path = urlparse(self.path).path
-        _record_metric(path, status)
+        latency = (time.time() - getattr(self, "_req_start", time.time())) * 1000
+        _record_metric(path, status, latency)
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self._cors()
@@ -2381,6 +2390,7 @@ class API(BaseHTTPRequestHandler):
         self.send_response(204); self._cors(); self.end_headers()
 
     def do_GET(self):
+        self._req_start = time.time()
         p = urlparse(self.path)
         path = p.path
         q = parse_qs(p.query)
@@ -2683,11 +2693,23 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/metrics":
             with _metrics_lock:
                 top_endpoints = sorted(_metrics["endpoints"].items(), key=lambda x: -x[1])[:20]
+                latency_stats = {}
+                for ep, vals in _metrics["latencies"].items():
+                    if vals:
+                        s = sorted(vals)
+                        latency_stats[ep] = {
+                            "avg_ms": round(sum(s) / len(s), 1),
+                            "p50_ms": round(s[len(s)//2], 1),
+                            "p95_ms": round(s[int(len(s)*0.95)], 1) if len(s) >= 2 else round(s[-1], 1),
+                            "max_ms": round(s[-1], 1),
+                            "count": len(s),
+                        }
             return self._json({
                 "total_requests": _metrics["total"],
                 "errors": _metrics["errors"],
                 "rate_limited": _metrics["rate_limited"],
                 "top_endpoints": dict(top_endpoints),
+                "latency": latency_stats,
             })
 
         # Daily digest — generate on demand
@@ -2705,6 +2727,7 @@ class API(BaseHTTPRequestHandler):
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):
+        self._req_start = time.time()
         # Rate limit check
         if not self._check_rate():
             return

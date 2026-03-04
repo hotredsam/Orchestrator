@@ -193,33 +193,43 @@ function Dashboard() {
     return () => { if (sseRef.current) sseRef.current.close(); };
   }, []);
 
-  const load = useCallback(async () => {
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+
+  const load = useCallback(async (full = true) => {
     try {
       const r = await f("/api/repos");
       if (r.ok) { const d = await r.json(); setRepos(d); if (!sr && d.length) setSR(d[0].id); }
       setCon(true);
     } catch(err) { console.warn("Server connection lost:", err.message); setCon(false); setLoading(false); return; }
     if (!sr) { setLoading(false); return; }
+    const t = tabRef.current;
     try {
-      const [a,b,c,d,e,g,h,hi] = await Promise.all([
-        f(`/api/items?repo_id=${sr}`), f(`/api/plan?repo_id=${sr}`),
-        f(`/api/logs?repo_id=${sr}`), f(`/api/agents?repo_id=${sr}`),
-        f(`/api/memory?repo_id=${sr}`), f(`/api/mistakes?repo_id=${sr}`),
-        f(`/api/audio?repo_id=${sr}`), f(`/api/history?repo_id=${sr}`),
-      ]);
-      if(a.ok) setItems(await a.json()); if(b.ok) setPlan(await b.json());
-      if(c.ok) setLogs(await c.json()); if(d.ok) setAgents(await d.json());
-      if(e.ok) setMemory(await e.json()); if(g.ok) setMistakes(await g.json());
-      if(h.ok) setAudio(await h.json()); if(hi.ok) setHistory(await hi.json());
-      // Fetch costs + webhooks
+      // Always fetch items + plan (shown in home/master), rest based on active tab
+      const fetches = [f(`/api/items?repo_id=${sr}`), f(`/api/plan?repo_id=${sr}`)];
+      const keys = ["items", "plan"];
+      if (full || t === "home" || t === "logs") { fetches.push(f(`/api/logs?repo_id=${sr}`)); keys.push("logs"); }
+      if (full || t === "agents") { fetches.push(f(`/api/agents?repo_id=${sr}`)); keys.push("agents"); }
+      if (full || t === "memory") { fetches.push(f(`/api/memory?repo_id=${sr}`)); keys.push("memory"); }
+      if (full || t === "mistakes") { fetches.push(f(`/api/mistakes?repo_id=${sr}`)); keys.push("mistakes"); }
+      if (full || t === "audio") { fetches.push(f(`/api/audio?repo_id=${sr}`)); keys.push("audio"); }
+      if (full || t === "history") { fetches.push(f(`/api/history?repo_id=${sr}`)); keys.push("history"); }
+      const results = await Promise.all(fetches);
+      const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, memory: setMemory, mistakes: setMistakes, audio: setAudio, history: setHistory };
+      for (let i = 0; i < keys.length; i++) {
+        if (results[i].ok) { const d = await results[i].json(); setters[keys[i]](d); }
+      }
+      // Fetch costs + webhooks + budget
       try { const cr = await f("/api/costs"); if(cr.ok) { const cd = await cr.json(); if(cd.costs) setCosts(cd.costs); } } catch {}
-      try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
-      try { const br = await f("/api/budget"); if(br.ok) { const bd = await br.json(); setBudgetLimit(bd.budget_limit || 0); } } catch {}
+      if (full || t === "settings") {
+        try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
+        try { const br = await f("/api/budget"); if(br.ok) { const bd = await br.json(); setBudgetLimit(bd.budget_limit || 0); } } catch {}
+      }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
   }, [sr]);
 
-  useEffect(() => { load(); const i = setInterval(load, 3000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { load(true); const i = setInterval(() => load(false), 3000); return () => clearInterval(i); }, [load]);
 
   // Keyboard shortcuts
   const [showHelp, setShowHelp] = useState(false);

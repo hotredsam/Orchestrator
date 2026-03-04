@@ -93,6 +93,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Disabled async buttons** — scan/fix buttons disable during operation to prevent double-click
 - **Log export** — download logs as JSON from the logs tab
 - **Filtered count** — logs tab shows "Showing X of Y" when search filter is active
+- **Response latency metrics** — /api/metrics now includes p50/p95/max latency per endpoint
+- **Smart polling** — dashboard only fetches data for the active tab on interval (full refresh on SSE events)
 
 ## Commands
 ```bash
