@@ -1533,7 +1533,20 @@ function Dashboard() {
                             onChange={e => { e.stopPropagation(); setBatchSelected(prev => { const s = new Set(prev); if (s.has(r.id)) s.delete(r.id); else s.add(r.id); return s; }); }}
                             style={{ width: 16, height: 16, accentColor: C.teal, cursor: "pointer" }} title="Select for batch action" />
                         </div>
-                        <div style={{ fontSize: 12, color: C.brown, fontWeight: 500 }}>{rst.label} {r.running ? "-- RUNNING" : ""}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                          <span style={{ color: C.brown, fontWeight: 500 }}>{rst.label} {r.running ? "-- RUNNING" : ""}</span>
+                          {r.running && (() => {
+                            const stateOrder = ["idle","check_audio","check_refactor","check_new_items","update_plan","execute_step","test_step","check_steps_left","final_optimize","scan_repo"];
+                            const idx = stateOrder.indexOf(r.state || "idle");
+                            return (
+                              <div style={{ display: "flex", gap: 2 }}>
+                                {stateOrder.map((_, i) => (
+                                  <div key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: i <= idx ? rst.color : `${C.darkBrown}22`, transition: "background 0.3s" }} />
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
                         {r.last_activity > 0 && <div style={{ fontSize: 9, color: C.brown, opacity: 0.6 }}>
                           {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); return ago < 60 ? "just now" : ago < 3600 ? `${Math.floor(ago/60)}m ago` : ago < 86400 ? `${Math.floor(ago/3600)}h ago` : `${Math.floor(ago/86400)}d ago`; })()}
                         </div>}
@@ -2070,6 +2083,7 @@ function Dashboard() {
                               {it.source === "audio" ? "\uD83C\uDFA4" : it.source === "error_detected" ? "\uD83D\uDC1B" : ""} {it.source}
                             </span>
                           )}
+                          {it.depends_on && <span style={{ fontSize: 9, color: "#7E57C2", background: "#E8D5F5", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>{"\uD83D\uDD17"} dep: {it.depends_on}</span>}
                           {it.created_at && <span style={{ fontSize: 9, color: C.brown, opacity: 0.6 }}>{it.created_at.slice(0, 10)}</span>}
                           <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
                             {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}

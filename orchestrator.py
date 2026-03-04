@@ -483,6 +483,8 @@ class RepoDB:
                 priority TEXT DEFAULT 'medium',
                 status TEXT DEFAULT 'pending',
                 source TEXT DEFAULT 'manual',  -- 'manual', 'audio', 'error_detected'
+                depends_on TEXT DEFAULT '',  -- comma-separated item IDs this depends on
+                updated_at TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now')),
                 started_at TEXT, completed_at TEXT
             );
@@ -580,6 +582,12 @@ class RepoDB:
             self.conn.execute("ALTER TABLE plan_steps ADD COLUMN duration_sec REAL DEFAULT 0")
         if "model" not in cols:
             self.conn.execute("ALTER TABLE plan_steps ADD COLUMN model TEXT DEFAULT ''")
+        # Items table migration
+        item_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(items)").fetchall()}
+        if "depends_on" not in item_cols:
+            self.conn.execute("ALTER TABLE items ADD COLUMN depends_on TEXT DEFAULT ''")
+        if "updated_at" not in item_cols:
+            self.conn.execute("ALTER TABLE items ADD COLUMN updated_at TEXT DEFAULT ''")
         self.conn.commit()
 
     def ex(self, q, p=(), retries=3):
@@ -3880,7 +3888,7 @@ class API(BaseHTTPRequestHandler):
             item_id = b.get("item_id")
             if not item_id: return self._json({"error": "item_id required"}, 400)
             sets, vals = [], []
-            for field in ("status", "priority", "title", "description", "type"):
+            for field in ("status", "priority", "title", "description", "type", "depends_on"):
                 if field in b:
                     sets.append(f"{field}=?")
                     vals.append(b[field])
