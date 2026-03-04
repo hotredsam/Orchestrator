@@ -158,6 +158,7 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Stale item detection** — `/api/stale-items?hours=2` finds items stuck in_progress across all repos, warning banner on Town Square
 - **Execution timeline** — `/api/timeline?repo_id=N` returns state transition history for debugging
 - **Circuit breaker visibility** — `/api/circuit-breakers` endpoint exposes per-repo circuit breaker state. Health tab shows open/half-open breakers with failure counts
+- **Mobile responsive** — media queries for 700px/480px/360px breakpoints. Touch-friendly 36px min button height, compact header on small screens
 
 ## Commands
 ```bash

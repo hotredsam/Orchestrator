@@ -636,7 +636,22 @@ function Dashboard() {
         @keyframes nodeGlow{0%,100%{filter:drop-shadow(0 0 4px rgba(247,148,29,0.4))}50%{filter:drop-shadow(0 0 12px rgba(247,148,29,0.8))}}
         textarea,select{font-family:'Fredoka',sans-serif}
         select option{background:${C.cream};color:${C.darkBrown}}
-        @media(max-width:700px){.cactus-right{display:none!important}}
+        @media(max-width:700px){
+          .cactus-right{display:none!important}
+          select{max-width:130px!important;font-size:11px!important}
+          button{min-height:36px}
+        }
+        @media(max-width:480px){
+          h1{font-size:32px!important;letter-spacing:3px!important}
+          h2{font-size:24px!important}
+          h3{font-size:18px!important}
+          .stat-card{min-width:80px!important;padding:8px!important}
+          .toast-container{max-width:90vw!important;right:5vw!important}
+        }
+        @media(max-width:360px){
+          h1{font-size:24px!important}
+          p{font-size:11px!important}
+        }
         .hover-card:hover{transform:translateY(-2px)!important;box-shadow:0 4px 8px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.1), 4px 4px 0 #3D2B1F!important}
         .hover-lift:hover{transform:translateY(-4px) scale(1.02)!important;box-shadow:0 6px 16px rgba(0,0,0,.12), 6px 6px 0 #3D2B1F!important}
         .hover-glow:hover{box-shadow:0 0 12px rgba(247,148,29,0.4), 0 4px 12px rgba(0,0,0,.08), 4px 4px 0 #3D2B1F!important;transform:translateY(-2px)!important}
