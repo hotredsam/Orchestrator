@@ -849,6 +849,9 @@
         <h2 class="section-title">Agent Memory</h2>
         <div class="btn-row mb-12">
           <select class="input" id="memoryRepoSelect" onchange="loadMemory()" style="flex:1;"></select>
+          <select class="input" id="memoryNsFilter" onchange="loadMemory()" style="width:auto;min-width:80px;">
+            <option value="">All NS</option>
+          </select>
           <input type="text" class="input" id="memorySearch" placeholder="Search..." style="flex:1;" oninput="clearTimeout(window._memDebounce); window._memDebounce=setTimeout(loadMemory, 300)" onkeydown="if(event.key==='Enter'){clearTimeout(window._memDebounce);loadMemory()}">
         </div>
         <div id="memoryList">
@@ -1527,6 +1530,7 @@
     async function loadMemory() {
       const repoId = document.getElementById('memoryRepoSelect')?.value;
       const search = document.getElementById('memorySearch')?.value || '';
+      const nsFilter = document.getElementById('memoryNsFilter')?.value || '';
       const el = document.getElementById('memoryList');
       if (!repoId || !repos.length) {
         el.innerHTML = '<div class="empty-state"><div class="empty-emoji">🧠</div><p>No repo selected</p></div>';
@@ -1541,7 +1545,18 @@
         return;
       }
 
-      el.innerHTML = `${search ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${data.length} results for "${esc(search)}"</div>` : `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${data.length} memory entries</div>`}` + data.map(m => `
+      // Populate namespace dropdown
+      const namespaces = [...new Set(data.map(m => m.namespace || 'default'))].sort();
+      const nsSel = document.getElementById('memoryNsFilter');
+      if (nsSel) {
+        const prev = nsSel.value;
+        nsSel.innerHTML = '<option value="">All NS</option>' + namespaces.map(ns => `<option value="${esc(ns)}" ${ns === prev ? 'selected' : ''}>${esc(ns)} (${data.filter(m => (m.namespace || 'default') === ns).length})</option>`).join('');
+      }
+
+      let filtered = data;
+      if (nsFilter) filtered = filtered.filter(m => (m.namespace || 'default') === nsFilter);
+
+      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${filtered.length}${nsFilter ? ` [${nsFilter}]` : ''} ${search ? `results for "${esc(search)}"` : 'memory entries'}</div>` + filtered.map(m => `
         <div style="padding:8px 0;border-bottom:1px solid var(--shadow);">
           <div class="flex-between">
             <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:var(--teal);color:#fff;">${esc(m.namespace || 'default')}</span>
@@ -1668,7 +1683,13 @@
       const el = document.getElementById('chatMessages');
       const div = document.createElement('div');
       div.className = 'chat-bubble ' + (role === 'user' ? 'chat-user' : 'chat-bot');
-      div.textContent = text;
+      const msgSpan = document.createElement('div');
+      msgSpan.textContent = text;
+      div.appendChild(msgSpan);
+      const timeSpan = document.createElement('div');
+      timeSpan.style.cssText = 'font-size:9px;opacity:0.6;margin-top:3px;text-align:' + (role === 'user' ? 'right' : 'left');
+      timeSpan.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + (role === 'user' ? ' ✓' : '');
+      div.appendChild(timeSpan);
       el.appendChild(div);
       if (scroll) el.scrollTop = el.scrollHeight;
     }

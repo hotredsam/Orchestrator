@@ -1351,12 +1351,23 @@ def cmd_uptime():
     repos_total = data.get("repos_total", 0)
     repos_running = data.get("repos_running", 0)
     version = data.get("version", "?")
-    return (
-        f"*Swarm Town Uptime*\n\n"
-        f"Uptime: `{uptime}`\n"
-        f"Version: `{version}`\n"
-        f"Repos: {repos_running}/{repos_total} running"
-    )
+    lines = [
+        f"*Swarm Town Uptime*\n",
+        f"\u23F1 Uptime: `{uptime}`",
+        f"\U0001F4E6 Version: `{version}`",
+        f"\U0001F7E2 Repos: {repos_running}/{repos_total} running",
+    ]
+    # Per-repo running streaks
+    repos = _orch_get("/api/repos")
+    if isinstance(repos, list):
+        running = [r for r in repos if r.get("running")]
+        if running:
+            lines.append("\n*Running Repos:*")
+            for r in running[:8]:
+                cycles = r.get("cycle_count", 0)
+                state = r.get("state", "idle").replace("_", " ")
+                lines.append(f"  \u23F1\uFE0F *{r['name']}* — {state} ({cycles} cycles)")
+    return "\n".join(lines)
 
 
 def cmd_rotate_token():
