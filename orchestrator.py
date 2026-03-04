@@ -3131,6 +3131,13 @@ class API(BaseHTTPRequestHandler):
                 {"method": "POST", "path": "/api/token/rotate", "desc": "Rotate API token"},
                 {"method": "POST", "path": "/api/rollback", "desc": "Git rollback a repo"},
                 {"method": "POST", "path": "/api/audio", "desc": "Upload audio for transcription"},
+                {"method": "POST", "path": "/api/repos/batch", "desc": "Batch start/stop/pause/resume/push repos"},
+                {"method": "POST", "path": "/api/repos/tags", "desc": "Set repo tags"},
+                {"method": "POST", "path": "/api/repos/import", "desc": "Bulk import repos from JSON"},
+                {"method": "GET", "path": "/api/repos/export", "desc": "Export all repos as JSON"},
+                {"method": "GET", "path": "/api/comparison", "desc": "Repo comparison matrix"},
+                {"method": "GET", "path": "/api/errors/recent", "desc": "Recent errors across all repos"},
+                {"method": "GET", "path": "/api/stale-items", "desc": "Items stuck in progress 2h+"},
             ]})
 
         if path == "/api/metrics":

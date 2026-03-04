@@ -147,6 +147,7 @@ function Dashboard() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
   const [newNote, setNewNote] = useState("");
+  const [batchSelected, setBatchSelected] = useState(new Set());
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -1221,6 +1222,19 @@ function Dashboard() {
                 ))}
               </>); })()}
             </div>
+            {/* Batch action bar */}
+            {batchSelected.size > 0 && (
+              <div style={{ maxWidth: 700, margin: "0 auto 12px", display: "flex", gap: 8, alignItems: "center", justifyContent: "center", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 12, padding: "8px 16px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{batchSelected.size} selected</span>
+                {[{a: "start", l: "Start", bg: C.green}, {a: "stop", l: "Stop", bg: C.red}, {a: "pause", l: "Pause", bg: C.orange}, {a: "resume", l: "Resume", bg: C.teal}].map(act => (
+                  <Btn key={act.a} bg={act.bg} style={{ fontSize: 11, padding: "4px 12px" }} onClick={async () => {
+                    await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: [...batchSelected], action: act.a }) });
+                    showToast(`${act.l} sent to ${batchSelected.size} repos`, "info"); load(); setBatchSelected(new Set());
+                  }}>{act.l}</Btn>
+                ))}
+                <Btn bg="#999" style={{ fontSize: 11, padding: "4px 12px" }} onClick={() => setBatchSelected(new Set())}>Clear</Btn>
+              </div>
+            )}
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {[...repos].filter(r => {
                 if (repoFilter === "running") return r.running;
@@ -1238,7 +1252,7 @@ function Dashboard() {
                 const s = r.stats || {};
                 const pct = s.steps_total ? Math.round(s.steps_done / s.steps_total * 100) : 0;
                 return (
-                  <Card key={r.id} className="hover-lift" bg={C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
+                  <Card key={r.id} className="hover-lift" bg={batchSelected.has(r.id) ? C.yellow : C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", background: batchSelected.has(r.id) ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
                       <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
@@ -1253,6 +1267,9 @@ function Dashboard() {
                           <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(r.path); showToast("Path copied!", "info"); }}
                             style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, opacity: 0.4, padding: "0 4px" }}
                             title={r.path}>{"\uD83D\uDCCB"}</button>
+                          <input type="checkbox" checked={batchSelected.has(r.id)} onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); setBatchSelected(prev => { const s = new Set(prev); if (s.has(r.id)) s.delete(r.id); else s.add(r.id); return s; }); }}
+                            style={{ width: 16, height: 16, accentColor: C.teal, cursor: "pointer" }} title="Select for batch action" />
                         </div>
                         <div style={{ fontSize: 12, color: C.brown, fontWeight: 500 }}>{rst.label} {r.running ? "-- RUNNING" : ""}</div>
                       </div>
