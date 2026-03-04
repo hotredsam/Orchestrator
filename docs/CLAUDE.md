@@ -95,6 +95,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Filtered count** — logs tab shows "Showing X of Y" when search filter is active
 - **Response latency metrics** — /api/metrics now includes p50/p95/max latency per endpoint
 - **Smart polling** — dashboard only fetches data for the active tab on interval (full refresh on SSE events)
+- **Retry items** — POST /api/items/retry to re-queue completed/failed items back to pending (single or bulk)
+- **Retry UI** — per-item retry button on completed items + "Retry Done" bulk action in toolbar
 
 ## Commands
 ```bash
@@ -143,6 +145,7 @@ POST /api/items/update             — Update {repo_id, item_id, status, priorit
 POST /api/items/delete             — Delete {repo_id, item_id}
 POST /api/items/clear              — Clear items {repo_id, status?} (optional status filter)
 POST /api/items/dedupe             — Remove duplicate pending items {repo_id}
+POST /api/items/retry              — Re-queue items to pending {repo_id, item_id?} or {repo_id, status}
 
 # Data
 GET  /api/plan?repo_id=N           — Plan steps

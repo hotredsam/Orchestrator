@@ -2910,6 +2910,20 @@ class API(BaseHTTPRequestHandler):
                 db.commit()
             return self._json({"ok": True, "duplicates_removed": dupes_removed, "remaining": len(seen_titles)})
 
+        if path == "/api/items/retry":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            item_id = b.get("item_id")
+            # Retry single item or all failed/completed items
+            if item_id:
+                db.ex("UPDATE items SET status='pending' WHERE id=?", (item_id,))
+            else:
+                status = b.get("status", "completed")
+                db.ex("UPDATE items SET status='pending' WHERE status=?", (status,))
+            db.commit()
+            return self._json({"ok": True})
+
         if path == "/api/audio":
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)
