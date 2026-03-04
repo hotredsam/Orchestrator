@@ -656,6 +656,41 @@ def cmd_budget(arg=""):
     return "Could not fetch budget info."
 
 
+def cmd_retry(name):
+    """Retry completed items for a repo (re-queue to pending)."""
+    name = name.strip()
+    if not name:
+        return "Usage: `retry [repo]` — re-queue completed items back to pending"
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    result = _orch_post("/api/items/retry", {"repo_id": repo["id"], "status": "completed"})
+    if result.get("ok"):
+        return f"All completed items in *{repo['name']}* re-queued to pending."
+    return f"Failed: {result.get('error', 'unknown')}"
+
+
+def cmd_metrics():
+    """Show API metrics summary."""
+    data = _orch_get("/api/metrics")
+    if isinstance(data, dict) and "error" not in data:
+        lines = [
+            f"*API Metrics*",
+            f"Total requests: *{data.get('total_requests', 0):,}*",
+            f"Errors: *{data.get('errors', 0):,}*",
+            f"Rate limited: *{data.get('rate_limited', 0):,}*",
+            "",
+            "*Top Endpoints:*",
+        ]
+        top = sorted(data.get("top_endpoints", {}).items(), key=lambda x: -x[1])[:8]
+        for ep, count in top:
+            lat = data.get("latency", {}).get(ep, {})
+            p95 = f" (p95: {lat.get('p95_ms', '?')}ms)" if lat else ""
+            lines.append(f"`{ep}` — {count:,}{p95}")
+        return "\n".join(lines)
+    return "Could not fetch metrics."
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -685,7 +720,9 @@ def cmd_help():
 `digest` — Daily digest summary
 `costs` — Per-repo API costs
 `health` — Health scan all repos
+`retry [repo]` — Re-queue completed items
 `budget` / `budget [amount]` — View/set budget
+`metrics` — API request/latency stats
 `app` — Open Mini App
 `help` — This message
 
@@ -855,6 +892,10 @@ def handle_message(msg):
         reply = cmd_health()
     elif t.startswith("budget"):
         reply = cmd_budget(t[6:].strip())
+    elif t.startswith("retry"):
+        reply = cmd_retry(t[5:].strip())
+    elif t in ("metrics", "stats"):
+        reply = cmd_metrics()
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):

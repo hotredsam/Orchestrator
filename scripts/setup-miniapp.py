@@ -79,11 +79,13 @@ def main():
         {"command": "costs", "description": "Show per-repo API costs and total"},
         {"command": "health", "description": "Health scan all repos"},
         {"command": "budget", "description": "View or set API budget limit"},
+        {"command": "retry", "description": "Re-queue completed items (e.g. /retry blog)"},
+        {"command": "metrics", "description": "API request and latency stats"},
         {"command": "help", "description": "Show all available commands"},
         {"command": "app", "description": "Open the Swarm Town Mini App"},
     ])
     if result.get("ok"):
-        print("   Done! 14 commands registered")
+        print("   Done! 16 commands registered")
 
     # 3. Set bot description
     print("3. Setting bot description...")

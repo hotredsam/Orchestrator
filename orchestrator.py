@@ -2294,6 +2294,25 @@ def _record_metric(path, status_code=200, latency_ms=0):
                 _metrics["latencies"][path] = lat[-100:]
 
 
+# Simple in-memory response cache (TTL-based)
+_response_cache = {}
+_cache_lock = threading.Lock()
+CACHE_TTL = 3  # seconds
+
+
+def _cache_get(key):
+    with _cache_lock:
+        entry = _response_cache.get(key)
+        if entry and time.time() - entry["ts"] < CACHE_TTL:
+            return entry["data"]
+    return None
+
+
+def _cache_set(key, data):
+    with _cache_lock:
+        _response_cache[key] = {"data": data, "ts": time.time()}
+
+
 class API(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -2467,9 +2486,12 @@ class API(BaseHTTPRequestHandler):
             return
 
         if path == "/api/repos":
-            repos = manager.master.get_repos()
-            # Optional name filter
             name_q = q.get("q", [""])[0].strip().lower()
+            cache_key = f"repos:{name_q}"
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                return self._json(cached)
+            repos = manager.master.get_repos()
             if name_q:
                 repos = [r for r in repos if name_q in r["name"].lower()]
             # Enrich with state
@@ -2505,6 +2527,7 @@ class API(BaseHTTPRequestHandler):
                     log.debug(f"Stats fetch failed for repo {r.get('name', '?')}: {e}")
                     r["state"] = "idle"
                     r["stats"] = {}
+            _cache_set(cache_key, repos)
             return self._json(repos)
 
         # Per-repo endpoints need repo_id

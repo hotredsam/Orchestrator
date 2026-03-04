@@ -99,6 +99,9 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Retry UI** — per-item retry button on completed items + "Retry Done" bulk action in toolbar
 - **Metrics tab** — dashboard tab showing API request counts, error rates, latency percentiles (p50/p95/max) per endpoint
 - **Copy repo path** — clipboard button on master view repo cards for quick path copying
+- **Response cache** — 3-second TTL cache on /api/repos to reduce DB queries from polling
+- **Telegram retry command** — `retry [repo]` re-queues completed items from Telegram
+- **Telegram metrics command** — `metrics` shows API request counts and latency from Telegram
 
 ## Commands
 ```bash
