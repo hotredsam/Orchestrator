@@ -1142,6 +1142,9 @@
       const github = document.getElementById('newRepoGithub').value.trim();
       const branch = document.getElementById('newRepoBranch').value.trim() || 'main';
       if (!name || !path) { haptic('error'); showToast('Name and path are required', 'error'); return; }
+      if (github && !/^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(github)) {
+        haptic('error'); showToast('Invalid GitHub URL. Expected: https://github.com/user/repo', 'error'); return;
+      }
 
       haptic('heavy');
       const result = await api('/api/repos', {

@@ -3900,7 +3900,11 @@ function Dashboard() {
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #FCE4EC 0%, #F8BBD0 100%)` }}>
                 <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\uD83D\uDD11"} API Token</div>
                 <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Rotate the bearer token if you suspect it's been compromised. All open sessions will need to re-authenticate.</p>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <Btn bg={C.teal} style={{ fontSize: 14, padding: "10px 20px" }} onClick={() => {
+                    if (!__authToken) { showToast("No token available", "warning"); return; }
+                    navigator.clipboard.writeText(__authToken).then(() => showToast("Token copied to clipboard!", "success")).catch(() => showToast("Copy failed", "error"));
+                  }}>{"\uD83D\uDCCB"} Copy Token</Btn>
                   <Btn bg={C.red} style={{ fontSize: 14, padding: "10px 20px" }} onClick={async () => {
                     try {
                       const r = await f("/api/token/rotate", { method: "POST" });

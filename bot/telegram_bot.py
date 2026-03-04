@@ -1550,6 +1550,22 @@ def cmd_timeline(name: str = ""):
         err_str = " \u274C" if err else ""
         lines.append(f"  {emoji} `{ts_short}` {st}{' → ' + act if act else ''}{cost_str}{dur_str}{err_str}")
     lines.append(f"\n\U0001F4CA *Totals:* ${total_cost:.4f} | {total_dur:.0f}s | {err_count} errors")
+    # State duration aggregation
+    state_durations = {}
+    for entry in data:
+        st = entry.get("state", "idle")
+        dur = entry.get("duration_sec") or 0
+        if dur > 0:
+            if st not in state_durations:
+                state_durations[st] = {"total": 0, "count": 0}
+            state_durations[st]["total"] += dur
+            state_durations[st]["count"] += 1
+    if state_durations:
+        lines.append("\n\u23F1\uFE0F *Avg Duration by State:*")
+        for st, info in sorted(state_durations.items(), key=lambda x: -x[1]["total"]):
+            avg = info["total"] / info["count"]
+            emoji = state_emoji.get(st, "\u25AA\uFE0F")
+            lines.append(f"  {emoji} {st}: {avg:.0f}s avg ({info['count']}x, {info['total']:.0f}s total)")
     return "\n".join(lines)
 
 
