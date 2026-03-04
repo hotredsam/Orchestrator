@@ -166,11 +166,11 @@ function Dashboard() {
   const [rollingBack, setRollingBack] = useState(false);
   const [selOptItems, setSelOptItems] = useState([]);
   const [costs, setCosts] = useState({});
-  const [itemFilter, setItemFilter] = useState("all");
+  const [itemFilter, setItemFilter] = useState(() => localStorage.getItem("swarm-item-filter") || "all");
   const [webhooks, setWebhooks] = useState([]);
   const [newWebhook, setNewWebhook] = useState({ url: "", events: "*" });
   const [budgetLimit, setBudgetLimit] = useState(0);
-  const [repoSort, setRepoSort] = useState("name");
+  const [repoSort, setRepoSort] = useState(() => localStorage.getItem("swarm-repo-sort") || "name");
   const [repoFilter, setRepoFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
   const [memSearch, setMemSearch] = useState("");
@@ -293,6 +293,10 @@ function Dashboard() {
       new Notification(title, { body, icon: "/favicon.ico" });
     }
   }, [browserNotifs]);
+
+  // Persist filter preferences to localStorage
+  useEffect(() => { localStorage.setItem("swarm-item-filter", itemFilter); }, [itemFilter]);
+  useEffect(() => { localStorage.setItem("swarm-repo-sort", repoSort); }, [repoSort]);
 
   // Fetch API token on mount (if not already set by Telegram Mini App embed)
   useEffect(() => {
@@ -1413,6 +1417,9 @@ function Dashboard() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 1.5, lineHeight: 1.1 }}>{r.name}</div>
                         <div style={{ fontSize: 10, color: C.brown, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{r.path}</div>
+                        {r.last_activity > 0 && <div style={{ fontSize: 9, color: C.brown, opacity: 0.5, marginTop: 1 }}>
+                          {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); return ago < 60 ? "active just now" : ago < 3600 ? `active ${Math.floor(ago/60)}m ago` : ago < 86400 ? `active ${Math.floor(ago/3600)}h ago` : `active ${Math.floor(ago/86400)}d ago`; })()}
+                        </div>}
                       </div>
                       {/* Circular health badge */}
                       {hd && <HealthBadge score={hd.health_score} />}
@@ -2326,6 +2333,7 @@ function Dashboard() {
                   const isNextStep = s.id === firstPendingId;
                   return (
                     <div key={s.id} ref={isNextStep ? el => { if (el && tab === "plan") setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300); } : undefined} style={{ display: "flex", gap: 12, marginBottom: 8, outline: isNextStep ? `2px solid ${C.orange}44` : "none", borderRadius: 8 }}>
+                      {!done && <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", opacity: 0.3, cursor: "grab", userSelect: "none", fontSize: 14, letterSpacing: 2, color: C.darkBrown, lineHeight: 1 }} title="Drag to reorder">{"\u2807"}</div>}
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                         <div style={{ width: 36, height: 36, borderRadius: "50%", background: done ? `linear-gradient(135deg, ${C.green}, #27ae60)` : C.cream, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontFamily: "'Bangers',cursive", flexShrink: 0, color: done ? C.white : C.darkBrown, boxShadow: done ? `0 2px 8px ${C.green}44` : "none" }}>
                           {done ? "\u2713" : (s.step_order || i+1)}
