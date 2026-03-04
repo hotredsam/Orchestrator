@@ -224,6 +224,7 @@ function Dashboard() {
   const [batchSelected, setBatchSelected] = useState(new Set());
   const [editingItem, setEditingItem] = useState(null); // { id, title, priority }
   const [planSearch, setPlanSearch] = useState("");
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -461,7 +462,7 @@ function Dashboard() {
       if (e.key === "r" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
       if (e.key === "d" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleDark(); }
       if (e.key === "/") { e.preventDefault(); setTab("home"); setTimeout(() => { const el = document.querySelector("input[placeholder*='command']"); if (el) el.focus(); }, 100); }
-      if (e.key === "Escape") { setShowHelp(false); setSelectedItems(new Set()); }
+      if (e.key === "Escape") { setShowHelp(false); setSelectedItems(new Set()); setConfirmDialog(null); }
       if (e.key === "?") setShowHelp(prev => !prev);
       if (e.key === "f" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
       if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
@@ -492,11 +493,12 @@ function Dashboard() {
     if (!sr) return;
     await apiAction("/api/items/delete", { method: "POST", body: JSON.stringify({ repo_id: sr, item_id: itemId }) }, "Item deleted");
   };
-  const clearItems = async (status) => {
+  const clearItems = (status) => {
     if (!sr) return;
     const label = status || "all";
-    if (!confirm(`Clear ${label} items? This cannot be undone.`)) return;
-    await apiAction("/api/items/clear", { method: "POST", body: JSON.stringify({ repo_id: sr, ...(status ? { status } : {}) }) }, `${label} items cleared`);
+    setConfirmDialog({ message: `Clear ${label} items? This cannot be undone.`, onConfirm: () => {
+      apiAction("/api/items/clear", { method: "POST", body: JSON.stringify({ repo_id: sr, ...(status ? { status } : {}) }) }, `${label} items cleared`);
+    }});
   };
   const dedupeItems = async () => {
     if (!sr) return;
@@ -527,17 +529,19 @@ function Dashboard() {
       return next;
     });
   };
-  const retryAllCompleted = async () => {
+  const retryAllCompleted = () => {
     if (!sr) return;
-    if (!confirm("Re-queue all completed items back to pending?")) return;
-    await apiAction("/api/items/retry", { method: "POST", body: JSON.stringify({ repo_id: sr, status: "completed" }) }, "All completed items re-queued");
+    setConfirmDialog({ message: "Re-queue all completed items back to pending?", onConfirm: () => {
+      apiAction("/api/items/retry", { method: "POST", body: JSON.stringify({ repo_id: sr, status: "completed" }) }, "All completed items re-queued");
+    }});
   };
-  const bulkUpdateItems = async (action, value) => {
+  const bulkUpdateItems = (action, value) => {
     if (!sr || selectedItems.size === 0) return;
     const label = action === "delete" ? "Delete" : `Set ${action.replace("change_", "")} to ${value}`;
-    if (!confirm(`${label} for ${selectedItems.size} items?`)) return;
-    await apiAction("/api/items/bulk-update", { method: "POST", body: JSON.stringify({ repo_id: sr, item_ids: [...selectedItems], action, value }) }, `${selectedItems.size} items updated`);
-    setSelectedItems(new Set());
+    setConfirmDialog({ message: `${label} for ${selectedItems.size} items?`, onConfirm: () => {
+      apiAction("/api/items/bulk-update", { method: "POST", body: JSON.stringify({ repo_id: sr, item_ids: [...selectedItems], action, value }) }, `${selectedItems.size} items updated`);
+      setSelectedItems(new Set());
+    }});
   };
   const toggleSelectItem = (id) => setSelectedItems(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const toggleSelectAll = () => {
@@ -554,7 +558,7 @@ function Dashboard() {
   const stopAll = async () => { await apiAction("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }, "All repos stopped"); };
   const pauseRepo = async id => { await apiAction("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo paused"); };
   const resumeRepo = async id => { await apiAction("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo resumed"); };
-  const deleteRepo = async id => { if(confirm("Remove this repo from Swarm Town? (files on disk are kept)")) { await apiAction("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo removed"); } };
+  const deleteRepo = (id) => { setConfirmDialog({ message: "Remove this repo from Swarm Town? (files on disk are kept)", onConfirm: () => apiAction("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }, "Repo removed") }); };
   const pushGH = async () => { if(sr) await apiAction("/api/push", { method: "POST", body: JSON.stringify({ repo_id: sr, message: "manual push" }) }, "Push sent"); };
 
   const exportLogs = () => {
@@ -592,9 +596,11 @@ function Dashboard() {
     if (!sr) return;
     await apiAction("/api/plan/reorder", { method: "POST", body: JSON.stringify({ repo_id: sr, step_id: stepId, direction }) }, `Step moved ${direction}`);
   };
-  const resetStep = async (stepId) => {
-    if (!sr || !confirm("Reset this step to pending? It will be re-executed next cycle.")) return;
-    await apiAction("/api/plan/reset-step", { method: "POST", body: JSON.stringify({ repo_id: sr, step_id: stepId }) }, "Step reset to pending");
+  const resetStep = (stepId) => {
+    if (!sr) return;
+    setConfirmDialog({ message: "Reset this step to pending? It will be re-executed next cycle.", onConfirm: () => {
+      apiAction("/api/plan/reset-step", { method: "POST", body: JSON.stringify({ repo_id: sr, step_id: stepId }) }, "Step reset to pending");
+    }});
   };
   const importItems = async (jsonText) => {
     if (!sr) return;
@@ -1420,6 +1426,13 @@ function Dashboard() {
                       <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pctSteps}%`, transition: "width .5s" }} />
                       {s.steps_total > 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>{pctSteps}%</div>}
                     </div>
+
+                    {/* Last error hint */}
+                    {(r.state === "error" || r.state === "credits_exhausted") && r.last_error && (
+                      <div style={{ fontSize: 10, color: C.red, padding: "4px 8px", background: `${C.red}11`, borderRadius: 6, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.last_error}>
+                        {"\uD83D\uDCA5"} {r.last_error.slice(0, 60)}
+                      </div>
+                    )}
 
                     {/* Action buttons + state label */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -3787,6 +3800,20 @@ function Dashboard() {
               ))}
             </div>
             <p style={{ textAlign: "center", marginTop: 16, fontSize: 12, color: C.brown }}>Press ? or Esc to close</p>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ CONFIRM DIALOG ═══ */}
+      {confirmDialog && (
+        <div onClick={() => setConfirmDialog(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.cream, border: `4px solid ${C.darkBrown}`, borderRadius: 16, padding: 24, maxWidth: 360, width: "90%", boxShadow: "0 8px 32px rgba(0,0,0,0.3), 6px 6px 0 #3D2B1F", textAlign: "center" }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>{"\u26A0\uFE0F"}</div>
+            <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, marginBottom: 12, color: C.darkBrown }}>{confirmDialog.message}</div>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+              <Btn bg={C.red} onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }} style={{ fontSize: 14, padding: "10px 24px" }}>Confirm</Btn>
+              <Btn bg="#888" onClick={() => setConfirmDialog(null)} style={{ fontSize: 14, padding: "10px 24px" }}>Cancel</Btn>
+            </div>
           </div>
         </div>
       )}
