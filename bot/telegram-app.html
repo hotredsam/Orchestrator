@@ -1199,6 +1199,16 @@
       }
     }
 
+    async function updateSubtitle() {
+      const sub = document.getElementById('headerSubtitle');
+      const data = await api('/api/status');
+      if (data && data.uptime) {
+        sub.textContent = repos.length + ' repos | Up ' + data.uptime;
+      } else if (repos.length) {
+        sub.textContent = repos.length + ' repos loaded';
+      }
+    }
+
     // ─── Polling (fallback, reduced frequency with SSE) ──────────────────────
     function startPolling() {
       if (pollTimer) clearInterval(pollTimer);
@@ -1230,10 +1240,8 @@
       startPolling();
       fetchCosts();
 
-      // Update subtitle with repo count
-      if (repos.length) {
-        document.getElementById('headerSubtitle').textContent = repos.length + ' repos loaded';
-      }
+      // Update subtitle with repo count + uptime
+      updateSubtitle();
     }
 
     // Wait for fonts then init

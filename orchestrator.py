@@ -59,6 +59,9 @@ TELEGRAM_ENABLED = os.environ.get("TELEGRAM_ENABLED", "0") == "1"
 # Used by the Telegram Mini App and bot for external-facing URLs
 PUBLIC_URL = os.environ.get("PUBLIC_URL") or os.environ.get("NGROK_URL") or ""
 
+# Session start time — for uptime tracking
+_start_time = time.time()
+
 # ─── API Security ─────────────────────────────────────────────────────────────
 
 # Layer 1: Bearer Token — generated fresh each startup
@@ -72,7 +75,7 @@ _wl = os.environ.get("TELEGRAM_WHITELIST", "")
 TELEGRAM_WHITELIST = {int(x.strip()) for x in _wl.split(",") if x.strip().isdigit()} if _wl else set()
 
 # Paths exempt from bearer token auth (static assets + token endpoint)
-AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token", "/api/events"}
+AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token", "/api/events", "/api/status"}
 
 
 def validate_telegram_init_data(init_data: str) -> dict:
@@ -2204,6 +2207,34 @@ class API(BaseHTTPRequestHandler):
                     return self._json({"instruction": f.read()})
             return self._json({"instruction": ""})
 
+        # Repo export — dump all repos as JSON for backup/migration
+        if path == "/api/repos/export":
+            repos = manager.master.get_repos()
+            export = [{"name": r["name"], "path": r["path"], "github_url": r.get("github_url", ""),
+                        "branch": r.get("branch", "main")} for r in repos]
+            return self._json({"repos": export, "count": len(export),
+                               "exported_at": datetime.now(timezone.utc).isoformat()})
+
+        # System status — uptime, counts, version
+        if path == "/api/status":
+            uptime_sec = time.time() - _start_time
+            hrs, rem = divmod(int(uptime_sec), 3600)
+            mins, secs = divmod(rem, 60)
+            repos = manager.master.get_repos()
+            running = sum(1 for r in repos if r.get("running"))
+            with _sse_lock:
+                sse_count = len(_sse_clients)
+            costs = get_costs()
+            return self._json({
+                "uptime": f"{hrs}h {mins}m {secs}s",
+                "uptime_seconds": int(uptime_sec),
+                "repos_total": len(repos),
+                "repos_running": running,
+                "sse_clients": sse_count,
+                "total_cost": sum(costs.values()),
+                "version": "3.0",
+            })
+
         # Daily digest — generate on demand
         if path == "/api/digest":
             return self._json({"digest": generate_daily_digest()})
@@ -2217,6 +2248,27 @@ class API(BaseHTTPRequestHandler):
 
         path = urlparse(self.path).path
         b = self._body()
+
+        if path == "/api/repos/import":
+            repos_data = b.get("repos", [])
+            if not repos_data:
+                return self._json({"error": "repos array required"}, 400)
+            imported = 0
+            skipped = 0
+            for rd in repos_data:
+                name = rd.get("name", "").strip()
+                rpath = rd.get("path", "").strip()
+                if not name or not rpath:
+                    skipped += 1
+                    continue
+                try:
+                    os.makedirs(rpath, exist_ok=True)
+                    manager.master.add_repo(name, rpath, rd.get("github_url", ""), rd.get("branch", "main"))
+                    RepoDB(os.path.join(rpath, ".swarm-agent.db"))
+                    imported += 1
+                except Exception:
+                    skipped += 1
+            return self._json({"ok": True, "imported": imported, "skipped": skipped})
 
         if path == "/api/repos":
             name = b.get("name","").strip()

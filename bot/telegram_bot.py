@@ -425,6 +425,38 @@ def cmd_memory(name):
     return "\n".join(lines)
 
 
+def cmd_repos():
+    """List all registered repos with their IDs."""
+    repos = _orch_get("/api/repos")
+    if isinstance(repos, dict) and "error" in repos:
+        return f"Error: {repos['error']}"
+    if not repos:
+        return "No repos registered."
+    lines = ["*Registered Repos:*\n"]
+    for r in repos:
+        state = r.get("state", "idle")
+        running = "running" if r.get("running") else "stopped"
+        lines.append(f"  `{r['id']}` *{r['name']}* [{state}] ({running})")
+    return "\n".join(lines)
+
+
+def cmd_add_repo(text):
+    """Parse 'name: /path/to/repo' and register a new repo."""
+    parts = text.split(":", 1)
+    if len(parts) < 2:
+        return "Format: `add repo name: /path/to/repo`"
+    name = parts[0].strip()
+    path = parts[1].strip()
+    if not name or not path:
+        return "Both name and path are required."
+    result = _orch_post("/api/repos", {
+        "name": name, "path": path, "branch": "main"
+    })
+    if result.get("ok"):
+        return f"Added *{name}* to Swarm Town."
+    return f"Failed: {result.get('error', 'unknown error')}"
+
+
 def cmd_remove_repo(name):
     """Remove a repo from the orchestrator (files kept on disk)."""
     repo = _find_repo(name)
@@ -474,6 +506,8 @@ def cmd_help():
 `screenshot` / `show me` — Dashboard photo
 `add feature repo: title - desc` — Add feature
 `add issue repo: title - desc` — Add issue
+`repos` / `list` — List all registered repos
+`add repo name: /path` — Register new repo
 `push [repo]` — Git push
 `logs [repo]` — Last 5 log entries
 `mistakes [repo]` — Last 5 mistakes
@@ -602,6 +636,10 @@ def handle_message(msg):
         reply = cmd_mistakes(t[9:])
     elif t.startswith("memory "):
         reply = cmd_memory(t[7:])
+    elif t == "repos" or t == "list":
+        reply = cmd_repos()
+    elif t.startswith("add repo "):
+        reply = cmd_add_repo(text[9:])  # use original case
     elif t.startswith("remove "):
         reply = cmd_remove_repo(t[7:])
     elif t == "digest":
