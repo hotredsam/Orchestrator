@@ -173,6 +173,10 @@ function Dashboard() {
   const [uptime, setUptime] = useState("");
   const [sysInfo, setSysInfo] = useState({});
   const [browserNotifs, setBrowserNotifs] = useState(() => localStorage.getItem("swarm-notifs") === "1");
+  const [notifPrefs, setNotifPrefs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("swarm-notif-prefs") || '{"cycles":true,"errors":true,"budget":true,"stale":true}'); }
+    catch { return { cycles: true, errors: true, budget: true, stale: true }; }
+  });
   const [sourceFilter, setSourceFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [mistakeAnalysis, setMistakeAnalysis] = useState(null);
@@ -197,6 +201,7 @@ function Dashboard() {
   const [healthHistory, setHealthHistory] = useState(null);
   const [masterFocus, setMasterFocus] = useState(-1);
   const [compactMaster, setCompactMaster] = useState(() => localStorage.getItem("swarm-compact-master") === "1");
+  const [groupByTag, setGroupByTag] = useState(false);
   const [compactItems, setCompactItems] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
@@ -1443,6 +1448,9 @@ function Dashboard() {
               <span onClick={() => { const next = !compactMaster; setCompactMaster(next); localStorage.setItem("swarm-compact-master", next ? "1" : "0"); }}
                 style={{ cursor: "pointer", fontSize: 10, padding: "3px 8px", borderRadius: 8, background: compactMaster ? C.teal : C.cream, color: compactMaster ? C.white : C.brown, border: `1px solid ${C.darkBrown}33`, fontWeight: 700, transition: "all .2s" }}
                 title="Toggle compact mode">{compactMaster ? "Compact" : "Full"}</span>
+              <span onClick={() => setGroupByTag(v => !v)}
+                style={{ cursor: "pointer", fontSize: 10, padding: "3px 8px", borderRadius: 8, background: groupByTag ? "#7E57C2" : C.cream, color: groupByTag ? C.white : C.brown, border: `1px solid ${C.darkBrown}33`, fontWeight: 700, transition: "all .2s" }}
+                title="Group by tag">Group</span>
               {/* Tag filter chips */}
               {(() => { const allTags = [...new Set(repos.flatMap(r => (r.tags || "").split(",").filter(Boolean)))].sort(); return allTags.length > 0 && (<>
                 <span style={{ fontSize: 11, color: C.brown }}>|</span>
@@ -1477,10 +1485,30 @@ function Dashboard() {
                 if (repoFilter.startsWith("q:")) return r.name.toLowerCase().includes(repoFilter.slice(2).toLowerCase());
                 return true;
               }).sort((a, b) => {
+                if (groupByTag) {
+                  const ta = (a.tags || "").split(",").filter(Boolean)[0] || "zzz-untagged";
+                  const tb = (b.tags || "").split(",").filter(Boolean)[0] || "zzz-untagged";
+                  if (ta !== tb) return ta.localeCompare(tb);
+                }
                 const pa = pinnedRepos.includes(a.id) ? 0 : 1;
                 const pb = pinnedRepos.includes(b.id) ? 0 : 1;
                 return pa - pb || a.name.localeCompare(b.name);
+              }).flatMap((r, _mi, arr) => {
+                const elements = [];
+                if (groupByTag) {
+                  const tag = (r.tags || "").split(",").filter(Boolean)[0] || "untagged";
+                  const prevTag = _mi > 0 ? ((arr[_mi-1].tags || "").split(",").filter(Boolean)[0] || "untagged") : null;
+                  if (tag !== prevTag) {
+                    elements.push(
+                      <div key={`group-${tag}`} style={{ gridColumn: "1 / -1", fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, color: "#7E57C2", padding: "8px 0 4px", borderBottom: `2px solid #CE93D8`, marginBottom: 4 }}>
+                        {"\uD83C\uDFF7\uFE0F"} {tag} ({arr.filter(x => ((x.tags||"").split(",").filter(Boolean)[0]||"untagged") === tag).length})
+                      </div>
+                    );
+                  }
+                }
+                return [...elements, r];
               }).map((r, _mi) => {
+                if (r.type === "div" || r.$$typeof) return r; // Group header elements pass through
                 const rst = STATES[r.state] || STATES.idle;
                 const s = r.stats || {};
                 const pct = s.steps_total ? Math.round(s.steps_done / s.steps_total * 100) : 0;
@@ -2109,6 +2137,44 @@ function Dashboard() {
                   </div>
                   <div style={{ textAlign: "center", fontSize: 10, color: C.brown, marginTop: 4 }}>
                     Avg: {Math.round(durations.reduce((a,b)=>a+b,0)/durations.length)}s | Min: {Math.round(Math.min(...durations))}s | Max: {Math.round(maxDur)}s
+                  </div>
+                </Card>
+              );
+            })()}
+            {/* Execution Timeline (Gantt-like) */}
+            {(() => {
+              const completed = plan.filter(s => s.status === "completed" && s.completed_at && s.duration_sec > 0);
+              if (completed.length < 2) return null;
+              const times = completed.map(s => new Date(s.completed_at + "Z").getTime());
+              const durations = completed.map(s => s.duration_sec * 1000);
+              const starts = times.map((t, i) => t - durations[i]);
+              const minStart = Math.min(...starts);
+              const maxEnd = Math.max(...times);
+              const range = maxEnd - minStart || 1;
+              return (
+                <Card bg={C.white} style={{ maxWidth: 680, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>Execution Timeline</div>
+                  <div style={{ position: "relative" }}>
+                    {completed.map((s, i) => {
+                      const start = starts[i];
+                      const end = times[i];
+                      const left = ((start - minStart) / range) * 100;
+                      const width = Math.max(((end - start) / range) * 100, 1);
+                      return (
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
+                          <span style={{ fontSize: 9, color: C.brown, minWidth: 20, textAlign: "right" }}>{i+1}</span>
+                          <div style={{ flex: 1, height: 12, position: "relative", background: `${C.darkBrown}08`, borderRadius: 4 }}>
+                            <div style={{ position: "absolute", left: `${left}%`, width: `${width}%`, height: "100%", background: `linear-gradient(90deg, ${C.teal}, ${C.green})`, borderRadius: 4, transition: "all 0.3s" }}
+                              title={`Step ${i+1}: ${s.description?.slice(0,40)} (${Math.round(s.duration_sec)}s)`} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.brown, marginTop: 4 }}>
+                    <span>{new Date(minStart).toLocaleTimeString()}</span>
+                    <span>{Math.round((maxEnd - minStart) / 60000)}min total span</span>
+                    <span>{new Date(maxEnd).toLocaleTimeString()}</span>
                   </div>
                 </Card>
               );
@@ -2985,6 +3051,33 @@ function Dashboard() {
                   </span>
                 </div>
               </Card>
+
+              {/* ── Notification Preferences ── */}
+              {browserNotifs && (
+                <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, marginBottom: 8, letterSpacing: 1.5 }}>Notification Types</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {[
+                      { key: "cycles", label: "Cycle Complete", icon: "\uD83D\uDD04", desc: "When a repo finishes a cycle" },
+                      { key: "errors", label: "Errors", icon: "\u26A0\uFE0F", desc: "When errors occur" },
+                      { key: "budget", label: "Budget Alerts", icon: "\uD83D\uDCB0", desc: "Cost threshold warnings" },
+                      { key: "stale", label: "Stale Items", icon: "\u23F0", desc: "Items stuck too long" },
+                    ].map(n => (
+                      <label key={n.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: C.white, borderRadius: 8, border: `1.5px solid ${notifPrefs[n.key] ? C.green : C.darkBrown}33`, cursor: "pointer", transition: "border-color 0.2s" }}>
+                        <input type="checkbox" checked={notifPrefs[n.key]} onChange={() => {
+                          const next = { ...notifPrefs, [n.key]: !notifPrefs[n.key] };
+                          setNotifPrefs(next);
+                          localStorage.setItem("swarm-notif-prefs", JSON.stringify(next));
+                        }} style={{ width: 16, height: 16, accentColor: C.green }} />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>{n.icon} {n.label}</div>
+                          <div style={{ fontSize: 10, color: C.brown }}>{n.desc}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </Card>
+              )}
 
               {/* ── Refresh Interval ── */}
               <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E0F7FA 0%, #B2EBF2 100%)` }}>
