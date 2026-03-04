@@ -847,6 +847,7 @@
                 ? `<button class="btn btn-red btn-sm" onclick="stopRepo(${r.id})">Stop</button>`
                 : `<button class="btn btn-green btn-sm" onclick="startRepo(${r.id})">Start</button>`}
               <button class="btn btn-outline btn-sm" onclick="pushRepo(${r.id})">Push</button>
+              <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red);" onclick="deleteRepo(${r.id})">Remove</button>
             </div>
           </div>`;
       }).join('');
@@ -867,6 +868,14 @@
     async function pushRepo(id) {
       haptic('heavy');
       await api('/api/push', { method: 'POST', body: JSON.stringify({ repo_id: id, message: 'manual push from telegram' }) });
+      haptic('medium');
+    }
+
+    async function deleteRepo(id) {
+      if (!confirm('Remove this repo from Swarm Town? (files on disk are kept)')) return;
+      haptic('heavy');
+      await api('/api/repos/delete', { method: 'POST', body: JSON.stringify({ repo_id: id }) });
+      refreshHome();
       haptic('medium');
     }
 

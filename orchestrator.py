@@ -569,6 +569,11 @@ class MasterDB:
     def get_running(self):
         return [dict(r) for r in self.ex("SELECT * FROM repos WHERE running=1").fetchall()]
 
+    def delete_repo(self, repo_id):
+        """Remove a repo from the registry. Does NOT delete files on disk."""
+        self.ex("DELETE FROM repos WHERE id=?", (repo_id,))
+        self.commit()
+
 
 # ─── Claude Runner ────────────────────────────────────────────────────────────
 
@@ -2026,6 +2031,10 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/repos":
             repos = manager.master.get_repos()
+            # Optional name filter
+            name_q = q.get("q", [""])[0].strip().lower()
+            if name_q:
+                repos = [r for r in repos if name_q in r["name"].lower()]
             # Enrich with state
             for r in repos:
                 try:
@@ -2217,6 +2226,23 @@ class API(BaseHTTPRequestHandler):
             repo = manager.master.add_repo(name, p, b.get("github_url",""), b.get("branch","main"))
             RepoDB(repo["db_path"])  # initialize
             return self._json({"ok": True, "repo": repo}, 201)
+
+        if path == "/api/repos/delete":
+            rid = b.get("repo_id")
+            if not rid:
+                return self._json({"error": "repo_id required"}, 400)
+            rid = int(rid)
+            # Stop the repo if running
+            if rid in manager.orchestrators:
+                manager.stop_repo(rid)
+                if rid in manager.threads:
+                    manager.threads[rid].join(timeout=5)
+                    del manager.threads[rid]
+                if rid in manager.orchestrators:
+                    manager.orchestrators[rid].cleanup()
+                    del manager.orchestrators[rid]
+            manager.master.delete_repo(rid)
+            return self._json({"ok": True, "deleted": rid})
 
         if path == "/api/start":
             rid = b.get("repo_id")

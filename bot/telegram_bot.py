@@ -221,6 +221,13 @@ def _fetch_api_token():
         return _cached_token or ""
 
 
+def _invalidate_token():
+    """Clear the cached token so the next request re-fetches it."""
+    global _cached_token, _cached_token_ts
+    _cached_token = ""
+    _cached_token_ts = 0
+
+
 def _orch_get(path):
     """GET from orchestrator API."""
     try:
@@ -230,6 +237,14 @@ def _orch_get(path):
             req.add_header("Authorization", f"Bearer {token}")
         resp = urlopen(req, timeout=5)
         return json.loads(resp.read())
+    except HTTPError as e:
+        if e.code == 401:
+            _invalidate_token()
+            log.warning("Got 401 from orchestrator — token invalidated, will re-fetch")
+        return {"error": str(e)}
+    except URLError as e:
+        log.warning("Orchestrator unreachable: %s", e.reason)
+        return {"error": f"Orchestrator unreachable: {e.reason}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -245,6 +260,14 @@ def _orch_post(path, data):
                      headers=headers)
         resp = urlopen(req, timeout=10)
         return json.loads(resp.read())
+    except HTTPError as e:
+        if e.code == 401:
+            _invalidate_token()
+            log.warning("Got 401 from orchestrator — token invalidated, will re-fetch")
+        return {"error": str(e)}
+    except URLError as e:
+        log.warning("Orchestrator unreachable: %s", e.reason)
+        return {"error": f"Orchestrator unreachable: {e.reason}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -402,6 +425,17 @@ def cmd_memory(name):
     return "\n".join(lines)
 
 
+def cmd_remove_repo(name):
+    """Remove a repo from the orchestrator (files kept on disk)."""
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    result = _orch_post("/api/repos/delete", {"repo_id": repo["id"]})
+    if result.get("ok"):
+        return f"Removed *{repo['name']}* from Swarm Town (files on disk kept)."
+    return f"Failed to remove: {result.get('error', 'unknown error')}"
+
+
 def cmd_digest():
     """Fetch the daily digest from the orchestrator and return it."""
     data = _orch_get("/api/digest")
@@ -444,6 +478,7 @@ def cmd_help():
 `logs [repo]` — Last 5 log entries
 `mistakes [repo]` — Last 5 mistakes
 `memory [repo]` — Last 5 memory entries
+`remove [repo]` — Remove repo (keeps files)
 `digest` — Daily digest summary
 `costs` — Per-repo API costs
 `help` — This message
@@ -567,6 +602,8 @@ def handle_message(msg):
         reply = cmd_mistakes(t[9:])
     elif t.startswith("memory "):
         reply = cmd_memory(t[7:])
+    elif t.startswith("remove "):
+        reply = cmd_remove_repo(t[7:])
     elif t == "digest":
         reply = cmd_digest()
     elif t == "costs":

@@ -206,6 +206,7 @@ function Dashboard() {
   const startRepo = async id => { await f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
   const stopRepo = async id => { await f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); };
   const startAll = async () => { await f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: "all" }) }); load(); };
+  const deleteRepo = async id => { if(confirm("Remove this repo from Swarm Town? (files on disk are kept)")) { await f("/api/repos/delete", { method: "POST", body: JSON.stringify({ repo_id: id }) }); load(); } };
   const pushGH = async () => { if(sr) await f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: sr, message: "manual push" }) }); };
 
   const scanAll = async () => {
@@ -574,6 +575,7 @@ function Dashboard() {
                       {r.running
                         ? <Btn bg={C.red} onClick={e => { e.stopPropagation(); stopRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u23F9"} Stop</Btn>
                         : <Btn bg={C.green} onClick={e => { e.stopPropagation(); startRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u25B6"} Start</Btn>}
+                      <Btn bg="#888" onClick={e => { e.stopPropagation(); deleteRepo(r.id); }} style={{ fontSize: 11, padding: "5px 10px" }}>{"\u2716"}</Btn>
                       <div style={{ fontSize: 12, color: C.brown, display: "flex", alignItems: "center", gap: 4, flex: 1, fontWeight: 500 }}>
                         {rst.emoji} {rst.label}
                       </div>
