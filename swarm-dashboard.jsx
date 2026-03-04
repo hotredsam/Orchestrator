@@ -105,6 +105,8 @@ function Dashboard() {
   const [selOptItems, setSelOptItems] = useState([]);
   const [costs, setCosts] = useState({});
   const [itemFilter, setItemFilter] = useState("all");
+  const [webhooks, setWebhooks] = useState([]);
+  const [newWebhook, setNewWebhook] = useState({ url: "", events: "*" });
   const [repoSort, setRepoSort] = useState("name");
   const [repoFilter, setRepoFilter] = useState("all");
   const [toasts, setToasts] = useState([]);
@@ -191,8 +193,9 @@ function Dashboard() {
       if(c.ok) setLogs(await c.json()); if(d.ok) setAgents(await d.json());
       if(e.ok) setMemory(await e.json()); if(g.ok) setMistakes(await g.json());
       if(h.ok) setAudio(await h.json()); if(hi.ok) setHistory(await hi.json());
-      // Fetch costs
+      // Fetch costs + webhooks
       try { const cr = await f("/api/costs"); if(cr.ok) { const cd = await cr.json(); if(cd.costs) setCosts(cd.costs); } } catch {}
+      try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
     } catch(err) { console.warn("Data fetch error:", err.message); }
   }, [sr]);
 
@@ -1568,6 +1571,43 @@ function Dashboard() {
                     input.click();
                   }}>{"\uD83D\uDCE4"} Import Repos</Btn>
                 </div>
+              </Card>
+
+              {/* ── Webhooks ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 10, letterSpacing: 1.5 }}>{"\uD83D\uDD14"} Webhooks</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Register HTTP callbacks for real-time events (state changes, logs, errors).</p>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                  <Inp placeholder="Webhook URL (https://...)" value={newWebhook.url} onChange={e => setNewWebhook(p => ({...p, url: e.target.value}))} style={{ flex: 1, minWidth: 200 }} />
+                  <select value={newWebhook.events} onChange={e => setNewWebhook(p => ({...p, events: e.target.value}))}
+                    style={{ padding: "8px 12px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, fontSize: 12, fontFamily: "'Fredoka',sans-serif", fontWeight: 600 }}>
+                    <option value="*">All Events</option>
+                    <option value="state_change">State Changes</option>
+                    <option value="log">Logs</option>
+                    <option value="error_event">Errors</option>
+                    <option value="watchdog">Watchdog</option>
+                  </select>
+                  <Btn bg={C.teal} style={{ fontSize: 13, padding: "8px 16px" }} onClick={async () => {
+                    if (!newWebhook.url) return;
+                    const events = newWebhook.events === "*" ? ["*"] : [newWebhook.events];
+                    await apiAction("/api/webhooks", { method: "POST", body: JSON.stringify({ url: newWebhook.url, events }) }, "Webhook registered");
+                    setNewWebhook({ url: "", events: "*" });
+                  }}>+ Add</Btn>
+                </div>
+                {webhooks.length > 0 && (
+                  <div style={{ border: `2px solid ${C.darkBrown}33`, borderRadius: 10, background: C.white, overflow: "hidden" }}>
+                    {webhooks.map(wh => (
+                      <div key={wh.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${C.darkBrown}15` }}>
+                        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{wh.url}</span>
+                        <span style={{ fontSize: 10, color: C.brown, background: C.lightTeal, padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>{wh.events.join(", ")}</span>
+                        <button onClick={async () => {
+                          await apiAction("/api/webhooks/delete", { method: "POST", body: JSON.stringify({ id: wh.id }) }, "Webhook removed");
+                        }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.red, padding: "2px 6px" }}>{"\u2716"}</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {webhooks.length === 0 && <div style={{ fontSize: 12, color: C.brown, textAlign: "center", padding: 10 }}>No webhooks registered</div>}
               </Card>
 
               {/* ── Per-Repo Config ── */}
