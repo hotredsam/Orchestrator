@@ -121,6 +121,7 @@ function Dashboard() {
   const [uptime, setUptime] = useState("");
   const [browserNotifs, setBrowserNotifs] = useState(() => localStorage.getItem("swarm-notifs") === "1");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
   const [mistakeAnalysis, setMistakeAnalysis] = useState(null);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [trends, setTrends] = useState(null);
@@ -287,8 +288,12 @@ function Dashboard() {
       if (e.key === "r" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
       if (e.key === "d" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleDark(); }
       if (e.key === "/") { e.preventDefault(); setTab("home"); setTimeout(() => { const el = document.querySelector("input[placeholder*='command']"); if (el) el.focus(); }, 100); }
-      if (e.key === "Escape") setShowHelp(false);
+      if (e.key === "Escape") { setShowHelp(false); setSelectedItems(new Set()); }
       if (e.key === "?") setShowHelp(prev => !prev);
+      if (e.key === "f" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
+      if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setStatusFilter("all"); setSourceFilter("all"); setPriorityFilter("all"); setLogSearch(""); setMemSearch(""); setMasterSearch(""); setMasterFilter("all"); setSelectedItems(new Set()); }
+      if (e.key === "[") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci > 0) setTab(TABS_LIST[ci - 1]); }
+      if (e.key === "]") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci < TABS_LIST.length - 1) setTab(TABS_LIST[ci + 1]); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -348,7 +353,7 @@ function Dashboard() {
   };
   const toggleSelectItem = (id) => setSelectedItems(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const toggleSelectAll = () => {
-    const visible = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter));
+    const visible = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter) && (priorityFilter === "all" || it.priority === priorityFilter));
     setSelectedItems(prev => prev.size === visible.length ? new Set() : new Set(visible.map(it => it.id)));
   };
   const addRepo = async () => {
@@ -1266,6 +1271,16 @@ function Dashboard() {
                     border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
                   }}>{s === "all" ? "Any Source" : s === "error_detected" ? "Error" : s.charAt(0).toUpperCase() + s.slice(1)}</button>
                 ))}
+                <span style={{ fontSize: 11, color: C.brown, alignSelf: "center" }}>|</span>
+                {["all", "critical", "high", "medium", "low"].map(p => (
+                  <button key={p} onClick={() => setPriorityFilter(p)} style={{
+                    padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                    fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
+                    background: priorityFilter === p ? C.orange : C.cream,
+                    color: priorityFilter === p ? C.white : C.darkBrown,
+                    border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
+                  }}>{p === "all" ? "Any Priority" : p.charAt(0).toUpperCase() + p.slice(1)}</button>
+                ))}
               </div>
             )}
             {selectedItems.size > 0 && (
@@ -1285,8 +1300,8 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Post a bounty above to get the swarm working!</div>
                 </Card>
               ) :
-                (() => { const vis = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter)); return vis.length > 0 && <div style={{ textAlign: "center", marginBottom: 6 }}><button onClick={toggleSelectAll} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>{selectedItems.size === vis.length ? "Deselect All" : `Select All (${vis.length})`}</button></div>; })()}
-                {items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter)).map((it, idx) => {
+                (() => { const vis = items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter) && (priorityFilter === "all" || it.priority === priorityFilter)); return vis.length > 0 && <div style={{ textAlign: "center", marginBottom: 6 }}><button onClick={toggleSelectAll} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>{selectedItems.size === vis.length ? "Deselect All" : `Select All (${vis.length})`}</button></div>; })()}
+                {items.filter(it => (itemFilter === "all" || it.status === itemFilter) && (sourceFilter === "all" || it.source === sourceFilter) && (priorityFilter === "all" || it.priority === priorityFilter)).map((it, idx) => {
                   const prioConfig = {
                     critical: { bg: C.red, icon: "\uD83D\uDD34", label: "CRITICAL", size: 13 },
                     high: { bg: C.orange, icon: "\uD83D\uDFE0", label: "HIGH", size: 12 },
@@ -2314,8 +2329,11 @@ function Dashboard() {
                 ["R", "Refresh all data"],
                 ["D", "Toggle dark mode"],
                 ["/", "Focus command center"],
+                ["F", "Focus search/filter input"],
+                ["C", "Clear all filters"],
+                ["[ / ]", "Previous / Next tab"],
                 ["?", "Toggle this help"],
-                ["Esc", "Close overlays"],
+                ["Esc", "Close overlays / deselect"],
               ].map(([key, desc]) => (
                 <React.Fragment key={key}>
                   <kbd style={{ background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "3px 10px", fontFamily: "'Bangers', cursive", fontSize: 16, textAlign: "center", boxShadow: "2px 2px 0 #3D2B1F" }}>{key}</kbd>

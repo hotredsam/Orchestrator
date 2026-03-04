@@ -757,6 +757,52 @@ def cmd_activity():
     return "\n".join(lines) if len(lines) > 2 else "No recent activity."
 
 
+def cmd_notes(name):
+    """Show repo notes/annotations."""
+    rid = _resolve_repo(name)
+    if not rid:
+        return f"Repo not found: {name}"
+    data = _orch_get(f"/api/notes?repo_id={rid}")
+    if not isinstance(data, list) or not data:
+        return f"No notes for *{name}*."
+    lines = [f"*Notes for {name}:*", ""]
+    for n in data[:10]:
+        key = n.get("key", "")
+        val = n.get("value", "")[:100]
+        lines.append(f"  \U0001F4DD `{key[:10]}` {val}")
+    return "\n".join(lines)
+
+
+def cmd_add_note(name, text):
+    """Add a note to a repo."""
+    rid = _resolve_repo(name)
+    if not rid:
+        return f"Repo not found: {name}"
+    result = _orch_post("/api/notes", {"repo_id": rid, "action": "add", "text": text})
+    if isinstance(result, dict) and result.get("ok"):
+        return f"\U0001F4DD Note added to *{name}*."
+    return f"Failed to add note to {name}."
+
+
+def cmd_agent_stats(name):
+    """Show agent performance stats for a repo."""
+    rid = _resolve_repo(name)
+    if not rid:
+        return f"Repo not found: {name}"
+    data = _orch_get(f"/api/agent-stats?repo_id={rid}")
+    if not isinstance(data, list) or not data:
+        return f"No agent stats for *{name}*."
+    lines = [f"*Agent Stats — {name}:*", ""]
+    for a in data:
+        agent = a.get("agent_type", "unknown")
+        steps = a.get("completed_steps", 0)
+        cost = a.get("avg_cost", 0)
+        dur = a.get("avg_duration", 0)
+        test_pass = a.get("test_pass_rate", 0)
+        lines.append(f"  *{agent}*: {steps} steps, ${cost:.3f}/step, {dur:.0f}s avg, {test_pass:.0f}% pass")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -792,6 +838,9 @@ def cmd_help():
 `trends [repo]` — 7-day performance trends
 `compare` — Cross-repo comparison table
 `activity` — Recent activity across all repos
+`notes [repo]` — View repo notes
+`add note repo: text` — Add a note
+`agent-stats [repo]` — Agent performance stats
 `app` — Open Mini App
 `help` — This message
 
@@ -971,6 +1020,18 @@ def handle_message(msg):
         reply = cmd_compare()
     elif t in ("activity", "recent"):
         reply = cmd_activity()
+    elif t.startswith("notes "):
+        reply = cmd_notes(t[6:].strip())
+    elif t.startswith("add note "):
+        # add note repo: my note text
+        parts = text[9:].split(":", 1)
+        if len(parts) == 2:
+            reply = cmd_add_note(parts[0].strip(), parts[1].strip())
+        else:
+            reply = "Usage: `add note repo: note text`"
+    elif t.startswith("agent-stats ") or t.startswith("agentstats "):
+        arg = t.split(" ", 1)[1].strip() if " " in t else ""
+        reply = cmd_agent_stats(arg)
     elif t == "help":
         reply = cmd_help()
     elif t in ("app", "dashboard", "open"):

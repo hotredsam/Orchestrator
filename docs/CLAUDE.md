@@ -134,6 +134,10 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Agent performance stats** — `/api/agent-stats` endpoint with per-agent-type step counts, avg cost, avg duration, test pass rates
 - **Crew tab performance table** — agents tab shows performance breakdown table after the active agent cards
 - **Repo notes** — per-repo annotations stored in memory table (namespace='notes'), collapsible Notes section on Town Square with add/delete
+- **Telegram notes command** — `notes [repo]` to view, `add note repo: text` to add notes from Telegram
+- **Telegram agent-stats command** — `agent-stats [repo]` shows per-agent-type performance from Telegram
+- **Keyboard shortcuts expanded** — F=focus search, C=clear all filters, [/]=prev/next tab, Esc=deselect
+- **Priority filter** — bounty board items filterable by priority (Critical/High/Medium/Low) alongside status and source filters
 
 ## Commands
 ```bash
@@ -253,6 +257,9 @@ screenshot      — Dashboard screenshot
 digest          — Daily digest summary
 costs           — Per-repo API costs
 health          — Health scan all repos
+notes [repo]    — View repo notes
+add note repo: text — Add a note
+agent-stats [repo] — Agent performance stats
 app             — Open Mini App link
 help            — Show all commands
 ```
