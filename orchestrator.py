@@ -821,6 +821,18 @@ class MasterDB:
             )
         """)
         self.conn.commit()
+        # Health history table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS health_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                score INTEGER DEFAULT 0,
+                grade TEXT DEFAULT '',
+                UNIQUE(repo_id, date)
+            )
+        """)
+        self.conn.commit()
 
     def ex(self, q, p=()):
         with self.lock:
@@ -877,6 +889,27 @@ class MasterDB:
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         rows = self.ex(
             "SELECT repo_id, date, cost FROM daily_costs WHERE date >= ? ORDER BY date",
+            (cutoff,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def save_health_scores(self, scores: Dict[int, dict]):
+        """Persist today's health scores (upsert)."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        with self.lock:
+            for rid, info in scores.items():
+                score = info.get("score", 0)
+                grade = info.get("grade", "")
+                self.conn.execute(
+                    "INSERT INTO health_history (repo_id, date, score, grade) VALUES (?, ?, ?, ?)"
+                    " ON CONFLICT(repo_id, date) DO UPDATE SET score = excluded.score, grade = excluded.grade",
+                    (rid, today, score, grade))
+            self.conn.commit()
+
+    def get_health_history(self, days=30):
+        """Get health score history for the last N days."""
+        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        rows = self.ex(
+            "SELECT repo_id, date, score, grade FROM health_history WHERE date >= ? ORDER BY date",
             (cutoff,)).fetchall()
         return [dict(r) for r in rows]
 
@@ -2998,8 +3031,19 @@ class API(BaseHTTPRequestHandler):
                                "score": max(0, score), "issues": issues,
                                "grade": "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"})
             avg = sum(s["score"] for s in scores) / max(len(scores), 1)
+            # Persist daily health scores
+            try:
+                score_map = {s["repo_id"]: {"score": s["score"], "grade": s["grade"]} for s in scores if "repo_id" in s}
+                manager.master.save_health_scores(score_map)
+            except Exception:
+                pass
             return self._json({"repos": scores, "average_score": round(avg, 1),
                                "total": len(scores)})
+
+        if path == "/api/health/history":
+            days = int(q.get("days", [30])[0])
+            history = manager.master.get_health_history(days)
+            return self._json({"history": history, "days": days})
 
         if path == "/api/chat/history":
             return self._json(chat_history[-50:])

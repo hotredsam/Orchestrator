@@ -208,6 +208,7 @@ function Dashboard() {
   const chnk = useRef([]);
   const tmr = useRef(null);
   const sseRef = useRef(null);
+  const sseRetries = useRef(0);
 
   // Toast notification system
   const [toastHistory, setToastHistory] = useState([]);
@@ -290,8 +291,8 @@ function Dashboard() {
           load();
         } catch {}
       });
-      es.addEventListener("connected", () => setSseConnected(true));
-      es.onerror = () => { setSseConnected(false); es.close(); setTimeout(connect, 5000); };
+      es.addEventListener("connected", () => { setSseConnected(true); sseRetries.current = 0; });
+      es.onerror = () => { setSseConnected(false); es.close(); sseRetries.current++; const delay = Math.min(5000 * sseRetries.current, 30000); setTimeout(connect, delay); };
     };
     connect();
     return () => { if (sseRef.current) sseRef.current.close(); };
