@@ -102,6 +102,8 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Response cache** — 3-second TTL cache on /api/repos to reduce DB queries from polling
 - **Telegram retry command** — `retry [repo]` re-queues completed items from Telegram
 - **Telegram metrics command** — `metrics` shows API request counts and latency from Telegram
+- **Repo pinning** — pin/unpin repos in master view (localStorage), pinned repos sort to top everywhere
+- **Uptime display** — header shows server uptime (from /api/status)
 
 ## Commands
 ```bash

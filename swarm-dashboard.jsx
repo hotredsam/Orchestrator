@@ -115,6 +115,10 @@ function Dashboard() {
   const [toasts, setToasts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [apiMetrics, setApiMetrics] = useState(null);
+  const [pinnedRepos, setPinnedRepos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("swarm-pinned") || "[]"); } catch { return []; }
+  });
+  const [uptime, setUptime] = useState("");
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -229,6 +233,7 @@ function Dashboard() {
       if (full || t === "metrics") {
         try { const mr = await f("/api/metrics"); if(mr.ok) setApiMetrics(await mr.json()); } catch {}
       }
+      try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); } } catch {}
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
   }, [sr]);
@@ -288,6 +293,13 @@ function Dashboard() {
   const retryItem = async (itemId) => {
     if (!sr) return;
     await apiAction("/api/items/retry", { method: "POST", body: JSON.stringify({ repo_id: sr, item_id: itemId }) }, "Item re-queued");
+  };
+  const togglePin = (repoId) => {
+    setPinnedRepos(prev => {
+      const next = prev.includes(repoId) ? prev.filter(id => id !== repoId) : [...prev, repoId];
+      localStorage.setItem("swarm-pinned", JSON.stringify(next));
+      return next;
+    });
   };
   const retryAllCompleted = async () => {
     if (!sr) return;
@@ -591,8 +603,11 @@ function Dashboard() {
         <div style={{ position: "absolute", top: 12, right: 16, display: "flex", alignItems: "center", gap: 8, zIndex: 3 }}>
           {repos.length > 0 && <select value={sr||""} onChange={e => setSR(Number(e.target.value))}
             style={{ padding: "5px 10px", background: C.yellow, border: `3px solid ${C.darkBrown}`, borderRadius: 12, fontSize: 13, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 180 }}>
-            {repos.map(r => <option key={r.id} value={r.id}>{r.name} [{r.state || "idle"}]</option>)}
+            {[...repos].sort((a, b) => { const pa = pinnedRepos.includes(a.id) ? 0 : 1; const pb = pinnedRepos.includes(b.id) ? 0 : 1; return pa - pb || a.name.localeCompare(b.name); }).map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name} [{r.state || "idle"}]</option>)}
           </select>}
+          {uptime && (
+            <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: C.darkBrown }}>{"\u23F1\uFE0F"} {uptime}</div>
+          )}
           {Object.keys(costs).length > 0 && (
             <div style={{ background: "#E8F5E9", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#2E7D32" }}>
               ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}
@@ -830,7 +845,11 @@ function Dashboard() {
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>All Repos -- Master View</h2>
             <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 20 }}>Bird's-eye view of every repo in your swarm</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-              {repos.map(r => {
+              {[...repos].sort((a, b) => {
+                const pa = pinnedRepos.includes(a.id) ? 0 : 1;
+                const pb = pinnedRepos.includes(b.id) ? 0 : 1;
+                return pa - pb || a.name.localeCompare(b.name);
+              }).map(r => {
                 const rst = STATES[r.state] || STATES.idle;
                 const s = r.stats || {};
                 const pct = s.steps_total ? Math.round(s.steps_done / s.steps_total * 100) : 0;
@@ -844,6 +863,9 @@ function Dashboard() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, letterSpacing: 1, lineHeight: 1.1 }}>{r.name}</div>
+                          <button onClick={e => { e.stopPropagation(); togglePin(r.id); }}
+                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, opacity: pinnedRepos.includes(r.id) ? 1 : 0.3, padding: "0 2px" }}
+                            title={pinnedRepos.includes(r.id) ? "Unpin" : "Pin to top"}>{"\uD83D\uDCCC"}</button>
                           <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(r.path); showToast("Path copied!", "info"); }}
                             style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, opacity: 0.4, padding: "0 4px" }}
                             title={r.path}>{"\uD83D\uDCCB"}</button>
