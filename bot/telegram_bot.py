@@ -1994,7 +1994,15 @@ def handle_message(msg):
     elif t.startswith("trends"):
         reply = cmd_trends(t[6:].strip())
     elif t in ("compare", "comparison"):
-        reply = cmd_compare()
+        compare_text = cmd_compare()
+        buttons = [
+            [{"text": "\U0001F3C6 Leaderboard", "callback_data": "cmd_leaderboard"},
+             {"text": "\U0001F4B0 Costs", "callback_data": "cmd_costs"}],
+            [{"text": "\U0001F4C8 Forecast", "callback_data": "cmd_forecast"},
+             {"text": "\U0001F4CB Summary", "callback_data": "cmd_summary"}],
+        ]
+        send_message(compare_text, chat_id=chat_id, reply_markup={"inline_keyboard": buttons})
+        reply = None
     elif t in ("activity", "recent"):
         reply = cmd_activity()
     elif t.startswith("notes "):

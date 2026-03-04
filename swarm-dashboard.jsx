@@ -1793,6 +1793,21 @@ function Dashboard() {
                       </div>
                       <span style={{ fontSize: 10, fontWeight: 700, color: pct === 100 ? C.green : C.teal, minWidth: 28, textAlign: "right" }}>{pct}%</span>
                     </div>
+                    {/* Quick Actions */}
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                      {!r.running ? (
+                        <button onClick={e => { e.stopPropagation(); apiAction("/api/start", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }, `${r.name} started`); }} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 8, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, cursor: "pointer", fontWeight: 700, fontFamily: "'Fredoka',sans-serif" }}>{"\u25B6\uFE0F"} Start</button>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); apiAction("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }, `${r.name} stopped`); }} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 8, background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, cursor: "pointer", fontWeight: 700, fontFamily: "'Fredoka',sans-serif" }}>{"\u23F9\uFE0F"} Stop</button>
+                      )}
+                      {r.running && (
+                        r.paused ? (
+                          <button onClick={e => { e.stopPropagation(); apiAction("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }, `${r.name} resumed`); }} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 8, background: C.teal, color: C.white, border: `2px solid ${C.darkBrown}`, cursor: "pointer", fontWeight: 700, fontFamily: "'Fredoka',sans-serif" }}>{"\u25B6\uFE0F"} Resume</button>
+                        ) : (
+                          <button onClick={e => { e.stopPropagation(); apiAction("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }, `${r.name} paused`); }} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 8, background: C.orange, color: C.white, border: `2px solid ${C.darkBrown}`, cursor: "pointer", fontWeight: 700, fontFamily: "'Fredoka',sans-serif" }}>{"\u23F8\uFE0F"} Pause</button>
+                        )
+                      )}
+                    </div>
                     {/* Tags */}
                     {!compactMaster && r.tags && (
                       <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap" }}>

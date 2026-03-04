@@ -1121,6 +1121,7 @@
               <span class="card-value">${r.cycle_count || 0}</span>
             </div>
             ${(stats.cost || 0) > 0 ? `<div class="card-row"><span class="card-label">Cost</span><span class="card-value" style="color:var(--red);font-weight:700;">$${(stats.cost || 0).toFixed(4)}</span></div>` : ''}
+            ${(stats.cost || 0) > 0 && (stats.items_done || 0) > 0 ? `<div class="card-row"><span class="card-label">Efficiency</span><span class="card-value" style="color:${((stats.cost || 0) / (stats.items_done || 1)) < 0.10 ? 'var(--green)' : ((stats.cost || 0) / (stats.items_done || 1)) < 0.50 ? 'var(--orange)' : 'var(--red)'};font-weight:700;font-size:11px;">$${((stats.cost || 0) / (stats.items_done || 1)).toFixed(4)}/item</span></div>` : ''}
             <div class="btn-row" style="margin-top:10px;">
               ${running
                 ? `<button class="btn btn-red btn-sm" onclick="stopRepo(${r.id})">Stop</button>`
