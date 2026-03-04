@@ -522,6 +522,26 @@
     @keyframes toastIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
     @keyframes toastOut { from { opacity:1; } to { opacity:0; transform:translateY(-10px); } }
 
+    /* Pull-to-refresh */
+    .pull-indicator {
+      text-align: center;
+      padding: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: none;
+      transition: all 0.2s;
+    }
+    .pull-indicator.active {
+      display: block;
+    }
+    .pull-indicator .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
     /* Loading overlay */
     .loading-overlay {
       position: fixed;
@@ -606,6 +626,11 @@
       <!-- Screen 1: Home -->
       <div class="screen active" id="screen-home">
         <div class="pull-indicator" id="pullIndicator">Pull to refresh...</div>
+        <div class="btn-row mb-12">
+          <button class="btn btn-green btn-sm" onclick="startAll()">Start All</button>
+          <button class="btn btn-red btn-sm" onclick="stopAll()">Stop All</button>
+          <button class="btn btn-outline btn-sm" onclick="refreshHome()">Refresh</button>
+        </div>
         <div id="homeRepoList">
           <div class="empty-state">
             <div class="empty-emoji">🏜️</div>
@@ -645,6 +670,31 @@
         <button class="btn btn-orange" style="width:100%; margin-top: 8px;" id="addSubmitBtn" onclick="submitItem()">
           Add Item
         </button>
+
+        <div style="margin-top:20px;border-top:2px solid var(--border);padding-top:16px;">
+          <h2 class="section-title" style="cursor:pointer;" onclick="document.getElementById('addRepoForm').style.display=document.getElementById('addRepoForm').style.display==='none'?'block':'none'">
+            Register New Repo +
+          </h2>
+          <div id="addRepoForm" style="display:none;">
+            <div class="input-group">
+              <label class="input-label">Name</label>
+              <input type="text" class="input" id="newRepoName" placeholder="my-project">
+            </div>
+            <div class="input-group">
+              <label class="input-label">Path</label>
+              <input type="text" class="input" id="newRepoPath" placeholder="/home/user/repos/my-project">
+            </div>
+            <div class="input-group">
+              <label class="input-label">GitHub URL (optional)</label>
+              <input type="text" class="input" id="newRepoGithub" placeholder="https://github.com/user/repo">
+            </div>
+            <div class="input-group">
+              <label class="input-label">Branch</label>
+              <input type="text" class="input" id="newRepoBranch" placeholder="main" value="main">
+            </div>
+            <button class="btn btn-teal" style="width:100%;" onclick="registerRepo()">Register Repo</button>
+          </div>
+        </div>
       </div>
 
       <!-- Screen 3: Flow Map -->
@@ -978,6 +1028,47 @@
             </div>
           </div>`;
       }).join('');
+    }
+
+    async function registerRepo() {
+      const name = document.getElementById('newRepoName').value.trim();
+      const path = document.getElementById('newRepoPath').value.trim();
+      const github = document.getElementById('newRepoGithub').value.trim();
+      const branch = document.getElementById('newRepoBranch').value.trim() || 'main';
+      if (!name || !path) { haptic('error'); showToast('Name and path are required', 'error'); return; }
+
+      haptic('heavy');
+      const result = await api('/api/repos', {
+        method: 'POST',
+        body: JSON.stringify({ name, path, github_url: github, branch }),
+      });
+
+      if (result && result.ok) {
+        showToast(`Registered ${name}`, 'success');
+        document.getElementById('newRepoName').value = '';
+        document.getElementById('newRepoPath').value = '';
+        document.getElementById('newRepoGithub').value = '';
+        document.getElementById('addRepoForm').style.display = 'none';
+        await refreshHome();
+        populateRepoDropdowns();
+      } else {
+        showToast('Failed to register repo', 'error');
+      }
+    }
+
+    async function startAll() {
+      haptic('heavy');
+      await api('/api/start', { method: 'POST', body: JSON.stringify({ repo_id: 'all' }) });
+      showToast('All repos started', 'success');
+      refreshHome();
+    }
+
+    async function stopAll() {
+      if (!confirm('Stop all repos?')) return;
+      haptic('heavy');
+      await api('/api/stop', { method: 'POST', body: JSON.stringify({ repo_id: 'all' }) });
+      showToast('All repos stopped', 'warning');
+      refreshHome();
     }
 
     async function startRepo(id) {
@@ -1566,6 +1657,43 @@
       }, 10000); // Reduced to 10s since SSE handles real-time
     }
 
+    // ─── Pull-to-Refresh ──────────────────────────────────────────────────────
+    let pullStartY = 0;
+    let pulling = false;
+
+    function setupPullToRefresh() {
+      const home = document.getElementById('screen-home');
+      const indicator = document.getElementById('pullIndicator');
+
+      home.addEventListener('touchstart', (e) => {
+        if (home.scrollTop === 0 && currentTab === 'home') {
+          pullStartY = e.touches[0].clientY;
+          pulling = true;
+        }
+      }, { passive: true });
+
+      home.addEventListener('touchmove', (e) => {
+        if (!pulling) return;
+        const dy = e.touches[0].clientY - pullStartY;
+        if (dy > 40 && home.scrollTop === 0) {
+          indicator.classList.add('active');
+          indicator.textContent = dy > 80 ? 'Release to refresh...' : 'Pull to refresh...';
+        }
+      }, { passive: true });
+
+      home.addEventListener('touchend', async () => {
+        if (!pulling) return;
+        pulling = false;
+        const indicator = document.getElementById('pullIndicator');
+        if (indicator.classList.contains('active')) {
+          indicator.innerHTML = '<div class="spinner"></div> Refreshing...';
+          haptic('medium');
+          await refreshHome();
+          indicator.classList.remove('active');
+        }
+      });
+    }
+
     // ─── Init ─────────────────────────────────────────────────────────────────
     async function init() {
       // Detect dark mode from Telegram or system preference
@@ -1585,6 +1713,7 @@
       // Connect SSE for real-time updates + start fallback polling
       connectSSE();
       startPolling();
+      setupPullToRefresh();
       fetchCosts();
 
       // Update subtitle with repo count + uptime
