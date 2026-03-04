@@ -1578,6 +1578,28 @@ function Dashboard() {
               )}
             </Card>
 
+            {/* Error trend mini */}
+            {(() => {
+              const errLogs = logs.filter(l => l.error);
+              const totalLogs = logs.length;
+              if (totalLogs === 0) return null;
+              const errRate = totalLogs > 0 ? Math.round(errLogs.length / totalLogs * 100) : 0;
+              const recentErrors = errLogs.slice(0, 3);
+              return errLogs.length > 0 ? (
+                <Card bg={C.white} style={{ maxWidth: 680, margin: "0 auto 12px", padding: "10px 16px", background: errRate > 20 ? `linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 14 }}>{errRate > 20 ? "\u26A0\uFE0F" : "\u2139\uFE0F"}</span>
+                    <span style={{ fontFamily: "'Bangers', cursive", fontSize: 14, letterSpacing: 1, color: errRate > 20 ? C.red : C.brown }}>{errLogs.length} errors ({errRate}% of {totalLogs} actions)</span>
+                  </div>
+                  {recentErrors.map((e, i) => (
+                    <div key={i} style={{ fontSize: 10, color: C.red, padding: "2px 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {e.created_at?.slice(11,19)} {e.action}: {e.error?.slice(0, 80)}
+                    </div>
+                  ))}
+                </Card>
+              ) : null;
+            })()}
+
             {/* Action buttons */}
             <div style={{ textAlign: "center", marginBottom: 16, display: "flex", justifyContent: "center", gap: 10 }}>
               {repo && !repo.running && <Btn bg={C.green} onClick={() => startRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9654; Start</Btn>}
@@ -1935,6 +1957,34 @@ function Dashboard() {
                   );
                 }); })()}
             </div>
+            {/* Step Duration Histogram */}
+            {(() => {
+              const completed = plan.filter(s => s.status === "completed" && s.duration_sec > 0);
+              if (completed.length < 2) return null;
+              const durations = completed.map(s => s.duration_sec);
+              const maxDur = Math.max(...durations);
+              const bucketCount = Math.min(8, completed.length);
+              const bucketSize = maxDur / bucketCount;
+              const buckets = Array(bucketCount).fill(0);
+              durations.forEach(d => { const idx = Math.min(Math.floor(d / bucketSize), bucketCount - 1); buckets[idx]++; });
+              const maxBucket = Math.max(...buckets, 1);
+              return (
+                <Card bg={C.white} style={{ maxWidth: 680, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>Step Duration Distribution</div>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 60 }}>
+                    {buckets.map((count, i) => (
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <div style={{ width: "100%", background: `linear-gradient(180deg, ${C.teal}, ${C.green})`, borderRadius: "4px 4px 0 0", height: `${(count / maxBucket) * 50}px`, transition: "height 0.3s", minHeight: count > 0 ? 4 : 0 }} />
+                        <span style={{ fontSize: 8, color: C.brown, marginTop: 2 }}>{Math.round(i * bucketSize)}-{Math.round((i+1) * bucketSize)}s</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ textAlign: "center", fontSize: 10, color: C.brown, marginTop: 4 }}>
+                    Avg: {Math.round(durations.reduce((a,b)=>a+b,0)/durations.length)}s | Min: {Math.round(Math.min(...durations))}s | Max: {Math.round(maxDur)}s
+                  </div>
+                </Card>
+              );
+            })()}
           </SectionBg>
         )}
 
