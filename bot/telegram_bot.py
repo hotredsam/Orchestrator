@@ -1035,8 +1035,9 @@ def cmd_eta():
         done = sum(1 for s in plan if s.get("status") == "completed")
         total = len(plan)
         remaining = total - done
+        bar = _progress_bar(done, total)
         if remaining == 0:
-            lines.append(f"`{r['name']}` — All {total} steps complete!")
+            lines.append(f"✅ *{r['name']}* `[{bar}]` Done!")
             has_data = True
             continue
         total_dur = sum(s.get("duration_sec", 0) for s in plan if s.get("status") == "completed")
@@ -1047,11 +1048,11 @@ def cmd_eta():
             eta_min = round((remaining * avg_dur) / 60)
             est_cost = remaining * avg_cost
             lines.append(
-                f"`{r['name']}` — {done}/{total} steps\n"
-                f"  ~{eta_min}m remaining, ~${est_cost:.2f} est. cost"
+                f"⏳ *{r['name']}* `[{bar}]` {done}/{total}\n"
+                f"  ~{eta_min}m left, ~${est_cost:.2f} est."
             )
         else:
-            lines.append(f"`{r['name']}` — 0/{total} steps (no data yet)")
+            lines.append(f"⏸️ *{r['name']}* `[{bar}]` 0/{total} (no data)")
         has_data = True
     if not has_data:
         return "No repos with plan steps found."

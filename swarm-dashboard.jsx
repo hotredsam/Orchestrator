@@ -3342,7 +3342,7 @@ function Dashboard() {
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 12, flexWrap: "wrap" }}>
-                  {[["name","Name"],["cost","Cost"],["items_done","Items"],["error_rate","Errors"],["cycles","Cycles"],["health_score","Health"]].map(([key, label]) => (
+                  {[["name","Name"],["cost","Cost"],["items_done","Items"],["error_rate","Errors"],["cycles","Cycles"],["health_score","Health"],["efficiency","$/Item"]].map(([key, label]) => (
                     <button key={key} onClick={() => setCompSort(key)} style={{
                       padding: "4px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
                       fontFamily: "'Fredoka', sans-serif", cursor: "pointer",
@@ -3359,17 +3359,18 @@ function Dashboard() {
                     {compSort === "cost" ? "Cost" : compSort === "items_done" ? "Items Done" : compSort === "error_rate" ? "Error Rate" : compSort === "cycles" ? "Cycles" : compSort === "health_score" ? "Health" : "Cost"} Comparison
                   </div>
                   {(() => {
-                    const metric = compSort === "name" ? "cost" : compSort;
-                    const sorted = [...comparison.repos].sort((a,b) => (b[metric]||0) - (a[metric]||0));
+                    const metric = compSort === "name" ? "cost" : compSort === "efficiency" ? "efficiency" : compSort;
+                    const reposWithEff = comparison.repos.map(r => ({ ...r, efficiency: r.items_done > 0 ? parseFloat((r.cost / r.items_done).toFixed(4)) : 0 }));
+                    const sorted = [...reposWithEff].sort((a,b) => metric === "efficiency" ? (a[metric]||0) - (b[metric]||0) : (b[metric]||0) - (a[metric]||0));
                     const maxV = Math.max(...sorted.map(r => r[metric] || 0), 0.001);
-                    const barColor = metric === "error_rate" ? C.red : metric === "cost" ? C.orange : metric === "health_score" ? C.green : C.teal;
+                    const barColor = metric === "error_rate" ? C.red : metric === "cost" ? C.orange : metric === "health_score" ? C.green : metric === "efficiency" ? "#7E57C2" : C.teal;
                     return sorted.slice(0, 10).map(r => (
                       <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
                         <span style={{ fontSize: 10, fontWeight: 600, minWidth: 80, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
                         <div style={{ flex: 1, height: 14, background: `${C.darkBrown}08`, borderRadius: 4, overflow: "hidden" }}>
                           <div style={{ height: "100%", width: `${((r[metric]||0)/maxV)*100}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})`, borderRadius: 4, transition: "width 0.3s" }} />
                         </div>
-                        <span style={{ fontSize: 10, fontWeight: 700, minWidth: 40, color: barColor }}>{metric === "cost" ? `$${r[metric]}` : metric === "error_rate" ? `${r[metric]}%` : r[metric] || 0}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, minWidth: 50, color: barColor }}>{metric === "cost" || metric === "efficiency" ? `$${r[metric]}` : metric === "error_rate" ? `${r[metric]}%` : r[metric] || 0}</span>
                       </div>
                     ));
                   })()}
