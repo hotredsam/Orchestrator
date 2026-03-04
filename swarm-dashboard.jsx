@@ -1940,6 +1940,20 @@ function Dashboard() {
                   {"\u2705"} All {etas[sr].total} steps complete!
                 </div>
               )}
+              {/* Current active item */}
+              {(() => {
+                const active = items.find(it => it.status === "in_progress");
+                return active && (
+                  <div style={{ marginTop: 8, padding: "6px 12px", background: `${C.orange}15`, borderRadius: 8, border: `1px solid ${C.orange}33`, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14, animation: "pulse 1.5s infinite" }}>{"\u26A1"}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, letterSpacing: 0.5 }}>WORKING ON</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.title}</div>
+                    </div>
+                    <span style={{ fontSize: 10, padding: "2px 8px", background: C.orange, color: C.white, borderRadius: 6, fontWeight: 700 }}>{active.type}</span>
+                  </div>
+                );
+              })()}
             </Card>
 
             {/* Error trend mini */}
@@ -3770,6 +3784,38 @@ function Dashboard() {
                     } catch(e) { showToast(`Rotation error: ${e.message}`, "error"); }
                   }}>{"\uD83D\uDD04"} Rotate Token</Btn>
                   <span style={{ fontSize: 11, color: C.brown }}>Current token prefix: {__authToken ? __authToken.slice(0, 8) + "..." : "none"}</span>
+                </div>
+              </Card>
+
+              {/* ── Dashboard Preferences ── */}
+              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E8EAF6 0%, #C5CAE9 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\u2699\uFE0F"} Dashboard Preferences</div>
+                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Export or import your personal dashboard settings (dark mode, pinned repos, filters, notifications).</p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Btn bg={C.teal} style={{ fontSize: 13, padding: "8px 16px" }} onClick={() => {
+                    const prefs = { dark, pinnedRepos, itemFilter, repoSort, repoFilter, refreshInterval, browserNotifs, notifPrefs, compactItems };
+                    const blob = new Blob([JSON.stringify(prefs, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a"); a.href = url; a.download = "swarm-dashboard-prefs.json"; a.click();
+                    URL.revokeObjectURL(url); showToast("Preferences exported", "success");
+                  }}>{"\uD83D\uDCE5"} Export Prefs</Btn>
+                  <Btn bg={C.orange} style={{ fontSize: 13, padding: "8px 16px" }} onClick={() => {
+                    const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+                    input.onchange = async (ev) => {
+                      try {
+                        const text = await ev.target.files[0].text();
+                        const p = JSON.parse(text);
+                        if (p.dark !== undefined) { setDark(p.dark); localStorage.setItem("swarm-dark", p.dark ? "1" : "0"); }
+                        if (p.pinnedRepos) { setPinnedRepos(p.pinnedRepos); localStorage.setItem("swarm-pinned", JSON.stringify(p.pinnedRepos)); }
+                        if (p.itemFilter) { setItemFilter(p.itemFilter); localStorage.setItem("swarm-item-filter", p.itemFilter); }
+                        if (p.repoSort) { setRepoSort(p.repoSort); localStorage.setItem("swarm-repo-sort", p.repoSort); }
+                        if (p.refreshInterval) { setRefreshInterval(p.refreshInterval); localStorage.setItem("swarm-refresh", String(p.refreshInterval)); }
+                        if (p.notifPrefs) { setNotifPrefs(p.notifPrefs); localStorage.setItem("swarm-notif-prefs", JSON.stringify(p.notifPrefs)); }
+                        showToast("Preferences imported!", "success");
+                      } catch(e) { showToast("Invalid preferences file", "error"); }
+                    };
+                    input.click();
+                  }}>{"\uD83D\uDCE4"} Import Prefs</Btn>
                 </div>
               </Card>
 
