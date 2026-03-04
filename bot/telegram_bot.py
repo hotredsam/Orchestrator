@@ -137,7 +137,7 @@ def _api(method, data=None, files=None):
         return None
 
 
-def send_message(text, chat_id=None, parse_mode="Markdown"):
+def send_message(text, chat_id=None, parse_mode="Markdown", reply_markup=None):
     """Send a text message. Rate-limited to 1/sec."""
     global _last_send
     now = time.time()
@@ -146,17 +146,20 @@ def send_message(text, chat_id=None, parse_mode="Markdown"):
         time.sleep(wait)
     _last_send = time.time()
 
-    result = _api("sendMessage", {
+    payload = {
         "chat_id": chat_id or CHAT_ID,
         "text": text[:4096],
         "parse_mode": parse_mode,
-    })
+    }
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+    result = _api("sendMessage", payload)
     if not result or not result.get("ok"):
         # Retry without parse_mode in case markdown is malformed
-        result = _api("sendMessage", {
-            "chat_id": chat_id or CHAT_ID,
-            "text": text[:4096],
-        })
+        payload2 = {"chat_id": chat_id or CHAT_ID, "text": text[:4096]}
+        if reply_markup:
+            payload2["reply_markup"] = json.dumps(reply_markup)
+        result = _api("sendMessage", payload2)
     return result
 
 
@@ -633,9 +636,12 @@ def cmd_costs():
     total = data.get("total", 0)
     if not costs:
         return "*API Costs*\n\nNo cost data available."
-    lines = ["*API Costs*\n"]
-    for repo, cost in sorted(costs.items()):
-        lines.append(f"  `{repo}`: ${cost:.4f}")
+    max_cost = max(costs.values()) if costs else 1
+    lines = ["*\U0001F4B0 API Costs*\n"]
+    for repo, cost in sorted(costs.items(), key=lambda x: x[1], reverse=True):
+        bar_len = min(int(cost / max(max_cost, 0.001) * 12), 12)
+        pct = round(cost / max(total, 0.001) * 100)
+        lines.append(f"  {'█' * bar_len}{'░' * (12 - bar_len)} `{repo}` ${cost:.4f} ({pct}%)")
     lines.append(f"\n*Total: ${total:.4f}*")
     return "\n".join(lines)
 
@@ -1323,6 +1329,33 @@ def bridge_poll_outbox(last_ts: str = None) -> list:
 
 # ─── Message Router ──────────────────────────────────────────────────────────
 
+def handle_callback_query(cbq):
+    """Handle inline keyboard button presses."""
+    cbq_id = cbq.get("id", "")
+    data = cbq.get("data", "")
+    chat_id = str(cbq.get("message", {}).get("chat", {}).get("id", ""))
+
+    # Acknowledge the callback to remove the loading spinner
+    _api("answerCallbackQuery", {"callback_query_id": cbq_id})
+
+    # Dispatch to command handlers
+    cmd_map = {
+        "cmd_status": cmd_status,
+        "cmd_costs": cmd_costs,
+        "cmd_leaderboard": cmd_leaderboard,
+        "cmd_forecast": cmd_forecast,
+    }
+    handler = cmd_map.get(data)
+    if handler:
+        try:
+            reply = handler()
+            if reply:
+                send_message(reply, chat_id=chat_id)
+        except Exception as e:
+            log.error(f"Callback query error: {e}")
+            send_message(f"Error: {e}", chat_id=chat_id)
+
+
 def handle_message(msg):
     """Route an incoming Telegram message to the right handler."""
     chat_id = str(msg.get("chat", {}).get("id", ""))
@@ -1500,7 +1533,21 @@ def handle_message(msg):
         reply = cmd_batch(t[6:])
     elif t in ("app", "dashboard", "open"):
         public_url = os.environ.get("PUBLIC_URL", "http://localhost:6969")
-        reply = f"Open the Swarm Town dashboard:\n{public_url}/telegram-app"
+        app_url = f"{public_url}/telegram-app"
+        send_message(
+            "\U0001F3DC\uFE0F *Swarm Town Dashboard*\nTap the button below to open the Mini App:",
+            chat_id=chat_id,
+            reply_markup={
+                "inline_keyboard": [[
+                    {"text": "\U0001F680 Open Swarm Town", "web_app": {"url": app_url}},
+                ], [
+                    {"text": "\U0001F4CA Status", "callback_data": "cmd_status"},
+                    {"text": "\U0001F4B0 Costs", "callback_data": "cmd_costs"},
+                    {"text": "\U0001F3C6 Leaderboard", "callback_data": "cmd_leaderboard"},
+                ]],
+            },
+        )
+        reply = None  # Already sent
     else:
         # Not a known command — forward to the bridge inbox so Claude Code
         # sessions can read it as a user instruction.
@@ -1820,6 +1867,9 @@ class TelegramBot:
                     msg = update.get("message")
                     if msg:
                         handle_message(msg)
+                    cbq = update.get("callback_query")
+                    if cbq:
+                        handle_callback_query(cbq)
             except Exception as e:
                 log.error(f"Telegram poll error: {e}")
                 time.sleep(5)
