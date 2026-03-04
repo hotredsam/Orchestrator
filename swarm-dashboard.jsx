@@ -133,6 +133,8 @@ function Dashboard() {
   const [globalResults, setGlobalResults] = useState(null);
   const [logLevelFilter, setLogLevelFilter] = useState("all");
   const [staleItems, setStaleItems] = useState([]);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
   const [newNote, setNewNote] = useState("");
   const mRec = useRef(null);
   const chnk = useRef([]);
@@ -285,6 +287,9 @@ function Dashboard() {
   const [showHelp, setShowHelp] = useState(false);
   useEffect(() => {
     const handler = (e) => {
+      // Ctrl+K command palette works from anywhere
+      if (e.key === "k" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setShowCommandPalette(prev => !prev); setCmdQuery(""); return; }
+      if (e.key === "Escape" && showCommandPalette) { setShowCommandPalette(false); return; }
       // Don't handle when typing in inputs
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
       const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","trends","compare","settings"];
@@ -2455,6 +2460,38 @@ function Dashboard() {
 
       </div>
 
+      {/* Command Palette (Ctrl+K) */}
+      {showCommandPalette && (
+        <div onClick={() => setShowCommandPalette(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "15vh" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: dark ? "#2D2D2D" : C.white, border: `3px solid ${C.darkBrown}`, borderRadius: 16, padding: 16, width: "90%", maxWidth: 500, boxShadow: "0 16px 48px rgba(0,0,0,0.3)" }}>
+            <input autoFocus placeholder="Type a command... (go items, start, stop, dark, refresh)" value={cmdQuery}
+              onChange={e => setCmdQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Escape") { setShowCommandPalette(false); return; }
+                if (e.key !== "Enter") return;
+                const q = cmdQuery.toLowerCase().trim();
+                const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","trends","compare","settings"];
+                // Navigate to tab
+                const goTab = TABS_LIST.find(t => q === t || q === "go " + t);
+                if (goTab) { setTab(goTab); setShowCommandPalette(false); return; }
+                // Actions
+                if (q === "start" && sr) { f("/api/start", { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
+                if (q === "stop" && sr) { f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
+                if (q === "dark" || q === "theme") { toggleDark(); }
+                if (q === "refresh" || q === "reload") { load(true); }
+                if (q.startsWith("search ")) { setTab("master"); setGlobalSearch(q.slice(7)); searchGlobal(q.slice(7)); }
+                setShowCommandPalette(false);
+              }}
+              style={{ width: "100%", padding: "12px 16px", fontSize: 16, border: `2px solid ${C.darkBrown}`, borderRadius: 12, outline: "none", fontFamily: "'Fredoka', sans-serif", background: dark ? "#3D3D3D" : C.cream, color: dark ? "#E0E0E0" : C.darkBrown }} />
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10, fontSize: 11, color: C.brown }}>
+              {["home","items","plan","logs","health","settings","start","stop","dark","refresh"].map(cmd => (
+                <span key={cmd} onClick={() => { setCmdQuery(cmd); }} style={{ padding: "3px 10px", borderRadius: 8, background: dark ? "#444" : C.cream, cursor: "pointer", border: `1px solid ${C.darkBrown}33` }}>{cmd}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Keyboard Shortcuts Help Overlay */}
       {showHelp && (
         <div onClick={() => setShowHelp(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2469,6 +2506,7 @@ function Dashboard() {
                 ["R", "Refresh all data"],
                 ["D", "Toggle dark mode"],
                 ["/", "Focus command center"],
+                ["Ctrl+K", "Command palette"],
                 ["F", "Focus search/filter input"],
                 ["C", "Clear all filters"],
                 ["[ / ]", "Previous / Next tab"],
