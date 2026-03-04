@@ -65,6 +65,11 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Toast notifications** — dashboard shows success/error/warning toasts for all API actions
 - **Duplicate detection** — `/api/items/dedupe` removes duplicate pending items by title
 - **Pagination** — items and logs endpoints support `?limit=N&offset=N&status=X` params
+- **Circuit breaker** — per-repo circuit breaker pattern (opens after 5 consecutive failures, cooldown 120s, half-open probe)
+- **Exponential backoff with jitter** — claude_retry uses 2^i + random(0,1) delay, capped at 30s
+- **Per-step cost tracking** — plan_steps table stores cost_usd and duration_sec, displayed in dashboard plan view
+- **Item management UI** — dashboard has dedupe, clear done, clear all buttons + per-item delete + status filter chips
+- **DB migrations** — RepoDB auto-migrates older databases to add new columns
 
 ## Commands
 ```bash

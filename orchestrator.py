@@ -230,6 +230,58 @@ def get_costs() -> Dict[int, float]:
         return dict(_cost_totals)
 
 
+# ─── Circuit Breaker ─────────────────────────────────────────────────────────
+
+class CircuitBreaker:
+    """Per-repo circuit breaker. Opens after consecutive failures, half-opens after cooldown."""
+    CLOSED, OPEN, HALF_OPEN = "closed", "open", "half_open"
+
+    def __init__(self, threshold=5, cooldown=120):
+        self.threshold = threshold
+        self.cooldown = cooldown
+        self.state = self.CLOSED
+        self.failures = 0
+        self.last_failure = 0.0
+        self._lock = threading.Lock()
+
+    def allow(self) -> bool:
+        with self._lock:
+            if self.state == self.CLOSED:
+                return True
+            if self.state == self.OPEN:
+                if time.time() - self.last_failure >= self.cooldown:
+                    self.state = self.HALF_OPEN
+                    return True
+                return False
+            return True  # HALF_OPEN: allow one probe
+
+    def record_success(self):
+        with self._lock:
+            self.failures = 0
+            self.state = self.CLOSED
+
+    def record_failure(self):
+        with self._lock:
+            self.failures += 1
+            self.last_failure = time.time()
+            if self.failures >= self.threshold:
+                self.state = self.OPEN
+
+    def status(self) -> dict:
+        return {"state": self.state, "failures": self.failures, "threshold": self.threshold}
+
+
+_circuit_breakers: Dict[int, CircuitBreaker] = {}
+_cb_lock = threading.Lock()
+
+
+def get_circuit_breaker(repo_id: int) -> CircuitBreaker:
+    with _cb_lock:
+        if repo_id not in _circuit_breakers:
+            _circuit_breakers[repo_id] = CircuitBreaker()
+        return _circuit_breakers[repo_id]
+
+
 def clean_env():
     """Return os.environ with Claude/MCP session vars stripped.
 
@@ -349,6 +401,7 @@ class RepoDB:
                 status TEXT DEFAULT 'pending',
                 agent_type TEXT DEFAULT 'coder',
                 tests_written INTEGER DEFAULT 0, tests_passed INTEGER DEFAULT 0,
+                cost_usd REAL DEFAULT 0, duration_sec REAL DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now')), completed_at TEXT,
                 FOREIGN KEY (item_id) REFERENCES items(id)
             );
@@ -412,6 +465,17 @@ class RepoDB:
             );
         """)
         self.conn.commit()
+        # Migrations for existing DBs
+        self._migrate()
+
+    def _migrate(self):
+        """Add columns to existing tables if missing."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(plan_steps)").fetchall()}
+        if "cost_usd" not in cols:
+            self.conn.execute("ALTER TABLE plan_steps ADD COLUMN cost_usd REAL DEFAULT 0")
+        if "duration_sec" not in cols:
+            self.conn.execute("ALTER TABLE plan_steps ADD COLUMN duration_sec REAL DEFAULT 0")
+        self.conn.commit()
 
     def ex(self, q, p=(), retries=3):
         for attempt in range(retries):
@@ -473,9 +537,10 @@ class RepoDB:
                     (s.get("item_id"), i, s["description"], s.get("agent_type", "coder")))
         self.commit()
 
-    def complete_step(self, sid, tw, tp):
+    def complete_step(self, sid, tw, tp, cost=0, duration=0):
         self.ex("UPDATE plan_steps SET status='completed',tests_written=?,tests_passed=?,"
-                "completed_at=datetime('now') WHERE id=?", (tw, tp, sid))
+                "cost_usd=?,duration_sec=?,completed_at=datetime('now') WHERE id=?",
+                (tw, tp, cost, duration, sid))
         self.commit()
 
     # Audio
@@ -653,14 +718,26 @@ class Runner:
             cwd=cwd, timeout=timeout,
         )
 
-    def claude_retry(self, cwd, prompt, retries=3, timeout=600, model=None):
+    def claude_retry(self, cwd, prompt, retries=3, timeout=600, model=None, repo_id=None):
+        import random
+        cb = get_circuit_breaker(repo_id) if repo_id else None
         for i in range(retries):
+            if cb and not cb.allow():
+                log.warning(f"Circuit breaker OPEN for repo {repo_id}, skipping attempt {i+1}")
+                return {"success": False, "output": "", "error": "Circuit breaker open — too many failures",
+                        "elapsed": 0, "circuit_breaker": True}
             r = self.claude(cwd, prompt, timeout, model=model)
             if r.get("credits_exhausted"):
                 return r
             if r["success"]:
+                if cb:
+                    cb.record_success()
                 return r
-            time.sleep(2 ** i)
+            if cb:
+                cb.record_failure()
+            # Exponential backoff with jitter: base * 2^i + random 0-1s
+            delay = min(2 ** i + random.random(), 30)
+            time.sleep(delay)
         return r
 
     def ralph(self, cwd, prompt, max_iters=RALPH_ITERS, promise="TASK_COMPLETE", model=None):
@@ -895,7 +972,7 @@ Transcription:
 Return ONLY a JSON array:
 [{{"type": "issue"|"feature", "title": "short title", "description": "detailed description", "priority": "low"|"medium"|"high"|"critical"}}]"""
 
-            result = runner.claude_retry(self.repo["path"], prompt, model="claude-haiku-4-5-20251001")
+            result = runner.claude_retry(self.repo["path"], prompt, model="claude-haiku-4-5-20251001", repo_id=self.repo["id"])
             if self._handle_credits(result):
                 return State.CREDITS_EXHAUSTED
 
@@ -1012,7 +1089,7 @@ Agent types: researcher, coder, analyst, tester, architect, reviewer, optimizer
 
 Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"""
 
-        result = runner.claude_retry(self.repo["path"], prompt, model="claude-opus-4-6")
+        result = runner.claude_retry(self.repo["path"], prompt, model="claude-opus-4-6", repo_id=self.repo["id"])
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -1086,8 +1163,9 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             return State.CREDITS_EXHAUSTED
 
         dur = time.time() - t0
+        step_cost = result.get("cost", 0)
         self.log("execute_step", f"step_{step['id']}", agents=MIN_AGENTS,
-                 cost=result.get("cost",0), dur=dur, error=result.get("error",""))
+                 cost=step_cost, dur=dur, error=result.get("error",""))
 
         if not result["success"] and result.get("error"):
             self.db.log_mistake("step_failed", result["error"][:500],
@@ -1095,8 +1173,11 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                                 state_snapshot=json.dumps(self.state.to_dict()))
 
         self.db.mem_store("execution", f"step_{step['id']}",
-                          {"desc": step["description"], "elapsed": dur, "ok": result["success"]})
+                          {"desc": step["description"], "elapsed": dur, "ok": result["success"],
+                           "cost": step_cost})
         self.state.current_step_id = step["id"]
+        self._step_exec_cost = step_cost
+        self._step_exec_dur = dur
 
         # Store in Ruflo memory
         runner.ruflo_memory_store(self.repo["path"], f"step/{step['id']}/result",
@@ -1155,8 +1236,12 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             self.db.log_mistake("test_failure", f"Step {sid} tests failed: {result.get('error','')}",
                                 step_id=sid, state_snapshot=json.dumps(self.state.to_dict()))
 
-        self.db.complete_step(sid, tw, tp)
-        self.log("test_step", f"{tw} written, {tp} passed", dur=time.time()-t0)
+        test_dur = time.time() - t0
+        test_cost = result.get("cost", 0)
+        total_step_cost = getattr(self, "_step_exec_cost", 0) + test_cost
+        total_step_dur = getattr(self, "_step_exec_dur", 0) + test_dur
+        self.db.complete_step(sid, tw, tp, cost=total_step_cost, duration=total_step_dur)
+        self.log("test_step", f"{tw} written, {tp} passed", dur=test_dur, cost=test_cost)
 
         if self.repo.get("github_url"):
             gate = runner.ruflo_quality_gate(self.repo["path"], "test")
@@ -2421,6 +2506,11 @@ class API(BaseHTTPRequestHandler):
             with _sse_lock:
                 sse_count = len(_sse_clients)
             costs = get_costs()
+            cb_summary = {}
+            with _cb_lock:
+                for rid, cb in _circuit_breakers.items():
+                    if cb.state != CircuitBreaker.CLOSED:
+                        cb_summary[rid] = cb.status()
             return self._json({
                 "uptime": f"{hrs}h {mins}m {secs}s",
                 "uptime_seconds": int(uptime_sec),
@@ -2428,6 +2518,7 @@ class API(BaseHTTPRequestHandler):
                 "repos_running": running,
                 "sse_clients": sse_count,
                 "total_cost": sum(costs.values()),
+                "circuit_breakers": cb_summary,
                 "version": "3.0",
             })
 

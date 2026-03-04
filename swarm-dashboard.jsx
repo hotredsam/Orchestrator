@@ -104,6 +104,7 @@ function Dashboard() {
   const [rollingBack, setRollingBack] = useState(false);
   const [selOptItems, setSelOptItems] = useState([]);
   const [costs, setCosts] = useState({});
+  const [itemFilter, setItemFilter] = useState("all");
   const [repoSort, setRepoSort] = useState("name");
   const [repoFilter, setRepoFilter] = useState("all");
   const [toasts, setToasts] = useState([]);
@@ -227,6 +228,25 @@ function Dashboard() {
     if (!ni.title || !ni.description || !sr) return;
     await apiAction("/api/items", { method: "POST", body: JSON.stringify({ ...ni, repo_id: sr }) }, "Item added");
     setNI(p => ({ ...p, title: "", description: "" }));
+  };
+  const deleteItem = async (itemId) => {
+    if (!sr) return;
+    await apiAction("/api/items/delete", { method: "POST", body: JSON.stringify({ repo_id: sr, item_id: itemId }) }, "Item deleted");
+  };
+  const clearItems = async (status) => {
+    if (!sr) return;
+    const label = status || "all";
+    if (!confirm(`Clear ${label} items? This cannot be undone.`)) return;
+    await apiAction("/api/items/clear", { method: "POST", body: JSON.stringify({ repo_id: sr, ...(status ? { status } : {}) }) }, `${label} items cleared`);
+  };
+  const dedupeItems = async () => {
+    if (!sr) return;
+    const r = await f("/api/items/dedupe", { method: "POST", body: JSON.stringify({ repo_id: sr }) });
+    if (r.ok) {
+      const d = await r.json();
+      showToast(`Removed ${d.duplicates_removed} duplicates (${d.remaining} remaining)`, d.duplicates_removed > 0 ? "success" : "info");
+      load();
+    } else showToast("Dedupe failed", "error");
   };
   const addRepo = async () => {
     if (!nr.name || !nr.path) return;
@@ -959,6 +979,29 @@ function Dashboard() {
                 style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, color: C.darkBrown, fontSize: 14, fontFamily: "'Fredoka',sans-serif", minHeight: 70, resize: "vertical", outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
               <Btn onClick={addItem} style={{ fontSize: 16, padding: "12px 28px" }}>Post {ni.type === "issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"} Bounty</Btn>
             </Card>
+            {items.length > 0 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 12px", display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                <Btn bg={C.teal} onClick={dedupeItems} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83E\uDDF9"} Dedupe</Btn>
+                <Btn bg="#A0ADB5" onClick={() => clearItems("completed")} style={{ fontSize: 12, padding: "8px 14px" }}>{"\u2705"} Clear Done</Btn>
+                <Btn bg={C.red} onClick={() => clearItems()} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDDD1\uFE0F"} Clear All</Btn>
+                <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
+                  {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
+                </span>
+              </div>
+            )}
+            {items.length > 0 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center" }}>
+                {["all", "pending", "in_progress", "completed"].map(f => (
+                  <button key={f} onClick={() => setItemFilter(f)} style={{
+                    padding: "5px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    fontFamily: "'Bangers', cursive", letterSpacing: 1, cursor: "pointer",
+                    background: itemFilter === f ? C.orange : C.cream,
+                    color: itemFilter === f ? C.white : C.darkBrown,
+                    border: `2px solid ${C.darkBrown}`, transition: "all 0.15s",
+                  }}>{f === "all" ? "All" : f === "in_progress" ? "Active" : f.charAt(0).toUpperCase() + f.slice(1)}</button>
+                ))}
+              </div>
+            )}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
               {items.length === 0 ? (
                 <Card bg={C.white} style={{ textAlign: "center", padding: 40 }}>
@@ -967,7 +1010,7 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Post a bounty above to get the swarm working!</div>
                 </Card>
               ) :
-                items.map((it, idx) => {
+                items.filter(it => itemFilter === "all" || it.status === itemFilter).map((it, idx) => {
                   const prioConfig = {
                     critical: { bg: C.red, icon: "\uD83D\uDD34", label: "CRITICAL", size: 13 },
                     high: { bg: C.orange, icon: "\uD83D\uDFE0", label: "HIGH", size: 12 },
@@ -1000,7 +1043,8 @@ function Dashboard() {
                           <div style={{ fontSize: 12, color: C.brown, lineHeight: 1.4 }}>{it.description}</div>
                         </div>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                        <button onClick={() => deleteItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: C.red, padding: "2px 6px", borderRadius: 6, opacity: 0.6, transition: "opacity 0.2s" }} onMouseOver={e=>e.target.style.opacity=1} onMouseOut={e=>e.target.style.opacity=0.6} title="Delete this item">{"\u2716"}</button>
                         <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
                           {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}
                         </div>
@@ -1017,6 +1061,18 @@ function Dashboard() {
           <SectionBg bg={`linear-gradient(180deg, ${C.lightTeal} 0%, #9DE4ED 100%)`}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Build Plan</h2>
             <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>The step-by-step blueprint your swarm is following</p>
+            {plan.length > 0 && (() => {
+              const done = plan.filter(s => s.status === "completed").length;
+              const totalCost = plan.reduce((s, p) => s + (p.cost_usd || 0), 0);
+              const totalDur = plan.reduce((s, p) => s + (p.duration_sec || 0), 0);
+              return (
+                <div style={{ textAlign: "center", marginBottom: 12, fontSize: 13, color: C.brown, fontWeight: 600 }}>
+                  {done}/{plan.length} steps done
+                  {totalCost > 0 && <> {"\u00B7"} ${totalCost.toFixed(2)} total cost</>}
+                  {totalDur > 0 && <> {"\u00B7"} {Math.round(totalDur/60)}m total time</>}
+                </div>
+              );
+            })()}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
               {plan.length === 0 ? (
                 <Card style={{ textAlign: "center", padding: 40, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
@@ -1040,6 +1096,8 @@ function Dashboard() {
                         <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                           {s.agent_type && <span style={{ fontSize: 10, background: C.lightOrange, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83E\uDD20"} {s.agent_type}</span>}
                           {done && <span style={{ fontSize: 10, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u2705"} Tests: {s.tests_passed}/{s.tests_written}</span>}
+                          {done && s.cost_usd > 0 && <span style={{ fontSize: 10, background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83D\uDCB0"} ${s.cost_usd.toFixed(3)}</span>}
+                          {done && s.duration_sec > 0 && <span style={{ fontSize: 10, background: C.lightTeal, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u23F1\uFE0F"} {Math.round(s.duration_sec)}s</span>}
                         </div>
                       </Card>
                     </div>
