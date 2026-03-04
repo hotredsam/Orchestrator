@@ -134,6 +134,7 @@ function Dashboard() {
   const [logLevelFilter, setLogLevelFilter] = useState("all");
   const [logTail, setLogTail] = useState(false);
   const logEndRef = useRef(null);
+  const [scrolledPast, setScrolledPast] = useState(false);
   const [staleItems, setStaleItems] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -294,6 +295,13 @@ function Dashboard() {
 
   // Auto-scroll logs when tail mode is on
   useEffect(() => { if (logTail && logEndRef.current) logEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [logTail, logs]);
+
+  // Sticky header on scroll
+  useEffect(() => {
+    const onScroll = () => setScrolledPast(window.scrollY > 180);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   // Keyboard shortcuts
   const [showHelp, setShowHelp] = useState(false);
@@ -775,18 +783,34 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ═══ NAV TABS ═══ */}
-      <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: `3px solid ${C.darkBrown}`, gap: 0, position: "sticky", top: 0, zIndex: 100 }}>
-        {TABS.map(t => (
-          <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
-            padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
-            border: "none", borderRight: `2px solid ${C.darkBrown}`,
-            borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
-            color: tab === t.id ? C.darkBrown : C.white, cursor: "pointer",
-            fontSize: 13, fontFamily: "'Bangers', cursive", letterSpacing: 1.5,
-            whiteSpace: "nowrap", fontWeight: 700, transition: "background 0.2s, transform 0.15s",
-          }}>{t.label}</button>
-        ))}
+      {/* ═══ NAV TABS + STICKY REPO BAR ═══ */}
+      <div style={{ position: "sticky", top: 0, zIndex: 100 }}>
+        <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: scrolledPast ? "none" : `3px solid ${C.darkBrown}`, gap: 0 }}>
+          {TABS.map(t => (
+            <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
+              padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
+              border: "none", borderRight: `2px solid ${C.darkBrown}`,
+              borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
+              color: tab === t.id ? C.darkBrown : C.white, cursor: "pointer",
+              fontSize: 13, fontFamily: "'Bangers', cursive", letterSpacing: 1.5,
+              whiteSpace: "nowrap", fontWeight: 700, transition: "background 0.2s, transform 0.15s",
+            }}>{t.label}</button>
+          ))}
+        </div>
+        {scrolledPast && repos.length > 0 && (
+          <div style={{ background: dark ? "#1E1E2E" : C.cream, borderBottom: `3px solid ${C.darkBrown}`, padding: "4px 16px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, fontFamily: "'Fredoka', sans-serif" }}>
+            <select value={sr||""} onChange={e => setSR(Number(e.target.value))}
+              style={{ padding: "3px 8px", background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 8, fontSize: 11, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 160 }}>
+              {[...repos].sort((a, b) => { const pa = pinnedRepos.includes(a.id) ? 0 : 1; const pb = pinnedRepos.includes(b.id) ? 0 : 1; return pa - pb || a.name.localeCompare(b.name); }).map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name}</option>)}
+            </select>
+            {(() => { const cr = repos.find(r => r.id === sr); if (!cr) return null; const s = cr.stats || {}; return (<>
+              <span style={{ fontWeight: 700, color: STATES[cr.state]?.color || C.brown }}>{cr.state || "idle"}</span>
+              <span style={{ color: C.brown }}>Items: {s.items_done||0}/{s.items_total||0}</span>
+              <span style={{ color: C.brown }}>Steps: {s.steps_done||0}/{s.steps_total||0}</span>
+              {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
+            </>); })()}
+          </div>
+        )}
       </div>
 
       {/* ═══ CONNECTION BANNER ═══ */}

@@ -46,6 +46,7 @@ _message_buffer = []
 _buffer_lock = threading.Lock()
 _buffer_timer = None
 _BUFFER_INTERVAL = 60  # seconds between flushes
+_BUFFER_MAX = 100  # max messages before forced flush
 
 
 def queue_message(text):
@@ -56,13 +57,18 @@ def queue_message(text):
     that must go out immediately.
     """
     global _buffer_timer
+    force_flush = False
     with _buffer_lock:
         _message_buffer.append(text)
+        if len(_message_buffer) >= _BUFFER_MAX:
+            force_flush = True
         # Start the flush timer if it is not already running
-        if _buffer_timer is None or not _buffer_timer.is_alive():
+        elif _buffer_timer is None or not _buffer_timer.is_alive():
             _buffer_timer = threading.Timer(_BUFFER_INTERVAL, _flush_buffer)
             _buffer_timer.daemon = True
             _buffer_timer.start()
+    if force_flush:
+        _flush_buffer()
     log.debug("Message queued (%d in buffer)", len(_message_buffer))
 
 
@@ -113,6 +119,19 @@ def _api(method, data=None, files=None):
             req = Request(url)
         resp = urlopen(req, timeout=30)
         return json.loads(resp.read())
+    except HTTPError as e:
+        if e.code == 429:
+            # Rate limited by Telegram — back off
+            try:
+                err_body = json.loads(e.read())
+                retry_after = err_body.get("parameters", {}).get("retry_after", 5)
+            except Exception:
+                retry_after = 5
+            log.warning("Telegram 429 rate limit — sleeping %ds", retry_after)
+            time.sleep(retry_after)
+            return _api(method, data, files)  # single retry
+        log.error(f"Telegram API error ({method}): {e}")
+        return None
     except Exception as e:
         log.error(f"Telegram API error ({method}): {e}")
         return None
