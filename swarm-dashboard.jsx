@@ -2882,9 +2882,10 @@ function Dashboard() {
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               {logs.length===0 ? (
                 <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
-                  <div style={{ fontSize: 32, marginBottom: 6 }}>{"\uD83D\uDCDC"}</div>
-                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 4 }}>No logs on the books yet</div>
-                  <div style={{ fontSize: 12, color: C.brown }}>Logs appear as the orchestrator works its magic.</div>
+                  <div style={{ fontSize: 32, marginBottom: 6 }}>{repo?.running ? "\u2699\uFE0F" : "\uD83D\uDCDC"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 4 }}>{repo?.running ? "Waiting for first log..." : "No logs on the books yet"}</div>
+                  <div style={{ fontSize: 12, color: C.brown }}>{repo?.running ? "Logs will appear once the repo starts executing steps." : sr ? "Start this repo to begin logging activity." : "Select and start a repo to see logs here."}</div>
+                  {repo?.running && <div style={{ marginTop: 8, fontSize: 20, animation: "spin 2s linear infinite" }}>{"\u2699\uFE0F"}</div>}
                 </Card>
               ) :
                 visibleLogs.map((l, i) => (

@@ -516,9 +516,25 @@ def cmd_mistakes(name):
     mk = _orch_get(f"/api/mistakes?repo_id={repo['id']}")
     if not mk or (isinstance(mk, dict) and "error" in mk):
         return f"No mistakes for {repo['name']}."
-    lines = [f"*Last 5 mistakes for {repo['name']}:*\n"]
+    lines = [f"\U0001F480 *Mistakes for {repo['name']}* ({len(mk)} total)\n"]
+
+    # Frequency summary
+    type_counts = {}
+    for m in mk:
+        et = m.get("error_type", "unknown")
+        type_counts[et] = type_counts.get(et, 0) + 1
+    if type_counts:
+        lines.append("*By Type:*")
+        for et, count in sorted(type_counts.items(), key=lambda x: -x[1])[:5]:
+            bar = _progress_bar(count, len(mk), width=8)
+            lines.append(f"  {bar} `{et}` \u00D7{count}")
+        lines.append("")
+
+    lines.append("*Recent:*")
     for m in mk[:5]:
-        lines.append(f"[{m.get('error_type','')}] {m.get('description','')[:100]}")
+        lines.append(f"\u26A0\uFE0F [{m.get('error_type','')}] {m.get('description','')[:80]}")
+        if m.get("resolution"):
+            lines.append(f"  \u2192 _{m['resolution'][:60]}_")
     return "\n".join(lines)
 
 

@@ -1413,6 +1413,10 @@
       const current = stateData.current_state || 'idle';
       const currentIdx = STATE_ORDER.indexOf(current);
 
+      // Fetch items to show current in-progress item
+      const items = await api('/api/items?repo_id=' + repoId, undefined, { silent: true });
+      const activeItem = items && Array.isArray(items) ? items.find(it => it.status === 'in_progress') : null;
+
       el.innerHTML = `
         <div class="flow-current">
           <span class="flow-emoji">${stateEmoji(current)}</span>
@@ -1420,6 +1424,7 @@
           <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">
             Cycle #${stateData.cycle_count || 0} | ${stateData.active_agents || 0} agents
           </div>
+          ${activeItem ? `<div style="margin-top:6px;padding:4px 10px;background:var(--orange);color:#fff;border-radius:8px;font-size:11px;font-weight:600;">⚡ ${esc(activeItem.title || '').substring(0, 50)}</div>` : ''}
         </div>
         <div class="stepper">
           ${STATE_ORDER.map((s, i) => {
