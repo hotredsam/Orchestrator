@@ -19,6 +19,7 @@ SWARM ORCHESTRATOR v3 — Full Autonomous Multi-Repo
 import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging, hmac, secrets, queue
 import logging.handlers
 import threading, shutil, base64, signal, traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from enum import Enum
@@ -802,6 +803,9 @@ class MasterDB:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(repos)").fetchall()}
         if "tags" not in cols:
             self.conn.execute("ALTER TABLE repos ADD COLUMN tags TEXT DEFAULT ''")
+            self.conn.commit()
+        if "deps" not in cols:
+            self.conn.execute("ALTER TABLE repos ADD COLUMN deps TEXT DEFAULT ''")
             self.conn.commit()
         # Daily costs table for historical tracking
         self.conn.execute("""
@@ -1744,6 +1748,7 @@ class Manager:
         self.threads: Dict[int, threading.Thread] = {}
         self._db_cache: Dict[str, RepoDB] = {}
         self._db_cache_lock = threading.Lock()
+        self._thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="swarm-pool")
 
     def start_repo(self, repo_id):
         if repo_id in self.threads and self.threads[repo_id].is_alive():
@@ -1804,6 +1809,11 @@ class Manager:
                 except Exception:
                     pass
             self._db_cache.clear()
+        # Shutdown thread pool
+        try:
+            self._thread_pool.shutdown(wait=False)
+        except Exception:
+            pass
 
     def get_repo_db(self, repo_id) -> Optional[RepoDB]:
         repos = self.master.get_repos()
@@ -3241,6 +3251,25 @@ class API(BaseHTTPRequestHandler):
                     pass
             return self._json({"etas": etas})
 
+        if path == "/api/repo-graph":
+            # Return repo dependency graph for visualization
+            repos = manager.master.get_repos()
+            nodes = []
+            edges = []
+            for r in repos:
+                nodes.append({"id": r["id"], "name": r["name"], "tags": r.get("tags", ""),
+                              "running": bool(r.get("running", 0))})
+                dep_str = r.get("deps", "")
+                if dep_str:
+                    for dep_id in dep_str.split(","):
+                        dep_id = dep_id.strip()
+                        if dep_id:
+                            try:
+                                edges.append({"from": int(dep_id), "to": r["id"]})
+                            except ValueError:
+                                pass
+            return self._json({"nodes": nodes, "edges": edges})
+
         if path == "/api/sparklines":
             # Return 7-day action counts for all repos (lightweight for master view)
             result = {}
@@ -3496,6 +3525,21 @@ class API(BaseHTTPRequestHandler):
             manager.master.commit()
             _response_cache.clear()
             return self._json({"ok": True, "tags": tags})
+
+        if path == "/api/repos/deps":
+            rid = self._safe_int(b.get("repo_id"))
+            if rid is None:
+                return self._json({"error": "repo_id required"}, 400)
+            deps = b.get("deps", "")
+            if isinstance(deps, list):
+                deps = ",".join(str(d) for d in deps)
+            # Validate: must be comma-separated repo IDs
+            dep_ids = [d.strip() for d in deps.split(",") if d.strip()]
+            deps = ",".join(dep_ids)[:200]
+            manager.master.ex("UPDATE repos SET deps=? WHERE id=?", (deps, rid))
+            manager.master.commit()
+            _response_cache.clear()
+            return self._json({"ok": True, "deps": deps})
 
         if path == "/api/repos/batch":
             repo_ids = b.get("repo_ids", [])

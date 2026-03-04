@@ -1405,6 +1405,33 @@ function Dashboard() {
                 );
               })}
             </div>
+            {/* Dependency Graph */}
+            <details style={{ maxWidth: 700, margin: "20px auto 0" }}>
+              <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1, textAlign: "center" }}>
+                {"\uD83D\uDD17"} Repo Dependencies
+              </summary>
+              <Card bg={C.white} style={{ marginTop: 8, padding: 16 }}>
+                <p style={{ fontSize: 11, color: C.brown, marginBottom: 10 }}>
+                  Configure which repos depend on others. Deps format: comma-separated repo IDs.
+                </p>
+                <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                  {repos.map(r => (
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, padding: "6px 8px", background: C.cream, borderRadius: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 12, minWidth: 100, fontFamily: "'Bangers', cursive" }}>{r.name}</span>
+                      <span style={{ fontSize: 10, color: C.brown, minWidth: 20 }}>#{r.id}</span>
+                      <span style={{ fontSize: 10, color: C.brown }}>{"\u2190"} depends on:</span>
+                      <input placeholder="e.g. 1,3,5" defaultValue={r.deps || ""} style={{ flex: 1, padding: "4px 8px", borderRadius: 6, border: `1px solid ${C.darkBrown}33`, fontSize: 11, background: C.white }}
+                        onKeyDown={async e => {
+                          if (e.key === "Enter") {
+                            await f("/api/repos/deps", { method: "POST", body: JSON.stringify({ repo_id: r.id, deps: e.target.value }) });
+                            showToast(`Deps updated for ${r.name}`, "info"); load();
+                          }
+                        }} />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </details>
           </SectionBg>
         )}
 
