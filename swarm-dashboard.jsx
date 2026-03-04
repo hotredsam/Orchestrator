@@ -168,6 +168,7 @@ function Dashboard() {
   const [scrolledPast, setScrolledPast] = useState(false);
   const [costHistory, setCostHistory] = useState([]);
   const [healthScores, setHealthScores] = useState(null);
+  const [sparklines, setSparklines] = useState({});
   const [compactItems, setCompactItems] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
@@ -328,6 +329,7 @@ function Dashboard() {
       if (full || t === "health") {
         try { const cb = await f("/api/circuit-breakers"); if(cb.ok) { const cd = await cb.json(); setCircuitBreakers(cd.circuit_breakers || []); } } catch {}
         try { const hs = await f("/api/health/detailed"); if(hs.ok) setHealthScores(await hs.json()); } catch {}
+        try { const sp = await f("/api/sparklines"); if(sp.ok) { const sd = await sp.json(); setSparklines(sd.sparklines || {}); } } catch {}
       }
     } catch(err) { console.warn("Data fetch error:", err.message); }
     setLoading(false);
@@ -613,6 +615,20 @@ function Dashboard() {
   const SectionBg = ({ children, bg, style }) => (
     <div style={{ background: bg, padding: "28px 24px", ...style }}>{children}</div>
   );
+
+  /* Tiny SVG sparkline for inline trend visualization */
+  const Sparkline = ({ data = [], width = 60, height = 16, color = C.teal }) => {
+    if (!data.length) return null;
+    const max = Math.max(...data, 1);
+    const min = Math.min(...data, 0);
+    const range = max - min || 1;
+    const pts = data.map((v, i) => `${(i / Math.max(data.length - 1, 1)) * width},${height - ((v - min) / range) * (height - 2) - 1}`).join(" ");
+    return (
+      <svg width={width} height={height} style={{ display: "block" }}>
+        <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  };
 
   /* Circular health badge component */
   const HealthBadge = ({ score, size = 44 }) => {
@@ -1311,6 +1327,9 @@ function Dashboard() {
                             style={{ width: 16, height: 16, accentColor: C.teal, cursor: "pointer" }} title="Select for batch action" />
                         </div>
                         <div style={{ fontSize: 12, color: C.brown, fontWeight: 500 }}>{rst.label} {r.running ? "-- RUNNING" : ""}</div>
+                        {r.last_activity > 0 && <div style={{ fontSize: 9, color: C.brown, opacity: 0.6 }}>
+                          {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); return ago < 60 ? "just now" : ago < 3600 ? `${Math.floor(ago/60)}m ago` : ago < 86400 ? `${Math.floor(ago/3600)}h ago` : `${Math.floor(ago/86400)}d ago`; })()}
+                        </div>}
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontFamily: "'Bangers', cursive", fontSize: 28, color: pct === 100 ? C.green : C.orange, lineHeight: 1 }}>{pct}%</div>
@@ -1348,6 +1367,14 @@ function Dashboard() {
                         </div>
                       ))}
                     </div>
+                    {/* Activity sparkline (7-day) */}
+                    {sparklines[r.id]?.length > 1 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                        <span style={{ fontSize: 9, color: C.brown, minWidth: 42 }}>7d trend</span>
+                        <Sparkline data={sparklines[r.id]} width={100} height={14} color={r.running ? C.teal : C.brown} />
+                        <span style={{ fontSize: 9, color: C.brown }}>{sparklines[r.id].reduce((a,b) => a+b, 0)} actions</span>
+                      </div>
+                    )}
                     {/* Quick actions */}
                     <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
                       {r.running ? (
@@ -1744,7 +1771,7 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Add items to the Bounty Board first -- the swarm will draw up a plan!</div>
                 </Card>
               ) :
-                plan.map((s,i) => {
+                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); return plan.map((s,i) => {
                   const done = s.status==="completed";
                   return (
                     <div key={s.id} style={{ display: "flex", gap: 12, marginBottom: 8 }}>
@@ -1761,6 +1788,7 @@ function Dashboard() {
                           {done && <span style={{ fontSize: 10, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u2705"} Tests: {s.tests_passed}/{s.tests_written}</span>}
                           {done && s.cost_usd > 0 && <span style={{ fontSize: 10, background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83D\uDCB0"} ${s.cost_usd.toFixed(3)}</span>}
                           {done && s.duration_sec > 0 && <span style={{ fontSize: 10, background: C.lightTeal, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u23F1\uFE0F"} {Math.round(s.duration_sec)}s</span>}
+                          {done && s.cost_usd > 0 && <div style={{ flex: "1 1 100%", height: 4, background: C.cream, borderRadius: 2, overflow: "hidden", marginTop: 4 }}><div style={{ height: "100%", background: `linear-gradient(90deg, ${C.teal}, ${s.cost_usd/maxCost > 0.7 ? C.orange : C.green})`, width: `${Math.min(100, (s.cost_usd / maxCost) * 100)}%`, borderRadius: 2, transition: "width .3s" }} /></div>}
                           {!done && (
                             <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
                               {i > 0 && <button onClick={() => reorderStep(s.id, "up")} style={{ background: C.cream, border: `1px solid ${C.darkBrown}`, borderRadius: 4, cursor: "pointer", fontSize: 10, padding: "1px 6px" }} title="Move up">{"\u25B2"}</button>}
@@ -1771,7 +1799,7 @@ function Dashboard() {
                       </Card>
                     </div>
                   );
-                })}
+                }); })()}
             </div>
           </SectionBg>
         )}

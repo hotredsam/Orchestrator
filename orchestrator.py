@@ -2684,6 +2684,7 @@ class API(BaseHTTPRequestHandler):
                     # Check if paused
                     orch = manager.orchestrators.get(r["id"])
                     r["paused"] = orch.is_paused if orch else False
+                    r["last_activity"] = orch.state.last_activity if orch else 0
                     # Single query for all item counts
                     ic = db.fetchone(
                         "SELECT COUNT(*) c,"
@@ -3209,6 +3210,23 @@ class API(BaseHTTPRequestHandler):
             return self._json({"budget_limit": BUDGET_LIMIT,
                                "total_cost": sum(get_costs().values()),
                                "costs": get_costs()})
+
+        if path == "/api/sparklines":
+            # Return 7-day action counts for all repos (lightweight for master view)
+            result = {}
+            for repo in manager.master.get_repos():
+                db = manager.get_repo_db(repo["id"])
+                if not db:
+                    continue
+                try:
+                    rows = db.fetchall(
+                        "SELECT date(created_at) as day, COUNT(*) as cnt "
+                        "FROM execution_log WHERE created_at >= datetime('now', '-7 days') "
+                        "GROUP BY date(created_at) ORDER BY day")
+                    result[repo["id"]] = [r["cnt"] for r in rows]
+                except Exception:
+                    result[repo["id"]] = []
+            return self._json({"sparklines": result})
 
         if path == "/api/trends" and rid:
             db = manager.get_repo_db(rid)
