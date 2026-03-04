@@ -759,6 +759,7 @@ class RepoOrchestrator:
         self.db = RepoDB(repo["db_path"])
         self.state = self.db.load_state()
         self.stop_event = threading.Event()
+        self.pause_event = threading.Event()  # set = paused
 
         # Add intake folder permission
         self.db.add_permission(INTAKE_FOLDER, "read")
@@ -1286,6 +1287,11 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
 
         try:
             while not self.stop_event.is_set():
+                # Pause support — sleep in 1s intervals while paused
+                while self.pause_event.is_set() and not self.stop_event.is_set():
+                    time.sleep(1)
+                if self.stop_event.is_set():
+                    break
                 old_state = self.state.current_state
                 handler_name = self.HANDLERS.get(self.state.current_state, "h_idle")
                 handler = getattr(self, handler_name, None)
@@ -1324,6 +1330,18 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
 
     def stop(self):
         self.stop_event.set()
+
+    def pause(self):
+        self.pause_event.set()
+        log.info(f"⏸️ [{self.repo['name']}] Paused")
+
+    def resume(self):
+        self.pause_event.clear()
+        log.info(f"▶️ [{self.repo['name']}] Resumed")
+
+    @property
+    def is_paused(self):
+        return self.pause_event.is_set()
 
     def cleanup(self):
         """Close the per-repo database connection."""
@@ -1366,6 +1384,18 @@ class Manager:
             return {"ok": True}
         return {"ok": False, "error": "Not running"}
 
+    def pause_repo(self, repo_id):
+        if repo_id in self.orchestrators:
+            self.orchestrators[repo_id].pause()
+            return {"ok": True}
+        return {"ok": False, "error": "Not running"}
+
+    def resume_repo(self, repo_id):
+        if repo_id in self.orchestrators:
+            self.orchestrators[repo_id].resume()
+            return {"ok": True}
+        return {"ok": False, "error": "Not running"}
+
     def start_all(self):
         results = {}
         for repo in self.master.get_repos():
@@ -1398,6 +1428,33 @@ class Manager:
             return {}
         state = db.load_state()
         return state.to_dict()
+
+    def watchdog(self):
+        """Background thread that auto-restarts dead repo threads."""
+        while True:
+            time.sleep(30)
+            for rid, t in list(self.threads.items()):
+                if not t.is_alive() and rid in self.orchestrators:
+                    orch = self.orchestrators[rid]
+                    # Only restart if the orchestrator was supposed to be running
+                    if orch.state.running:
+                        repo_name = orch.repo.get("name", f"id={rid}")
+                        log.warning(f"🔄 Watchdog: thread for [{repo_name}] died, restarting...")
+                        orch.cleanup()
+                        del self.orchestrators[rid]
+                        del self.threads[rid]
+                        result = self.start_repo(rid)
+                        if result.get("ok"):
+                            log.info(f"🔄 Watchdog: [{repo_name}] restarted successfully")
+                            sse_broadcast("watchdog", {"repo_id": rid, "repo_name": repo_name, "action": "restart"})
+                            if TELEGRAM_ENABLED:
+                                try:
+                                    from telegram_bot import send_message as tg_send
+                                    tg_send(f"🔄 Watchdog restarted *{repo_name}* (thread died)")
+                                except Exception:
+                                    pass
+                        else:
+                            log.error(f"🔄 Watchdog: failed to restart [{repo_name}]: {result}")
 
 
 manager = Manager()
@@ -2047,6 +2104,9 @@ class API(BaseHTTPRequestHandler):
                     r["cycle_count"] = st.cycle_count
                     r["active_agents"] = st.active_agents
                     r["running"] = st.running or r.get("running", 0)
+                    # Check if paused
+                    orch = manager.orchestrators.get(r["id"])
+                    r["paused"] = orch.is_paused if orch else False
                     stats = {
                         "items_total": db.fetchone("SELECT COUNT(*) c FROM items")["c"],
                         "items_done": db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"],
@@ -2309,6 +2369,16 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             return self._json(manager.stop_repo(int(rid)))
 
+        if path == "/api/pause":
+            rid = b.get("repo_id")
+            if not rid: return self._json({"error": "repo_id required"}, 400)
+            return self._json(manager.pause_repo(int(rid)))
+
+        if path == "/api/resume":
+            rid = b.get("repo_id")
+            if not rid: return self._json({"error": "repo_id required"}, 400)
+            return self._json(manager.resume_repo(int(rid)))
+
         if path == "/api/items":
             rid = b.get("repo_id")
             db = manager.get_repo_db(rid)
@@ -2316,6 +2386,58 @@ class API(BaseHTTPRequestHandler):
             db.add_item(b.get("type","feature"), b.get("title",""), b.get("description",""),
                         b.get("priority","medium"), b.get("source","manual"))
             return self._json({"ok": True}, 201)
+
+        if path == "/api/items/bulk":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            items = b.get("items", [])
+            added = 0
+            for item in items:
+                db.add_item(item.get("type","feature"), item.get("title",""),
+                            item.get("description",""), item.get("priority","medium"),
+                            item.get("source","manual"))
+                added += 1
+            return self._json({"ok": True, "added": added}, 201)
+
+        if path == "/api/items/update":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            item_id = b.get("item_id")
+            if not item_id: return self._json({"error": "item_id required"}, 400)
+            sets, vals = [], []
+            for field in ("status", "priority", "title", "description", "type"):
+                if field in b:
+                    sets.append(f"{field}=?")
+                    vals.append(b[field])
+            if not sets: return self._json({"error": "No fields to update"}, 400)
+            vals.append(item_id)
+            db.ex(f"UPDATE items SET {','.join(sets)} WHERE id=?", vals)
+            db.commit()
+            return self._json({"ok": True})
+
+        if path == "/api/items/delete":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            item_id = b.get("item_id")
+            if not item_id: return self._json({"error": "item_id required"}, 400)
+            db.ex("DELETE FROM items WHERE id=?", (item_id,))
+            db.commit()
+            return self._json({"ok": True})
+
+        if path == "/api/items/clear":
+            rid = b.get("repo_id")
+            db = manager.get_repo_db(rid)
+            if not db: return self._json({"error": "No repo"}, 400)
+            status = b.get("status")
+            if status:
+                db.ex("DELETE FROM items WHERE status=?", (status,))
+            else:
+                db.ex("DELETE FROM items")
+            db.commit()
+            return self._json({"ok": True})
 
         if path == "/api/audio":
             rid = b.get("repo_id")
@@ -2683,6 +2805,10 @@ def main():
     # Start daily digest scheduler
     dt = threading.Thread(target=digest_scheduler, daemon=True)
     dt.start()
+
+    # Start watchdog (auto-restarts dead repo threads)
+    wt = threading.Thread(target=manager.watchdog, name="watchdog", daemon=True)
+    wt.start()
 
     # Start Telegram bot if requested
     if args.telegram:

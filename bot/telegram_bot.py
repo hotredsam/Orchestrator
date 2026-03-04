@@ -348,6 +348,22 @@ def cmd_stop_repo(name):
     return f"Stopped *{repo['name']}*: {result.get('ok', False)}"
 
 
+def cmd_pause_repo(name):
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    result = _orch_post("/api/pause", {"repo_id": repo["id"]})
+    return f"Paused *{repo['name']}*: {result.get('ok', False)}"
+
+
+def cmd_resume_repo(name):
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    result = _orch_post("/api/resume", {"repo_id": repo["id"]})
+    return f"Resumed *{repo['name']}*: {result.get('ok', False)}"
+
+
 def cmd_screenshot():
     path = take_screenshot()
     if path and os.path.exists(path):
@@ -503,6 +519,8 @@ def cmd_help():
 `stop all` — Stop everything
 `start [repo]` — Start specific repo
 `stop [repo]` — Stop specific repo
+`pause [repo]` — Pause (keeps thread alive)
+`resume [repo]` — Resume paused repo
 `screenshot` / `show me` — Dashboard photo
 `add feature repo: title - desc` — Add feature
 `add issue repo: title - desc` — Add issue
@@ -622,6 +640,10 @@ def handle_message(msg):
         reply = cmd_start_repo(t[6:])
     elif t.startswith("stop "):
         reply = cmd_stop_repo(t[5:])
+    elif t.startswith("pause "):
+        reply = cmd_pause_repo(t[6:])
+    elif t.startswith("resume "):
+        reply = cmd_resume_repo(t[7:])
     elif t in ("screenshot", "show me"):
         reply = cmd_screenshot()
     elif t.startswith("add feature "):
