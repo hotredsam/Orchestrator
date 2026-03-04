@@ -1008,7 +1008,9 @@ function Dashboard() {
               <span style={{ fontWeight: 700, color: STATES[cr.state]?.color || C.brown }}>{cr.state || "idle"}</span>
               <span style={{ color: C.brown }}>Items: {s.items_done||0}/{s.items_total||0}</span>
               <span style={{ color: C.brown }}>Steps: {s.steps_done||0}/{s.steps_total||0}</span>
+              {costs[sr] > 0 && <span style={{ color: C.brown }}>${costs[sr]?.toFixed(2)}</span>}
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
+              {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
             </>); })()}
           </div>
         )}
@@ -1868,6 +1870,17 @@ function Dashboard() {
                       {e.created_at?.slice(11,19)} {e.action}: {e.error?.slice(0, 80)}
                     </div>
                   ))}
+                  {/* Recovery suggestions */}
+                  {errRate > 10 && (
+                    <div style={{ marginTop: 6, padding: "6px 10px", background: `${C.cream}88`, borderRadius: 6, fontSize: 10, color: C.brown }}>
+                      <span style={{ fontWeight: 700 }}>{"\uD83D\uDCA1"} Suggestions:</span>
+                      {errLogs.some(e => (e.error||"").toLowerCase().includes("credit")) && <span> Check API credits.</span>}
+                      {errLogs.some(e => (e.error||"").toLowerCase().includes("timeout")) && <span> Increase timeout or reduce step complexity.</span>}
+                      {errLogs.some(e => (e.error||"").toLowerCase().includes("rate")) && <span> Reduce concurrent agents or add delays.</span>}
+                      {errRate > 30 && <span> Error rate is high — consider pausing and reviewing the plan.</span>}
+                      {errRate <= 30 && errRate > 10 && <span> Monitor closely — errors may be transient.</span>}
+                    </div>
+                  )}
                 </Card>
               ) : null;
             })()}
@@ -2261,8 +2274,15 @@ function Dashboard() {
                         </div>
                         {i < plan.length - 1 && <div style={{ width: 2, flex: 1, background: done ? C.green : `${C.darkBrown}33`, marginTop: 4 }} />}
                       </div>
-                      <Card bg={done ? C.lightTeal : C.white} style={{ flex: 1, padding: 12, marginBottom: 0, background: done ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
-                        <div style={{ fontSize: 13, fontWeight: done ? 400 : 600, lineHeight: 1.4 }}>{s.description}</div>
+                      <Card bg={done ? C.lightTeal : C.white} style={{ flex: 1, padding: 12, marginBottom: 0, background: isNextStep ? `linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)` : done ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                        {s.description?.length > 120 ? (
+                          <details>
+                            <summary style={{ fontSize: 13, fontWeight: done ? 400 : 600, lineHeight: 1.4, cursor: "pointer" }}>{s.description.slice(0, 120)}...</summary>
+                            <div style={{ fontSize: 12, color: C.brown, lineHeight: 1.4, marginTop: 4 }}>{s.description}</div>
+                          </details>
+                        ) : (
+                          <div style={{ fontSize: 13, fontWeight: done ? 400 : 600, lineHeight: 1.4 }}>{s.description}</div>
+                        )}
                         <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                           {s.agent_type && <span style={{ fontSize: 10, background: C.lightOrange, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\uD83E\uDD20"} {s.agent_type}</span>}
                           {done && <span style={{ fontSize: 10, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{"\u2705"} Tests: {s.tests_passed}/{s.tests_written}</span>}
