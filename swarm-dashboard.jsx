@@ -171,6 +171,7 @@ function Dashboard() {
   const [sparklines, setSparklines] = useState({});
   const [etas, setEtas] = useState({});
   const [masterFocus, setMasterFocus] = useState(-1);
+  const [compactMaster, setCompactMaster] = useState(() => localStorage.getItem("swarm-compact-master") === "1");
   const [compactItems, setCompactItems] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
@@ -279,7 +280,8 @@ function Dashboard() {
 
   const load = useCallback(async (full = true) => {
     try {
-      const r = await f("/api/repos");
+      const repoUrl = repoFilter === "archived" ? "/api/repos?include_archived=1" : "/api/repos";
+      const r = await f(repoUrl);
       if (r.ok) { const d = await r.json(); setRepos(d); if (!sr && d.length) setSR(d[0].id); }
       setCon(true);
     } catch(err) { console.warn("Server connection lost:", err.message); setCon(false); setLoading(false); return; }
@@ -1266,15 +1268,18 @@ function Dashboard() {
               <Inp placeholder="Search repos..." value={repoFilter === "all" ? "" : (repoFilter.startsWith("q:") ? repoFilter.slice(2) : "")}
                 onChange={e => setRepoFilter(e.target.value ? "q:" + e.target.value : "all")}
                 style={{ maxWidth: 200, fontSize: 12, padding: "8px 14px" }} />
-              {["all", "running", "idle", "pinned"].map(f => (
+              {["all", "running", "idle", "pinned", "archived"].map(f => (
                 <span key={f} onClick={() => setRepoFilter(f)}
                   style={{ cursor: "pointer", padding: "4px 12px", borderRadius: 12, fontSize: 11, fontWeight: 700,
                     background: repoFilter === f ? C.orange : C.cream, color: repoFilter === f ? C.white : C.brown,
                     border: `2px solid ${repoFilter === f ? C.orange : C.darkBrown}33`, transition: "all .2s" }}>
-                  {f === "all" ? "All" : f === "running" ? "Running" : f === "idle" ? "Idle" : "Pinned"}
+                  {f === "all" ? "All" : f === "running" ? "Running" : f === "idle" ? "Idle" : f === "pinned" ? "Pinned" : "Archived"}
                 </span>
               ))}
               <span style={{ fontSize: 11, color: C.brown }}>{repos.length} repos</span>
+              <span onClick={() => { const next = !compactMaster; setCompactMaster(next); localStorage.setItem("swarm-compact-master", next ? "1" : "0"); }}
+                style={{ cursor: "pointer", fontSize: 10, padding: "3px 8px", borderRadius: 8, background: compactMaster ? C.teal : C.cream, color: compactMaster ? C.white : C.brown, border: `1px solid ${C.darkBrown}33`, fontWeight: 700, transition: "all .2s" }}
+                title="Toggle compact mode">{compactMaster ? "Compact" : "Full"}</span>
               {/* Tag filter chips */}
               {(() => { const allTags = [...new Set(repos.flatMap(r => (r.tags || "").split(",").filter(Boolean)))].sort(); return allTags.length > 0 && (<>
                 <span style={{ fontSize: 11, color: C.brown }}>|</span>
@@ -1302,8 +1307,9 @@ function Dashboard() {
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {[...repos].filter(r => {
                 if (repoFilter === "running") return r.running;
-                if (repoFilter === "idle") return !r.running;
+                if (repoFilter === "idle") return !r.running && !r.archived;
                 if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
+                if (repoFilter === "archived") return r.archived;
                 if (repoFilter.startsWith("tag:")) return (r.tags || "").split(",").includes(repoFilter.slice(4));
                 if (repoFilter.startsWith("q:")) return r.name.toLowerCase().includes(repoFilter.slice(2).toLowerCase());
                 return true;
@@ -1356,7 +1362,7 @@ function Dashboard() {
                       <div style={{ height: "100%", borderRadius: 6, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, transition: "width .5s" }} />
                     </div>
                     {/* Tags */}
-                    {r.tags && (
+                    {!compactMaster && r.tags && (
                       <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap" }}>
                         {r.tags.split(",").filter(Boolean).map(tag => (
                           <span key={tag} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, background: "#E8D5F5", color: "#7E57C2", fontWeight: 700, border: "1px solid #CE93D8" }}>{tag}</span>
@@ -1378,7 +1384,7 @@ function Dashboard() {
                       ))}
                     </div>
                     {/* Activity sparkline (7-day) */}
-                    {sparklines[r.id]?.length > 1 && (
+                    {!compactMaster && sparklines[r.id]?.length > 1 && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
                         <span style={{ fontSize: 9, color: C.brown, minWidth: 42 }}>7d trend</span>
                         <Sparkline data={sparklines[r.id]} width={100} height={14} color={r.running ? C.teal : C.brown} />
@@ -1386,7 +1392,7 @@ function Dashboard() {
                       </div>
                     )}
                     {/* Quick actions */}
-                    <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
+                    {!compactMaster && <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
                       {r.running ? (
                         <>
                           <button onClick={e => { e.stopPropagation(); f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }).then(load); }}
@@ -1400,7 +1406,9 @@ function Dashboard() {
                       )}
                       <button onClick={e => { e.stopPropagation(); f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: r.id, message: "manual push" }) }).then(() => showToast(`${r.name} pushed`, "success")); }}
                         style={{ background: C.teal, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }}>{"\uD83D\uDE80"} Push</button>
-                    </div>
+                      <button onClick={e => { e.stopPropagation(); f("/api/repos/archive", { method: "POST", body: JSON.stringify({ repo_id: r.id, archive: !r.archived }) }).then(() => { showToast(`${r.name} ${r.archived ? "unarchived" : "archived"}`, "info"); load(); }); }}
+                        style={{ background: "#999", color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1, opacity: 0.7 }} title={r.archived ? "Unarchive" : "Archive"}>{r.archived ? "\uD83D\uDCE4" : "\uD83D\uDCE6"}</button>
+                    </div>}
                   </Card>
                 );
               })}

@@ -1119,6 +1119,21 @@ def cmd_api_docs():
     return "\n".join(lines)
 
 
+def cmd_archive(name, unarchive=False):
+    """Archive or unarchive a repo by name."""
+    repos = _orch_get("/api/repos?include_archived=1")
+    if not isinstance(repos, list):
+        repos = repos.get("repos", []) if isinstance(repos, dict) else []
+    repo = next((r for r in repos if r["name"].lower() == name.lower()), None)
+    if not repo:
+        return f"Repo `{name}` not found."
+    action = not unarchive  # archive=True or False
+    result = _orch_post("/api/repos/archive", {"repo_id": repo["id"], "archive": action})
+    if result.get("ok"):
+        return f"{'Unarchived' if unarchive else 'Archived'} `{repo['name']}` successfully."
+    return f"Failed: {result.get('error', 'unknown error')}"
+
+
 def cmd_batch(args):
     """Batch action on repos matching a tag or comma-separated names.
 
@@ -1425,6 +1440,10 @@ def handle_message(msg):
         reply = cmd_recent_errors()
     elif t in ("docs", "api-docs", "api docs", "endpoints"):
         reply = cmd_api_docs()
+    elif t.startswith("archive "):
+        reply = cmd_archive(t[8:].strip())
+    elif t.startswith("unarchive "):
+        reply = cmd_archive(t[10:].strip(), unarchive=True)
     elif t.startswith("batch "):
         reply = cmd_batch(t[6:])
     elif t in ("app", "dashboard", "open"):

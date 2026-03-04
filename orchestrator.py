@@ -807,6 +807,9 @@ class MasterDB:
         if "deps" not in cols:
             self.conn.execute("ALTER TABLE repos ADD COLUMN deps TEXT DEFAULT ''")
             self.conn.commit()
+        if "archived" not in cols:
+            self.conn.execute("ALTER TABLE repos ADD COLUMN archived INTEGER DEFAULT 0")
+            self.conn.commit()
         # Daily costs table for historical tracking
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS daily_costs (
@@ -2687,6 +2690,10 @@ class API(BaseHTTPRequestHandler):
             if cached is not None:
                 return self._json(cached)
             repos = manager.master.get_repos()
+            # Filter archived repos unless explicitly requested
+            include_archived = q.get("include_archived", ["0"])[0] == "1"
+            if not include_archived:
+                repos = [r for r in repos if not r.get("archived", 0)]
             if name_q:
                 repos = [r for r in repos if name_q in r["name"].lower()]
             # Enrich with state — batch counts in single query per repo
@@ -3546,6 +3553,20 @@ class API(BaseHTTPRequestHandler):
             manager.master.commit()
             _response_cache.clear()
             return self._json({"ok": True, "tags": tags})
+
+        if path == "/api/repos/archive":
+            rid = self._safe_int(b.get("repo_id"))
+            if rid is None:
+                return self._json({"error": "repo_id required"}, 400)
+            archived = 1 if b.get("archive", True) else 0
+            # Stop the repo first if archiving
+            if archived and rid in manager.orchestrators:
+                manager.stop_repo(rid)
+            manager.master.ex("UPDATE repos SET archived=? WHERE id=?", (archived, rid))
+            manager.master.commit()
+            _response_cache.clear()
+            action = "archived" if archived else "unarchived"
+            return self._json({"ok": True, "action": action})
 
         if path == "/api/repos/deps":
             rid = self._safe_int(b.get("repo_id"))
