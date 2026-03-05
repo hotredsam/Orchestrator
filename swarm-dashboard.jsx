@@ -2367,6 +2367,27 @@ function Dashboard() {
                 </Card>
               );
             })()}
+            {sr && items.length > 0 && (() => {
+              const key = `item_trend_${sr}`;
+              const done = items.filter(i => i.status === "completed").length;
+              try {
+                const hist = JSON.parse(localStorage.getItem(key) || "[]");
+                const today = new Date().toISOString().slice(0, 10);
+                if (!hist.length || hist[hist.length - 1].d !== today) hist.push({ d: today, v: done });
+                else hist[hist.length - 1].v = done;
+                if (hist.length > 14) hist.splice(0, hist.length - 14);
+                localStorage.setItem(key, JSON.stringify(hist));
+                if (hist.length >= 2) {
+                  const max = Math.max(...hist.map(h => h.v), 1);
+                  return <div style={{ maxWidth: 620, margin: "0 auto 6px", display: "flex", alignItems: "flex-end", gap: 2, height: 20, padding: "0 14px" }}>
+                    <span style={{ fontSize: 9, color: C.brown, marginRight: 4 }}>{"\uD83D\uDCC8"}</span>
+                    {hist.map((h, i) => <div key={i} style={{ flex: 1, background: `linear-gradient(to top, ${C.teal}, ${C.green})`, borderRadius: "2px 2px 0 0", height: `${Math.max(2, Math.round(h.v / max * 18))}px`, opacity: i === hist.length - 1 ? 1 : 0.5 }} title={`${h.d}: ${h.v} done`} />)}
+                    <span style={{ fontSize: 9, color: C.brown, marginLeft: 4 }}>{done}</span>
+                  </div>;
+                }
+              } catch(e) {}
+              return null;
+            })()}
             {items.length > 0 && (
               <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                 {["all", "pending", "in_progress", "completed", "archived"].map(f => (

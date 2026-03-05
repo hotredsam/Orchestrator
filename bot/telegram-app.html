@@ -627,6 +627,9 @@
       <!-- Screen 1: Home -->
       <div class="screen active" id="screen-home">
         <div class="pull-indicator" id="pullIndicator">Pull to refresh...</div>
+        <div class="input-group mb-8" style="display:flex;gap:6px;">
+          <input type="text" class="input" id="homeSearchInput" placeholder="Search repos..." style="flex:1;font-size:12px;padding:6px 10px;" oninput="filterHomeRepos()">
+        </div>
         <div class="btn-row mb-12">
           <button class="btn btn-green btn-sm" onclick="startAll()">Start All</button>
           <button class="btn btn-red btn-sm" onclick="stopAll()">Stop All</button>
@@ -1057,6 +1060,15 @@
     }
 
     // ─── Screen 1: Home ──────────────────────────────────────────────────────
+    function filterHomeRepos() {
+      const q = (document.getElementById('homeSearchInput')?.value || '').toLowerCase();
+      const cards = document.querySelectorAll('#homeRepoList .card');
+      cards.forEach(card => {
+        const title = (card.querySelector('.card-title')?.textContent || '').toLowerCase();
+        card.style.display = !q || title.includes(q) ? '' : 'none';
+      });
+    }
+
     async function refreshHome() {
       const data = await api('/api/repos');
       if (!data) return;

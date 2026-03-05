@@ -1980,6 +1980,36 @@ def _fire_scheduled_digest():
     _start_digest_timer()  # Reschedule for next day
 
 
+def cmd_export(name: str = ""):
+    """Export repo data as formatted text summary."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("export") if not name else f"Repo '{name}' not found."
+    rid = repo["id"]
+    items = _orch_get(f"/api/items?repo_id={rid}") or []
+    plan = _orch_get(f"/api/plan?repo_id={rid}") or []
+    s = repo.get("stats") or {}
+    pending = len([i for i in items if i.get("status") == "pending"])
+    done = len([i for i in items if i.get("status") == "completed"])
+    steps_done = len([p for p in plan if p.get("status") == "completed"])
+    lines = [
+        f"=== {repo['name']} Export ===",
+        f"Path: {repo.get('path', 'N/A')}",
+        f"State: {repo.get('state', 'idle')} | Running: {'Yes' if repo.get('running') else 'No'}",
+        f"Items: {done}/{len(items)} done ({pending} pending)",
+        f"Steps: {steps_done}/{len(plan)} done",
+        f"Cycles: {repo.get('cycle_count', 0)}",
+        f"Cost: ${s.get('cost', 0):.4f}",
+        "",
+        "--- Pending Items ---",
+    ]
+    for i in [x for x in items if x.get("status") == "pending"][:15]:
+        lines.append(f"  [{i.get('priority','med')}] {i.get('title','')[:50]}")
+    if pending > 15:
+        lines.append(f"  ...and {pending - 15} more")
+    return "```\n" + "\n".join(lines) + "\n```"
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -2346,6 +2376,8 @@ def handle_message(msg):
         reply = cmd_cost_alert(t[11:].strip() if t.startswith("cost_alert ") else "")
     elif t == "schedule" or t.startswith("schedule "):
         reply = cmd_schedule(t[9:].strip() if t.startswith("schedule ") else "")
+    elif t == "export" or t.startswith("export "):
+        reply = cmd_export(t[7:].strip() if t.startswith("export ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2422,7 +2454,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
