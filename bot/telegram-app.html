@@ -2144,6 +2144,17 @@
           if (costEl) costEl.innerHTML = '$' + totalCost.toFixed(2) + ` <span style="display:inline-flex;align-items:flex-end;gap:1px;vertical-align:middle;margin-left:3px;">${spark}</span> <span style="font-size:9px;">${trendIcon}</span>`;
         }
       }
+      // Make stat numbers tap-to-copy
+      document.querySelectorAll('.stat-number').forEach(el => {
+        if (!el._copyBound) {
+          el._copyBound = true;
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => {
+            const val = el.textContent.trim();
+            navigator.clipboard.writeText(val).then(() => { haptic('light'); showToast('Copied: ' + val, 'info'); });
+          });
+        }
+      });
       document.getElementById('statsBreakdown').innerHTML = breakdowns.join('') || '<div class="empty-state"><p>No repos yet</p></div>';
       // Cost efficiency ranking
       const ranked = data.filter(r => (r.stats?.items_done || 0) > 0 && ((repoCosts[r.name] || r.stats?.cost || 0) > 0)).map(r => {
