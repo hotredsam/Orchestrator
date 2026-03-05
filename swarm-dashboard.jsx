@@ -1073,6 +1073,7 @@ function Dashboard() {
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
               {lastRefresh && <span style={{ fontSize: 8, color: C.brown, opacity: 0.7 }}>{Math.floor((Date.now() - lastRefresh) / 1000) < 10 ? "just now" : Math.floor((Date.now() - lastRefresh) / 1000) + "s ago"}</span>}
               {repos.length > 0 && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: repos.filter(r => r.running).length > 0 ? `${C.green}22` : `${C.brown}11`, color: repos.filter(r => r.running).length > 0 ? C.green : C.brown, fontWeight: 700 }}>{repos.filter(r => r.running).length}/{repos.length} running</span>}
+              {repos.length > 0 && (() => { const tc = repos.reduce((s, r) => s + (r.stats?.cost || 0), 0); return tc > 0 ? <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: tc > 5 ? "#FFEBEE" : tc > 1 ? `${C.orange}22` : `${C.green}22`, color: tc > 5 ? C.red : tc > 1 ? C.orange : C.green, fontWeight: 700 }}>{"\uD83D\uDCB0"} ${tc.toFixed(2)}</span> : null; })()}
               {healthScores?.average_score != null && (() => {
                 const s = healthScores.average_score;
                 const hc = s >= 80 ? C.green : s >= 60 ? C.orange : C.red;

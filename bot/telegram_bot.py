@@ -57,6 +57,25 @@ def _track_api_health(success: bool, error=None):
             err_str = str(error)[:80] if error else "unknown"
             queue_message(f"\u26A0\uFE0F *Connection issues:* {_api_consecutive_failures} consecutive API failures\nLast error: `{err_str}`")
 
+# Request latency tracking
+_request_times = []
+_SLOW_THRESHOLD = 4.0  # seconds
+_slow_alert_sent = False
+
+def _track_latency(elapsed: float):
+    """Track API response latency and alert on sustained slowness."""
+    global _slow_alert_sent
+    _request_times.append(elapsed)
+    if len(_request_times) > 50:
+        _request_times.pop(0)
+    if len(_request_times) >= 5:
+        avg = sum(_request_times[-5:]) / 5
+        if avg > _SLOW_THRESHOLD and not _slow_alert_sent:
+            queue_message(f"\U0001F422 *Slow API:* avg {avg:.1f}s over last 5 requests (threshold: {_SLOW_THRESHOLD}s)")
+            _slow_alert_sent = True
+        elif avg <= _SLOW_THRESHOLD / 2:
+            _slow_alert_sent = False
+
 # ─── Message Batching ────────────────────────────────────────────────────────
 
 _message_buffer = []
@@ -305,12 +324,14 @@ def _orch_get(path, retries=2):
     last_err = None
     for attempt in range(retries + 1):
         try:
+            t0 = time.time()
             token = _fetch_api_token()
             req = Request(f"{ORCH_URL}{path}")
             if token:
                 req.add_header("Authorization", f"Bearer {token}")
             resp = urlopen(req, timeout=5)
             result = json.loads(resp.read())
+            _track_latency(time.time() - t0)
             _track_api_health(True)
             return result
         except HTTPError as e:
