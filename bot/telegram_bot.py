@@ -1217,6 +1217,42 @@ def cmd_oldest(days_str: str = "7"):
     return "\n".join(lines)
 
 
+def cmd_completions(name: str = ""):
+    """Show recently completed items with timestamps."""
+    repos = _orch_get("/api/repos") or []
+    if name:
+        repos = [r for r in repos if r.get("name", "").lower() == name.lower()]
+    if not repos:
+        return f"Repo '{name}' not found." if name else "No repos."
+    completed = []
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        for it in items:
+            if it.get("status") == "completed" and it.get("completed_at"):
+                it["_repo"] = r["name"]
+                completed.append(it)
+    if not completed:
+        return "\U0001F4AD No completed items found."
+    completed.sort(key=lambda x: x.get("completed_at", ""), reverse=True)
+    lines = [f"\u2705 *Recent Completions* ({len(completed)} total):\n"]
+    for it in completed[:15]:
+        try:
+            ts = datetime.fromisoformat(it["completed_at"].replace("Z", "+00:00"))
+            ago = (datetime.now(timezone.utc) - ts).total_seconds()
+            if ago < 3600:
+                time_str = f"{int(ago/60)}m ago"
+            elif ago < 86400:
+                time_str = f"{int(ago/3600)}h ago"
+            else:
+                time_str = f"{int(ago/86400)}d ago"
+        except Exception:
+            time_str = "?"
+        lines.append(f"  \u2705 *{it['_repo']}*: {it.get('title', '?')[:40]} ({time_str})")
+    if len(completed) > 15:
+        lines.append(f"\n  _...+{len(completed) - 15} more_")
+    return "\n".join(lines)
+
+
 def cmd_alive():
     """Quick heartbeat check showing system liveness and last activity."""
     data = _orch_get("/api/status")
@@ -2509,6 +2545,8 @@ def handle_message(msg):
         reply = cmd_backlog()
     elif t == "oldest" or t.startswith("oldest "):
         reply = cmd_oldest(t[7:].strip() if t.startswith("oldest ") else "")
+    elif t == "completions" or t.startswith("completions "):
+        reply = cmd_completions(t[12:].strip() if t.startswith("completions ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2585,7 +2623,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

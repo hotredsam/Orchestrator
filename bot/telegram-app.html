@@ -1408,7 +1408,21 @@
       const itemSearch = (document.getElementById('itemsSearchInput')?.value || '').toLowerCase();
       if (itemSearch) items = items.filter(i => (i.title || '').toLowerCase().includes(itemSearch) || (i.description || '').toLowerCase().includes(itemSearch));
 
-      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${items.length}${itemSearch ? ' matched' : ''} items${filter ? ` (${filter})` : ''}${_itemPrioFilter ? ` [${_itemPrioFilter}]` : ''}${itemSearch ? ` for "${esc(itemSearch)}"` : ''}</div>` + items.map(item => {
+      const completedCount = data.filter(i => i.status === 'completed').length;
+      const completionPct = data.length > 0 ? Math.round(completedCount / data.length * 100) : 0;
+      const velBadge = (() => {
+        const doneWithTs = data.filter(i => i.status === 'completed' && i.completed_at);
+        if (doneWithTs.length < 2) return '';
+        const ts = doneWithTs.map(i => new Date(i.completed_at).getTime()).sort();
+        const days = Math.max(1, (ts[ts.length-1] - ts[0]) / 86400000);
+        const vel = (doneWithTs.length / days).toFixed(1);
+        return `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:#E3F2FD;color:var(--teal);font-weight:700;">⚡ ${vel}/day</span>`;
+      })();
+      el.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        <span style="font-size:11px;color:var(--text-secondary);">${items.length}${itemSearch ? ' matched' : ''} items${filter ? ` (${filter})` : ''}${_itemPrioFilter ? ` [${_itemPrioFilter}]` : ''}${itemSearch ? ` for "${esc(itemSearch)}"` : ''}</span>
+        <span style="font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;background:${completionPct >= 75 ? '#E8F5E9' : completionPct >= 40 ? '#FFF3E0' : '#FFEBEE'};color:${completionPct >= 75 ? 'var(--green)' : completionPct >= 40 ? 'var(--orange)' : 'var(--red)'};">${completionPct}%</span>
+        ${velBadge}
+      </div>` + items.map(item => {
         const statusColors = { pending: 'var(--orange)', in_progress: 'var(--teal)', completed: 'var(--green)' };
         const typeEmoji = item.type === 'issue' ? '🐛' : '✨';
         const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢', critical: '⛔' };

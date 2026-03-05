@@ -1911,6 +1911,20 @@ function Dashboard() {
                 </div>
               </div>
             </Card>
+            {/* Cost Efficiency Ranking */}
+            {(() => {
+              const ranked = repos.filter(r => (r.stats?.cost || 0) > 0 && (r.stats?.items_done || 0) > 0).map(r => ({ name: r.name, cost: r.stats.cost, done: r.stats.items_done, cpi: r.stats.cost / r.stats.items_done })).sort((a, b) => a.cpi - b.cpi);
+              if (ranked.length < 2) return null;
+              return <Card bg={C.white} style={{ maxWidth: 700, margin: "16px auto 0", padding: 14, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>{"\uD83D\uDCB0"} Cost Efficiency Ranking</div>
+                {ranked.slice(0, 8).map((r, i) => <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: i < ranked.length - 1 ? `1px solid ${C.darkBrown}11` : "none" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, minWidth: 22, color: i === 0 ? C.green : i < 3 ? C.teal : C.brown }}>{i === 0 ? "\uD83E\uDD47" : i === 1 ? "\uD83E\uDD48" : i === 2 ? "\uD83E\uDD49" : `${i+1}.`}</span>
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{r.name}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: r.cpi < 0.1 ? C.green : r.cpi < 0.5 ? C.orange : C.red }}>${r.cpi.toFixed(3)}/item</span>
+                  <span style={{ fontSize: 10, color: C.brown }}>{r.done} done</span>
+                </div>)}
+              </Card>;
+            })()}
             {/* Dependency Graph */}
             <details style={{ maxWidth: 700, margin: "20px auto 0" }}>
               <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1, textAlign: "center" }}>
