@@ -2968,6 +2968,22 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_zero():
+    """Show repos that have zero items — need work seeded."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    empty = [r for r in repos if (r.get("stats", {}).get("items_total", 0)) == 0]
+    if not empty:
+        return "✅ All repos have items seeded!"
+    lines = [f"📭 *{len(empty)} Repos with Zero Items*\n"]
+    for r in sorted(empty, key=lambda x: x.get("name", "")):
+        status = "▶️" if r.get("running") else "⏹️"
+        lines.append(f"  {status} *{r['name']}* — {r.get('state', 'idle')}")
+    lines.append(f"\n💡 Use `/items add` or seed items via the API to get started")
+    return "\n".join(lines)
+
+
 def cmd_uptime_rank():
     """Rank running repos by continuous uptime duration."""
     repos = _orch_get("/api/repos") or []
@@ -3706,6 +3722,8 @@ def handle_message(msg):
         reply = cmd_roi()
     elif t in ("uptime_rank", "uptime rank", "uptimerank"):
         reply = cmd_uptime_rank()
+    elif t in ("zero", "empty", "unseeded"):
+        reply = cmd_zero()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3782,7 +3800,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

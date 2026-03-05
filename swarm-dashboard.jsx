@@ -1439,8 +1439,9 @@ function Dashboard() {
 
           {/* REPO CARDS */}
           <SectionBg bg={`linear-gradient(180deg, ${C.teal} 0%, #009BB8 100%)`} style={{ borderTop: `3px solid ${C.darkBrown}` }}>
-            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 12, letterSpacing: 4 }}>
+            <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 12, letterSpacing: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
               YOUR REPOS
+              {repos.reduce((s,r) => s + (r.stats?.mistakes||0), 0) > 0 && <span style={{ fontSize: 14, background: C.red, color: C.white, padding: "2px 10px", borderRadius: 12, border: `2px solid ${C.darkBrown}`, fontFamily: "'Fredoka', sans-serif", verticalAlign: "middle" }}>{repos.reduce((s,r) => s + (r.stats?.mistakes||0), 0)} errors</span>}
             </h2>
             {(() => { const running = repos.filter(r => r.running && !r.paused).length; const idle = repos.filter(r => !r.running).length; const paused = repos.filter(r => r.paused).length; const errored = repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length; const totalErr = repos.reduce((s,r) => s + (r.stats?.mistakes||0), 0); const totalCost = Object.values(costs).reduce((a,b) => a+b, 0); return <p style={{ textAlign: "center", fontSize: 12, color: C.cream, marginBottom: 10, fontWeight: 600, letterSpacing: 1 }}>{repos.length} total{running > 0 ? ` · ${running} running` : ""}{idle > 0 ? ` · ${idle} idle` : ""}{paused > 0 ? ` · ${paused} paused` : ""}{errored > 0 ? ` · ${errored} error` : ""}{totalErr > 0 ? ` · ${totalErr} mistakes` : ""}{totalCost > 0 ? ` · $${totalCost.toFixed(2)}` : ""}</p>; })()}
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16, flexWrap: "wrap" }}>

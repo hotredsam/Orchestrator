@@ -809,16 +809,16 @@
           </div>
         </div>
         <div class="chat-quick-row">
-          <button class="quick-btn" onclick="sendChat('scan all')">Scan All</button>
-          <button class="quick-btn" onclick="sendChat('fix all')">Fix All</button>
-          <button class="quick-btn" onclick="sendChat('start all')">Start All</button>
-          <button class="quick-btn" onclick="sendChat('stop all')">Stop All</button>
-          <button class="quick-btn" onclick="sendChat('npm install all')">NPM Install</button>
-          <button class="quick-btn" onclick="sendChat('retry_all')">Retry All</button>
-          <button class="quick-btn" onclick="sendChat('backlog')">Backlog</button>
-          <button class="quick-btn" onclick="sendChat('oldest')">Oldest</button>
-          <button class="quick-btn" onclick="sendChat('success')">Success</button>
-          <button class="quick-btn" onclick="sendChat('pending')">Pending</button>
+          <button class="quick-btn" onclick="sendChat('scan all')" title="Scan all repos for issues and features">Scan All</button>
+          <button class="quick-btn" onclick="sendChat('fix all')" title="Attempt to fix errors in all repos">Fix All</button>
+          <button class="quick-btn" onclick="sendChat('start all')" title="Start orchestrators for all idle repos">Start All</button>
+          <button class="quick-btn" onclick="sendChat('stop all')" title="Stop all running orchestrators">Stop All</button>
+          <button class="quick-btn" onclick="sendChat('npm install all')" title="Run npm install across all repos">NPM Install</button>
+          <button class="quick-btn" onclick="sendChat('retry_all')" title="Re-queue completed items for retry">Retry All</button>
+          <button class="quick-btn" onclick="sendChat('backlog')" title="Show pending items sorted by priority">Backlog</button>
+          <button class="quick-btn" onclick="sendChat('oldest')" title="Show oldest pending items across repos">Oldest</button>
+          <button class="quick-btn" onclick="sendChat('success')" title="Show success rate per repo">Success</button>
+          <button class="quick-btn" onclick="sendChat('pending')" title="List all pending items by repo">Pending</button>
         </div>
         <div class="chat-input-bar">
           <input type="text" class="input" id="chatInput" placeholder="Type a command..." onkeydown="if(event.key==='Enter')sendChat()" aria-label="Chat command input">
