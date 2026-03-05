@@ -835,6 +835,8 @@
         <div id="statsBreakdown"></div>
         <h2 class="section-title" style="margin-top:16px;">💰 Cost Efficiency</h2>
         <div id="costEfficiency"></div>
+        <h2 class="section-title" style="margin-top:16px;">🏆 Achievements</h2>
+        <div id="achievements"></div>
       </div>
 
       <!-- Screen 7: Items -->
@@ -2130,6 +2132,25 @@
             </div>`;
           }).join('');
         }
+      }
+      // Achievements
+      const achEl = document.getElementById('achievements');
+      if (achEl) {
+        const totalDone = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
+        const totalAll = repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0);
+        const runningCount = repos.filter(r => r.running).length;
+        const badges = [];
+        if (repos.length >= 1) badges.push({ icon: '🌱', label: 'First Repo', desc: 'Registered your first repo' });
+        if (repos.length >= 5) badges.push({ icon: '🏘️', label: 'Town Builder', desc: '5+ repos registered' });
+        if (repos.length >= 10) badges.push({ icon: '🌆', label: 'City Planner', desc: '10+ repos registered' });
+        if (totalDone >= 10) badges.push({ icon: '⚡', label: 'Getting Started', desc: '10+ items completed' });
+        if (totalDone >= 50) badges.push({ icon: '🔥', label: 'On Fire', desc: '50+ items completed' });
+        if (totalDone >= 100) badges.push({ icon: '💯', label: 'Centurion', desc: '100+ items completed' });
+        if (runningCount >= 3) badges.push({ icon: '🚀', label: 'Multi-Tasker', desc: '3+ repos running simultaneously' });
+        if (totalCost < 1.0 && totalDone > 10) badges.push({ icon: '💰', label: 'Budget Master', desc: 'Under $1 with 10+ completions' });
+        const pct = totalAll > 0 ? Math.round(totalDone / totalAll * 100) : 0;
+        if (pct >= 75) badges.push({ icon: '🏆', label: 'Almost There', desc: '75%+ overall completion' });
+        achEl.innerHTML = badges.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;">${badges.map(b => `<div class="card" style="padding:6px 10px;text-align:center;min-width:80px;"><div style="font-size:20px;">${b.icon}</div><div style="font-size:10px;font-weight:700;">${b.label}</div><div style="font-size:8px;color:var(--text-secondary);">${b.desc}</div></div>`).join('')}</div>` : '<div class="empty-state" style="padding:8px;"><p style="font-size:11px;">Complete tasks to unlock badges!</p></div>';
       }
       // Check cost alert threshold
       const costAlert = parseFloat(localStorage.getItem('swarm-cost-alert') || '0');

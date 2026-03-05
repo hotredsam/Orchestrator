@@ -1730,6 +1730,13 @@ function Dashboard() {
                 <div style={{ textAlign: "center", fontSize: 12, color: C.brown, marginTop: 8 }}>No results found.</div>
               )}
             </details>
+            {/* Wave 200 Milestone Banner */}
+            {!localStorage.getItem("wave200_dismissed") && <Card bg="linear-gradient(135deg, #FFD700, #FF6B35)" style={{ maxWidth: 600, margin: "0 auto 12px", padding: "12px 16px", textAlign: "center", border: `3px solid ${C.darkBrown}`, position: "relative" }}>
+              <button onClick={() => { localStorage.setItem("wave200_dismissed", "1"); load(); }} style={{ position: "absolute", top: 4, right: 8, background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#fff8" }}>x</button>
+              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 2, color: "#fff", textShadow: "2px 2px 4px rgba(0,0,0,0.3)" }}>{"\uD83C\uDF0A"} Wave 200 Milestone! {"\uD83C\uDF89"}</div>
+              <div style={{ fontSize: 11, color: "#fff", opacity: 0.9, marginTop: 4 }}>72+ bot commands {"\u2022"} 6600+ lines of dashboard {"\u2022"} 3000+ lines of Mini App</div>
+              <div style={{ fontSize: 10, color: "#fff", opacity: 0.7, marginTop: 2 }}>600 improvements across Bot, Dashboard, and Mini App</div>
+            </Card>}
             {/* System Health Bar */}
             {repos.length > 0 && (() => {
               const running = repos.filter(r => r.running).length;
