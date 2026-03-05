@@ -1730,6 +1730,24 @@ function Dashboard() {
                 <div style={{ textAlign: "center", fontSize: 12, color: C.brown, marginTop: 8 }}>No results found.</div>
               )}
             </details>
+            {/* System Health Bar */}
+            {repos.length > 0 && (() => {
+              const running = repos.filter(r => r.running).length;
+              const totalDone = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
+              const totalAll = repos.reduce((s, r) => s + (r.stats?.items_total || 1), 0);
+              const totalErrs = repos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
+              const completionRate = Math.round(totalDone / Math.max(1, totalAll) * 100);
+              const errRate = Math.round(totalErrs / Math.max(1, totalAll) * 100);
+              const sysScore = Math.max(0, Math.min(100, completionRate - errRate + (running > 0 ? 10 : 0)));
+              const color = sysScore >= 70 ? C.green : sysScore >= 40 ? C.orange : C.red;
+              return <div style={{ maxWidth: 600, margin: "0 auto 12px", display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: `${color}11`, borderRadius: 10, border: `1px solid ${color}33` }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color, minWidth: 40 }}>{sysScore}hp</span>
+                <div style={{ flex: 1, height: 6, background: `${C.darkBrown}11`, borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: `${sysScore}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.5s" }} />
+                </div>
+                <span style={{ fontSize: 9, color: C.brown }}>{running}/{repos.length} active</span>
+              </div>;
+            })()}
             {/* Filter bar */}
             <div style={{ maxWidth: 600, margin: "0 auto 16px", display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
               <Inp placeholder="Search repos..." value={repoFilter === "all" ? "" : (repoFilter.startsWith("q:") ? repoFilter.slice(2) : "")}

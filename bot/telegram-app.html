@@ -1187,7 +1187,24 @@
         ${recs.map(r => `<div style="font-size:11px;color:var(--text);padding:2px 0;">${r}</div>`).join('')}
       </div>` : '';
 
-      el.innerHTML = sysHeader + recsHtml + repos.map(r => {
+      // Recently completed items ticker
+      let recentHtml = '';
+      try {
+        const allRecent = [];
+        for (const r of repos) {
+          const its = await api('/api/items?repo_id=' + r.id, undefined, { silent: true });
+          if (its) its.filter(i => i.status === 'completed' && i.completed_at && (Date.now() - new Date(i.completed_at).getTime()) < 3600000).forEach(i => allRecent.push({ title: i.title, repo: r.name, t: i.completed_at }));
+        }
+        if (allRecent.length > 0) {
+          allRecent.sort((a, b) => new Date(b.t) - new Date(a.t));
+          recentHtml = `<div style="margin-bottom:8px;padding:6px 12px;background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2px solid var(--green);border-radius:10px;">
+            <div style="font-size:10px;font-weight:700;color:var(--green);margin-bottom:3px;">✅ Recently Completed</div>
+            ${allRecent.slice(0, 4).map(i => `<div style="font-size:11px;color:var(--text);padding:1px 0;display:flex;justify-content:space-between;"><span>${esc(i.title.slice(0,35))}</span><span style="font-size:9px;color:var(--text-secondary);">${i.repo}</span></div>`).join('')}
+          </div>`;
+        }
+      } catch (e) {}
+
+      el.innerHTML = sysHeader + recsHtml + recentHtml + repos.map(r => {
         const st = r.state || 'idle';
         const running = r.running;
         const paused = r.paused;

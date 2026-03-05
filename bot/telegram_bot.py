@@ -852,6 +852,21 @@ def cmd_remove_repo(name):
     return f"Failed to remove: {result.get('error', 'unknown error')}"
 
 
+def cmd_rename(arg: str = ""):
+    """Rename a repo. Usage: /rename old_name new_name."""
+    parts = arg.strip().split()
+    if len(parts) < 2:
+        return "Usage: `/rename old_name new_name`"
+    old_name, new_name = parts[0], parts[1]
+    repo = _find_repo(old_name)
+    if not repo:
+        return f"Repo '{old_name}' not found."
+    result = _orch_post("/api/repos/update", {"repo_id": repo["id"], "name": new_name})
+    if isinstance(result, dict) and result.get("ok"):
+        return f"✏️ Renamed *{old_name}* → *{new_name}*"
+    return f"Rename failed: {result.get('error', 'unknown') if isinstance(result, dict) else 'API error'}"
+
+
 def cmd_digest():
     """Fetch the daily digest from the orchestrator and return it."""
     data = _orch_get("/api/digest")
@@ -3019,6 +3034,8 @@ def handle_message(msg):
         reply = cmd_dedupe_items()
     elif t == "watch" or t.startswith("watch "):
         reply = cmd_watch(t[6:].strip() if t.startswith("watch ") else "")
+    elif t.startswith("rename "):
+        reply = cmd_rename(t[7:].strip())
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3095,7 +3112,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
