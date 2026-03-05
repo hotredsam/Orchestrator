@@ -1189,7 +1189,7 @@
               <span class="card-value">${r.cycle_count || 0}</span>
             </div>
             ${(stats.mistakes || 0) > 0 ? `<div class="card-row"><span class="card-label">Errors</span><span class="card-value" style="color:var(--red);font-weight:700;">🔴 ${stats.mistakes}</span></div>` : ''}
-            ${r.last_activity ? `<div class="card-row"><span class="card-label">Last Active</span><span class="card-value" style="font-size:10px;opacity:0.7;">${(() => { const d = new Date(r.last_activity); const now = Date.now(); const diffM = Math.floor((now - d.getTime()) / 60000); if (diffM < 1) return 'just now'; if (diffM < 60) return diffM + 'm ago'; const diffH = Math.floor(diffM / 60); if (diffH < 24) return diffH + 'h ago'; return Math.floor(diffH / 24) + 'd ago'; })()}</span></div>` : ''}
+            ${r.last_activity ? `<div class="card-row"><span class="card-label">Last Active</span><span class="card-value" style="font-size:10px;opacity:0.7;">${(() => { const d = new Date(r.last_activity); const now = Date.now(); const diffM = Math.floor((now - d.getTime()) / 60000); if (diffM < 1) return 'just now'; if (diffM < 60) return diffM + 'm ago'; const diffH = Math.floor(diffM / 60); if (diffH < 24) return diffH + 'h ago'; return Math.floor(diffH / 24) + 'd ago'; })()}${(() => { const d = new Date(r.last_activity); const diffH = Math.floor((Date.now() - d.getTime()) / 3600000); return running && diffH >= 2 ? ' <span style="font-size:8px;padding:1px 4px;border-radius:4px;background:var(--red);color:#fff;font-weight:700;">stuck ' + diffH + 'h</span>' : ''; })()}</span></div>` : ''}
             ${(stats.cost || 0) > 0 ? `<div class="card-row"><span class="card-label">Cost</span><span class="card-value" style="color:var(--red);font-weight:700;">$${(stats.cost || 0).toFixed(4)}</span></div>` : ''}
             ${(stats.cost || 0) > 0 && (stats.items_done || 0) > 0 ? `<div class="card-row"><span class="card-label">Efficiency</span><span class="card-value" style="color:${((stats.cost || 0) / (stats.items_done || 1)) < 0.10 ? 'var(--green)' : ((stats.cost || 0) / (stats.items_done || 1)) < 0.50 ? 'var(--orange)' : 'var(--red)'};font-weight:700;font-size:11px;">$${((stats.cost || 0) / (stats.items_done || 1)).toFixed(4)}/item</span></div>` : ''}
             <div class="btn-row" style="margin-top:10px;">
@@ -1807,7 +1807,7 @@
             <div class="health-bar">
               <div class="health-bar-fill" style="width:${score}%; background:${color}"></div>
             </div>
-            ${hist.length > 1 ? `<div style="display:flex;align-items:flex-end;gap:2px;height:22px;margin:4px 0;">${sparkBars}</div>` : ''}
+            ${hist.length > 1 ? `<div style="display:flex;align-items:flex-end;gap:2px;height:22px;margin:4px 0;" title="Health trend: ${hist.join('% → ')}% | ${hist.length} snapshots">${sparkBars}</div>` : ''}
             ${r.issues?.length ? r.issues.map(iss => `
               <div class="issue-item">
                 <span class="issue-severity sev-${iss.severity}">${iss.severity}</span>

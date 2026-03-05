@@ -948,6 +948,25 @@ def cmd_metrics():
             lat = data.get("latency", {}).get(ep, {})
             p95 = f" (p95: {lat.get('p95_ms', '?')}ms)" if lat else ""
             lines.append(f"`{ep}` — {count:,}{p95}")
+        # Step execution stats
+        repos = _orch_get("/api/repos") or []
+        all_durs = []
+        for r in repos:
+            plan = _orch_get(f"/api/plan?repo_id={r['id']}") or []
+            for s in plan:
+                if s.get("duration_sec", 0) > 0:
+                    all_durs.append(s["duration_sec"])
+        if all_durs:
+            avg_d = sum(all_durs) / len(all_durs)
+            max_d = max(all_durs)
+            lines.append("")
+            lines.append("*Step Execution:*")
+            lines.append(f"Steps timed: *{len(all_durs)}*")
+            lines.append(f"Avg duration: *{avg_d:.1f}s*")
+            lines.append(f"Max duration: *{max_d:.0f}s*")
+            slow = len([d for d in all_durs if d > 120])
+            if slow > 0:
+                lines.append(f"\u26A0\uFE0F {slow} steps >2min ({slow*100//len(all_durs)}%)")
         return "\n".join(lines)
     return "Could not fetch metrics."
 
