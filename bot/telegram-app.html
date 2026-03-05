@@ -672,6 +672,12 @@
           <button class="btn btn-green btn-sm" onclick="startAll()">Start All</button>
           <button class="btn btn-red btn-sm" onclick="stopAll()">Stop All</button>
           <button class="btn btn-outline btn-sm" onclick="refreshHome()">Refresh</button>
+          <select id="homeStateFilter" class="input" style="width:auto;padding:4px 8px;font-size:11px;" onchange="filterHomeRepos()">
+            <option value="all">All</option>
+            <option value="running">Running</option>
+            <option value="idle">Idle</option>
+            <option value="error">Error</option>
+          </select>
           <select id="homeSortSelect" class="input" style="width:auto;padding:4px 8px;font-size:11px;" onchange="refreshHome()">
             <option value="name">A-Z</option>
             <option value="status">Status</option>
@@ -1144,10 +1150,17 @@
     // ─── Screen 1: Home ──────────────────────────────────────────────────────
     function filterHomeRepos() {
       const q = (document.getElementById('homeSearchInput')?.value || '').toLowerCase();
+      const stateFilter = (document.getElementById('homeStateFilter')?.value || 'all');
       const cards = document.querySelectorAll('#homeRepoList .card');
       cards.forEach(card => {
         const title = (card.querySelector('.card-title')?.textContent || '').toLowerCase();
-        card.style.display = !q || title.includes(q) ? '' : 'none';
+        const badge = (card.querySelector('.badge')?.textContent || '').toLowerCase();
+        const matchQ = !q || title.includes(q);
+        const matchState = stateFilter === 'all' ||
+          (stateFilter === 'running' && badge === 'running') ||
+          (stateFilter === 'idle' && badge === 'idle') ||
+          (stateFilter === 'error' && (badge === 'error' || badge === 'credits'));
+        card.style.display = matchQ && matchState ? '' : 'none';
       });
     }
 

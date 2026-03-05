@@ -215,6 +215,7 @@ function Dashboard() {
   const [compactMaster, setCompactMaster] = useState(() => localStorage.getItem("swarm-compact-master") === "1");
   const [groupByTag, setGroupByTag] = useState(false);
   const [compactItems, setCompactItems] = useState(false);
+  const [compactRepos, setCompactRepos] = useState(false);
   const [groupByType, setGroupByType] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
@@ -1455,8 +1456,9 @@ function Dashboard() {
                 <option value="errors">Sort: Errors</option>
                 <option value="health">Sort: Health</option>
               </select>
+              <button onClick={() => setCompactRepos(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactRepos ? C.teal : C.cream, color: compactRepos ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact repo cards">{compactRepos ? "\u2630 Compact" : "\u2637 Full"}</button>
             </div>
-            <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+            <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: compactRepos ? "repeat(auto-fill, minmax(180px, 1fr))" : "repeat(auto-fill, minmax(280px, 1fr))", gap: compactRepos ? 8 : 16 }}>
               {repos.filter(r => {
                 if (repoFilter === "all") return true;
                 if (repoFilter === "running") return r.running && !r.paused;

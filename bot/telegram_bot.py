@@ -2759,6 +2759,30 @@ def cmd_alerts(filter_type: str = ""):
     return "\n".join(lines)
 
 
+def cmd_rate(name: str = ""):
+    """Show items-per-hour completion rate for a repo."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("rate") if not name else f"Repo '{name}' not found."
+    s = repo.get("stats", {})
+    done = s.get("items_done", 0)
+    total = s.get("items_total", 0)
+    cycles = repo.get("cycle_count", 0)
+    # Estimate rate from cycles (each cycle ~5-15 min)
+    est_hours = max(1, cycles * 10 / 60)  # ~10 min per cycle avg
+    rate = round(done / est_hours, 2) if est_hours > 0 else 0
+    bar_len = min(20, int(rate * 2))
+    bar = "█" * bar_len + "░" * (20 - bar_len)
+    lines = [f"⏱️ *Rate: {repo['name']}*\n"]
+    lines.append(f"  `[{bar}]` {rate} items/hr")
+    lines.append(f"  Completed: {done}/{total} items")
+    lines.append(f"  Est. hours active: ~{est_hours:.1f}h ({cycles} cycles)")
+    if total > done and rate > 0:
+        remaining = (total - done) / rate
+        lines.append(f"  ETA remaining: ~{remaining:.1f}h")
+    return "\n".join(lines)
+
+
 _repo_groups = {}  # group_name -> [repo_name, ...]
 
 
@@ -3269,6 +3293,8 @@ def handle_message(msg):
         reply = cmd_group(t[6:].strip() if t.startswith("group ") else "")
     elif t == "alerts" or t.startswith("alerts "):
         reply = cmd_alerts(t[7:].strip() if t.startswith("alerts ") else "")
+    elif t == "rate" or t.startswith("rate "):
+        reply = cmd_rate(t[5:].strip() if t.startswith("rate ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3345,7 +3371,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
