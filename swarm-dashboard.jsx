@@ -2427,6 +2427,18 @@ function Dashboard() {
                 </Card>
               );
             })()}
+            {/* Blocked Items Callout */}
+            {(() => {
+              const blocked = items.filter(i => i.depends_on && i.status === "pending" && !items.some(x => (x.title || "").toLowerCase() === (i.depends_on || "").toLowerCase() && x.status === "completed"));
+              if (blocked.length === 0) return null;
+              return <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 8px", padding: "8px 14px", borderLeft: `4px solid ${C.orange}`, background: `linear-gradient(135deg, ${C.white} 0%, #FFF3E0 100%)` }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.orange, marginBottom: 4 }}>{"\uD83D\uDD17"} {blocked.length} Blocked Item{blocked.length !== 1 ? "s" : ""}</div>
+                {blocked.slice(0, 3).map((it, i) => <div key={i} style={{ fontSize: 11, padding: "2px 0", color: C.brown }}>
+                  {"\u2022"} <strong>{(it.title || "?").slice(0, 35)}</strong> <span style={{ opacity: 0.7 }}>{"\u2192"} needs &quot;{(it.depends_on || "").slice(0, 25)}&quot;</span>
+                </div>)}
+                {blocked.length > 3 && <div style={{ fontSize: 10, color: C.brown, opacity: 0.6 }}>...+{blocked.length - 3} more</div>}
+              </Card>;
+            })()}
             {/* Age Distribution */}
             {items.filter(i => i.status === "pending" && i.created_at).length > 2 && (() => {
               const now = Date.now();

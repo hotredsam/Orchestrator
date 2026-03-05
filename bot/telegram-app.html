@@ -1142,7 +1142,21 @@
           </div>` : ''}
         </div>` : '';
 
-      el.innerHTML = sysHeader + repos.map(r => {
+      // Smart recommendations
+      const recs = [];
+      const idleRepos = repos.filter(r => !r.running);
+      const errorRepos = repos.filter(r => (r.stats?.mistakes || 0) > 3);
+      const totalPending = repos.reduce((s, r) => s + ((r.stats?.items_total || 0) - (r.stats?.items_done || 0)), 0);
+      if (idleRepos.length > repos.length * 0.6 && repos.length > 2) recs.push('▶️ Most repos idle — try "start all"');
+      if (errorRepos.length > 0) recs.push(`⚠️ ${errorRepos.length} repo${errorRepos.length > 1 ? 's' : ''} with errors — check /health`);
+      if (totalPending > 30) recs.push(`📦 ${totalPending} items pending — consider /retry_all`);
+      if (sysData && sysData.budget > 0 && (sysData.total_cost || 0) / sysData.budget > 0.85) recs.push('💰 Budget >85% used — review /costs');
+      const recsHtml = recs.length > 0 ? `<div style="margin-bottom:8px;padding:8px 12px;background:linear-gradient(135deg,#FFF8E1,#FFECB3);border:2px solid var(--orange);border-radius:10px;">
+        <div style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:4px;">💡 Recommendations</div>
+        ${recs.map(r => `<div style="font-size:11px;color:var(--text);padding:2px 0;">${r}</div>`).join('')}
+      </div>` : '';
+
+      el.innerHTML = sysHeader + recsHtml + repos.map(r => {
         const st = r.state || 'idle';
         const running = r.running;
         const paused = r.paused;

@@ -1373,6 +1373,44 @@ def cmd_success():
     return "\n".join(lines)
 
 
+def cmd_wait_time(name: str = ""):
+    """Show average item wait time (created → started) per repo."""
+    repos = _orch_get("/api/repos") or []
+    if name:
+        repos = [r for r in repos if r.get("name", "").lower() == name.lower()]
+    if not repos:
+        return f"Repo '{name}' not found." if name else "No repos."
+    all_waits = []
+    repo_stats = []
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        waits = []
+        for it in items:
+            if it.get("created_at") and it.get("started_at"):
+                try:
+                    c = datetime.fromisoformat(it["created_at"].replace("Z", "+00:00"))
+                    s = datetime.fromisoformat(it["started_at"].replace("Z", "+00:00"))
+                    w = (s - c).total_seconds() / 60
+                    if w >= 0:
+                        waits.append(w)
+                except Exception:
+                    pass
+        if waits:
+            avg = sum(waits) / len(waits)
+            repo_stats.append((avg, r["name"], len(waits), max(waits)))
+            all_waits.extend(waits)
+    if not all_waits:
+        return "\u23F1 No items with timing data found."
+    repo_stats.sort(key=lambda x: -x[0])
+    lines = [f"\u23F1 *Queue Wait Times*\n"]
+    for avg, rn, cnt, mx in repo_stats[:12]:
+        icon = "\U0001F534" if avg > 60 else "\U0001F7E0" if avg > 15 else "\U0001F7E2"
+        lines.append(f"  {icon} *{rn}*: avg {avg:.1f}m, max {mx:.0f}m ({cnt} items)")
+    overall = sum(all_waits) / len(all_waits)
+    lines.append(f"\n\U0001F4CA Overall avg: *{overall:.1f}m* across {len(all_waits)} items")
+    return "\n".join(lines)
+
+
 def cmd_completions(name: str = ""):
     """Show recently completed items with timestamps."""
     repos = _orch_get("/api/repos") or []
@@ -2713,6 +2751,8 @@ def handle_message(msg):
         reply = cmd_pending(t[8:].strip() if t.startswith("pending ") else "")
     elif t in ("success", "success_rates", "rates"):
         reply = cmd_success()
+    elif t == "wait_time" or t.startswith("wait_time "):
+        reply = cmd_wait_time(t[10:].strip() if t.startswith("wait_time ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2789,7 +2829,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
