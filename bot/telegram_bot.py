@@ -1411,6 +1411,31 @@ def cmd_wait_time(name: str = ""):
     return "\n".join(lines)
 
 
+def cmd_overview():
+    """Compact one-line-per-repo overview with urgency scores."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos found."
+    lines = ["\U0001F4CB *Repo Overview*\n"]
+    lines.append("`Repo            State   Items   Urg`")
+    for r in sorted(repos, key=lambda x: x.get("name", "")):
+        s = r.get("stats", {})
+        name = r.get("name", "?")[:16].ljust(16)
+        state = ("RUN" if r.get("running") else "IDLE").ljust(8)
+        done = s.get("items_done", 0)
+        total = s.get("items_total", 0)
+        pending = total - done
+        errs = s.get("mistakes", 0)
+        # Urgency: pending weight + error weight + staleness
+        urgency = min(99, pending * 3 + errs * 5 + (10 if r.get("running") and not r.get("last_activity") else 0))
+        icon = "\U0001F534" if urgency > 50 else "\U0001F7E0" if urgency > 20 else "\U0001F7E2"
+        items_str = f"{done}/{total}".ljust(8)
+        lines.append(f"`{name}{state}{items_str}`{icon}{urgency}")
+    total_urg = sum(min(99, (r.get("stats", {}).get("items_total", 0) - r.get("stats", {}).get("items_done", 0)) * 3 + r.get("stats", {}).get("mistakes", 0) * 5) for r in repos)
+    lines.append(f"\n\U0001F3AF System urgency: *{total_urg}* ({len(repos)} repos)")
+    return "\n".join(lines)
+
+
 def cmd_completions(name: str = ""):
     """Show recently completed items with timestamps."""
     repos = _orch_get("/api/repos") or []
@@ -2753,6 +2778,8 @@ def handle_message(msg):
         reply = cmd_success()
     elif t == "wait_time" or t.startswith("wait_time "):
         reply = cmd_wait_time(t[10:].strip() if t.startswith("wait_time ") else "")
+    elif t in ("overview", "ov"):
+        reply = cmd_overview()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2829,7 +2856,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

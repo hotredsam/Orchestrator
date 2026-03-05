@@ -634,6 +634,8 @@
           <div>🌙 <strong>Dark mode</strong> via moon icon</div>
           <div>💬 <strong>Chat tab</strong> for bot commands</div>
           <div>📊 <strong>Stats tab</strong> for system overview</div>
+          <div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--orange);">⌨️ Desktop Shortcuts:</div>
+          <div>1-9 <strong>Switch tabs</strong> · R <strong>Refresh</strong> · ? <strong>Help</strong></div>
         </div>
         <button onclick="document.getElementById('shortcutHelp').style.display='none'" class="btn btn-orange" style="width:100%;margin-top:12px;">Got it!</button>
       </div>
@@ -2182,6 +2184,15 @@
       // Update subtitle with repo count + uptime
       updateSubtitle();
     }
+
+    // Keyboard shortcuts (desktop)
+    document.addEventListener('keydown', function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+      const tabMap = { '1': 'home', '2': 'add', '3': 'items', '4': 'plan', '5': 'logs', '6': 'chat', '7': 'stats', '8': 'health', '9': 'mistakes' };
+      if (tabMap[e.key]) { e.preventDefault(); switchTab(tabMap[e.key]); return; }
+      if (e.key === 'r' || e.key === 'R') { e.preventDefault(); if (currentTab === 'home') refreshHome(); else if (currentTab === 'stats') refreshStats(); else switchTab(currentTab); return; }
+      if (e.key === '?') { e.preventDefault(); const h = document.getElementById('shortcutHelp'); if (h) h.style.display = h.style.display === 'flex' ? 'none' : 'flex'; }
+    });
 
     // Wait for fonts then init
     document.fonts?.ready?.then(init) || init();
