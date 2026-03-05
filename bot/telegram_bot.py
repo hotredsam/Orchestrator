@@ -1342,6 +1342,37 @@ def cmd_pending(name: str = ""):
     return "\n".join(lines)
 
 
+def cmd_success():
+    """Show success rates (completed vs total items) per repo."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos found."
+    rows = []
+    total_done, total_all = 0, 0
+    for r in repos:
+        s = r.get("stats", {})
+        done = s.get("items_done", 0)
+        total = s.get("items_total", 0)
+        errs = s.get("mistakes", 0)
+        if total == 0:
+            continue
+        rate = done / total * 100
+        err_rate = errs / max(1, total) * 100
+        icon = "\u2705" if rate >= 75 else "\U0001F7E1" if rate >= 40 else "\U0001F534"
+        rows.append((rate, f"  {icon} *{r['name']}*: {done}/{total} ({rate:.0f}%) done, {errs} errors ({err_rate:.0f}%)"))
+        total_done += done
+        total_all += total
+    if not rows:
+        return "\U0001F4AD No repos with items found."
+    rows.sort(key=lambda x: -x[0])
+    overall = total_done / max(1, total_all) * 100
+    lines = [f"\U0001F3AF *Success Rates* ({overall:.0f}% overall — {total_done}/{total_all})\n"]
+    lines.extend(r[1] for r in rows[:15])
+    if len(rows) > 15:
+        lines.append(f"\n  _...+{len(rows) - 15} more_")
+    return "\n".join(lines)
+
+
 def cmd_completions(name: str = ""):
     """Show recently completed items with timestamps."""
     repos = _orch_get("/api/repos") or []
@@ -2680,6 +2711,8 @@ def handle_message(msg):
         reply = cmd_throughput(t[11:].strip() if t.startswith("throughput ") else "")
     elif t == "pending" or t.startswith("pending "):
         reply = cmd_pending(t[8:].strip() if t.startswith("pending ") else "")
+    elif t in ("success", "success_rates", "rates"):
+        reply = cmd_success()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2756,7 +2789,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

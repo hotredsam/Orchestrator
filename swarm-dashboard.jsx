@@ -2427,6 +2427,28 @@ function Dashboard() {
                 </Card>
               );
             })()}
+            {/* Age Distribution */}
+            {items.filter(i => i.status === "pending" && i.created_at).length > 2 && (() => {
+              const now = Date.now();
+              const buckets = [{ l: "<1d", max: 1, c: C.green }, { l: "1-3d", max: 3, c: C.teal }, { l: "3-7d", max: 7, c: C.orange }, { l: "7+d", max: Infinity, c: C.red }];
+              const counts = buckets.map(() => 0);
+              items.filter(i => i.status === "pending" && i.created_at).forEach(i => {
+                const d = (now - new Date(i.created_at).getTime()) / 86400000;
+                let prev = 0;
+                for (let b = 0; b < buckets.length; b++) { if (d >= prev && (d < buckets[b].max || buckets[b].max === Infinity)) { counts[b]++; break; } prev = buckets[b].max; }
+              });
+              const mx = Math.max(...counts, 1);
+              return <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 8px", padding: "8px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.brown, marginBottom: 6 }}>{"\U0001F4CA"} Pending Age Distribution</div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 40 }}>
+                  {buckets.map((b, i) => <div key={b.l} style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ background: b.c, height: Math.max(4, Math.round(counts[i] / mx * 32)), borderRadius: "4px 4px 0 0", margin: "0 auto", width: "80%", transition: "height 0.3s" }} />
+                    <div style={{ fontSize: 9, fontWeight: 700, color: b.c, marginTop: 2 }}>{counts[i]}</div>
+                    <div style={{ fontSize: 8, color: C.brown }}>{b.l}</div>
+                  </div>)}
+                </div>
+              </Card>;
+            })()}
             {sr && items.length > 0 && (() => {
               const key = `item_trend_${sr}`;
               const done = items.filter(i => i.status === "completed").length;
