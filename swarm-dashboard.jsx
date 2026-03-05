@@ -1510,6 +1510,7 @@ function Dashboard() {
                         { l: "Agents", v: s.agents||0, bg: C.yellow },
                         { l: "Cycles", v: r.cycle_count||0, bg: C.cream },
                         { l: "Cost", v: `$${(costs[r.id]||0).toFixed(2)}`, bg: "#E8F5E9" },
+                        ...(r.created_at && (s.items_done||0) > 0 ? [{ l: "Vel", v: `${(((s.items_done||0) / Math.max(1, (Date.now() - new Date(r.created_at).getTime()) / 86400000))).toFixed(1)}/d`, bg: "#E3F2FD" }] : []),
                       ].map((x,i) => (
                         <div key={i} style={{ background: x.bg, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 6px", textAlign: "center" }}>
                           <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, lineHeight: 1 }}>{x.v}</div>

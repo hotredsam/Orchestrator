@@ -1684,6 +1684,29 @@ def cmd_pick(name: str = ""):
     return "\n".join(lines)
 
 
+def cmd_deps(name: str = ""):
+    """Show items with dependencies for a repo."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("deps") if not name else f"Repo '{name}' not found."
+    rid = repo["id"]
+    items = _orch_get(f"/api/items?repo_id={rid}") or []
+    deps = [i for i in items if i.get("depends_on")]
+    if not deps:
+        return f"No items with dependencies in *{repo['name']}*."
+    lines = [f"\U0001F517 *Dependencies — {repo['name']}* ({len(deps)}):\n"]
+    for d in deps[:15]:
+        st = "\u2705" if d.get("status") == "completed" else "\u23F3"
+        dep_target = d["depends_on"]
+        # Check if dependency is resolved
+        dep_done = any(i.get("title", "").lower() == dep_target.lower() and i.get("status") == "completed" for i in items)
+        block = "\U0001F7E2 unblocked" if dep_done else "\U0001F534 blocked"
+        lines.append(f"  {st} *{d.get('title', '')[:45]}*\n      \u2514\u2500 depends on: _{dep_target[:40]}_ ({block})")
+    blocked_count = sum(1 for d in deps if not any(i.get("title", "").lower() == d["depends_on"].lower() and i.get("status") == "completed" for i in items))
+    lines.append(f"\n\U0001F4CA {blocked_count} blocked | {len(deps) - blocked_count} unblocked")
+    return "\n".join(lines)
+
+
 def cmd_agents(name: str = ""):
     """Show agent activity for a repo."""
     repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
@@ -2191,6 +2214,8 @@ def handle_message(msg):
         reply = cmd_agents(t[7:].strip() if t.startswith("agents ") else "")
     elif t == "pick" or t.startswith("pick "):
         reply = cmd_pick(t[5:].strip() if t.startswith("pick ") else "")
+    elif t == "deps" or t.startswith("deps "):
+        reply = cmd_deps(t[5:].strip() if t.startswith("deps ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2267,7 +2292,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

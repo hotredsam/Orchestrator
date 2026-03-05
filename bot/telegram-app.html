@@ -819,6 +819,7 @@
           <button class="btn btn-outline btn-sm" data-prio="high" onclick="setItemPrio('high')" style="padding:2px 8px;font-size:10px;">🔴 High</button>
           <button class="btn btn-outline btn-sm" data-prio="medium" onclick="setItemPrio('medium')" style="padding:2px 8px;font-size:10px;">🟡 Med</button>
           <button class="btn btn-outline btn-sm" data-prio="low" onclick="setItemPrio('low')" style="padding:2px 8px;font-size:10px;">🟢 Low</button>
+          <button class="btn btn-sm" onclick="batchCompleteItems()" style="padding:2px 8px;font-size:10px;background:var(--green);color:#fff;margin-left:auto;">✅ Complete All</button>
         </div>
         <div id="itemsList">
           <div class="empty-state"><div class="empty-emoji">📦</div><p>Select a repo to view items</p></div>
@@ -1398,6 +1399,22 @@
     async function deleteItem(repoId, itemId) {
       haptic('medium');
       await api('/api/items/delete', { method: 'POST', body: JSON.stringify({ repo_id: repoId, item_id: itemId }) });
+      loadItems();
+    }
+
+    async function batchCompleteItems() {
+      const repoId = document.getElementById('itemsRepoSelect')?.value;
+      if (!repoId) { showToast('Select a repo first', 'error'); return; }
+      const items = await api('/api/items?repo_id=' + repoId);
+      const pending = (items || []).filter(i => i.status === 'pending');
+      if (!pending.length) { showToast('No pending items', 'info'); return; }
+      haptic('medium');
+      let done = 0;
+      for (const it of pending) {
+        await api('/api/items/update', { method: 'POST', body: JSON.stringify({ repo_id: parseInt(repoId), item_id: it.id, status: 'completed' }) });
+        done++;
+      }
+      showToast(`Completed ${done} items`, 'success');
       loadItems();
     }
 
