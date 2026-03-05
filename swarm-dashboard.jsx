@@ -2325,6 +2325,7 @@ function Dashboard() {
                   <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
                     <span style={{ fontWeight: 700, color: C.teal }}>{"\uD83D\uDE80"} {velocity}/day</span>
                     <span style={{ color: C.brown }}>velocity</span>
+                    {costs[sr] > 0 && doneItems.length > 0 && <span style={{ fontSize: 10, background: (costs[sr]/doneItems.length) < 0.1 ? "#E8F5E9" : (costs[sr]/doneItems.length) < 0.5 ? C.lightOrange : "#FFEBEE", color: (costs[sr]/doneItems.length) < 0.1 ? C.green : (costs[sr]/doneItems.length) < 0.5 ? C.orange : C.red, padding: "1px 6px", borderRadius: 6, fontWeight: 700 }}>${(costs[sr]/doneItems.length).toFixed(3)}/item</span>}
                     {etaDays > 0 && <span style={{ color: C.brown, fontSize: 11 }}>{"\u00B7"} ~{etaDays}d to clear {pendCount} pending</span>}
                     <span style={{ marginLeft: "auto", fontSize: 10, color: C.brown, opacity: 0.6 }}>{doneItems.length} completed over {Math.round(spanDays)}d</span>
                   </div>

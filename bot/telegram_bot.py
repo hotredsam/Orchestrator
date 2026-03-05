@@ -1645,6 +1645,29 @@ def cmd_fastest():
     return "\n".join(lines)
 
 
+def cmd_agents(name: str = ""):
+    """Show agent activity for a repo."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("agents") if not name else f"Repo '{name}' not found."
+    rid = repo["id"]
+    data = _orch_get(f"/api/agents?repo_id={rid}")
+    if not isinstance(data, list) or not data:
+        return f"No agent data for *{repo['name']}*."
+    lines = [f"\U0001F916 *Agents — {repo['name']}* ({len(data)}):\n"]
+    total_cost = 0
+    for a in data:
+        name_a = a.get("name") or a.get("model") or "agent"
+        status = a.get("status", "idle")
+        cost = a.get("cost_usd") or 0
+        tokens = (a.get("tokens_in") or 0) + (a.get("tokens_out") or 0)
+        total_cost += cost
+        icon = "\U0001F7E2" if status == "active" else "\u26AA"
+        lines.append(f"  {icon} *{name_a}* — {status}{f' | ${cost:.4f}' if cost else ''}{f' | {tokens} tok' if tokens else ''}")
+    lines.append(f"\n\U0001F4B0 *Total agent cost:* ${total_cost:.4f}")
+    return "\n".join(lines)
+
+
 def cmd_slowest():
     """Show slowest completed steps across all repos."""
     repos = _get("/api/repos") or []
@@ -1830,6 +1853,7 @@ def cmd_help():
 `remind <minutes>` — Schedule a status reminder
 `alive` — Quick heartbeat check on system liveness
 `slowest` — Slowest completed steps across all repos
+`agents [repo]` — Show agent activity for a repo
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -2124,6 +2148,8 @@ def handle_message(msg):
         reply = cmd_fastest()
     elif t in ("slowest", "slow", "bottleneck"):
         reply = cmd_slowest()
+    elif t == "agents" or t.startswith("agents "):
+        reply = cmd_agents(t[7:].strip() if t.startswith("agents ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2200,7 +2226,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
