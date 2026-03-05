@@ -2461,6 +2461,13 @@ function Dashboard() {
                             </span>
                           )}
                           {it.depends_on && <span style={{ fontSize: 9, color: "#7E57C2", background: "#E8D5F5", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>{"\uD83D\uDD17"} dep: {it.depends_on}</span>}
+                          {it.status === "pending" && (() => {
+                            const done = items.filter(i => i.status === "completed" && i.completed_at && i.created_at);
+                            if (done.length < 2) return null;
+                            const avgMs = done.reduce((s, i) => s + (new Date(i.completed_at) - new Date(i.created_at)), 0) / done.length;
+                            const hrs = Math.round(avgMs / 3600000);
+                            return hrs > 0 ? <span style={{ fontSize: 9, color: C.orange, background: C.lightOrange, padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>{"\u23F1\uFE0F"} ~{hrs < 24 ? `${hrs}h` : `${Math.round(hrs/24)}d`}</span> : null;
+                          })()}
                           {it.created_at && <span style={{ fontSize: 9, color: C.brown, opacity: 0.6 }}>{it.created_at.slice(0, 10)}</span>}
                           <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
                             {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}

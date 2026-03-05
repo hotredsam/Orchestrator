@@ -1645,6 +1645,30 @@ def cmd_fastest():
     return "\n".join(lines)
 
 
+def cmd_slowest():
+    """Show slowest completed steps across all repos."""
+    repos = _get("/api/repos") or []
+    all_steps = []
+    for r in repos:
+        plan = _get(f"/api/plan?repo_id={r['id']}") or []
+        for s in plan:
+            if s.get("status") == "completed" and s.get("duration_sec", 0) > 0:
+                s["_repo"] = r["name"]
+                all_steps.append(s)
+    if not all_steps:
+        return "No completed steps with timing data yet."
+    all_steps.sort(key=lambda x: -x.get("duration_sec", 0))
+    lines = [f"\U0001F422 *Slowest Steps* (top 10 of {len(all_steps)}):\n"]
+    for s in all_steps[:10]:
+        dur = s.get("duration_sec", 0)
+        cost = s.get("cost_usd", 0)
+        desc = (s.get("description") or "")[:45]
+        lines.append(f"  \u23F3 *{s['_repo']}*: {dur:.0f}s ${cost:.3f} — {desc}")
+    avg_dur = sum(s.get("duration_sec", 0) for s in all_steps) / len(all_steps)
+    lines.append(f"\n\U0001F4CA *Avg duration:* {avg_dur:.0f}s across {len(all_steps)} steps")
+    return "\n".join(lines)
+
+
 def cmd_dedupe(name: str = ""):
     """Remove duplicate pending items from a repo."""
     repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
@@ -1805,6 +1829,7 @@ def cmd_help():
 `dedupe [repo]` — Remove duplicate pending items
 `remind <minutes>` — Schedule a status reminder
 `alive` — Quick heartbeat check on system liveness
+`slowest` — Slowest completed steps across all repos
 `uptime` — Server uptime and version info
 `eta` — Estimated time and cost remaining per repo
 `forecast` — 7-day cost forecast with trend
@@ -2097,6 +2122,8 @@ def handle_message(msg):
         reply = cmd_alive()
     elif t in ("fastest", "speed", "quickest"):
         reply = cmd_fastest()
+    elif t in ("slowest", "slow", "bottleneck"):
+        reply = cmd_slowest()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2173,7 +2200,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
