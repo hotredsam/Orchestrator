@@ -2120,14 +2120,23 @@
       }
     }
 
-    // ─── Polling (fallback, reduced frequency with SSE) ──────────────────────
+    // ─── Adaptive Polling (faster when active, slower when idle) ────────────
+    let _pollInterval = 10000;
     function startPolling() {
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(() => {
         if (currentTab === 'home') refreshHome();
         if (currentTab === 'flow') loadFlowMap();
         if (currentTab === 'stats') refreshStats();
-      }, 10000); // Reduced to 10s since SSE handles real-time
+        // Adaptive: check if system is active and adjust
+        const running = repos.filter(r => r.running).length;
+        const newInterval = running > 0 ? 5000 : 15000;
+        if (newInterval !== _pollInterval) {
+          _pollInterval = newInterval;
+          clearInterval(pollTimer);
+          pollTimer = setInterval(arguments.callee, _pollInterval);
+        }
+      }, _pollInterval);
     }
 
     // ─── Pull-to-Refresh ──────────────────────────────────────────────────────

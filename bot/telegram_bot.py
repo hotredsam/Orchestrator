@@ -323,8 +323,14 @@ def _invalidate_token():
     _cached_token_ts = 0
 
 
+_orch_cache = {}  # path -> (result, timestamp)
+_CACHE_TTL = 5.0  # seconds
+
 def _orch_get(path, retries=2):
-    """GET from orchestrator API with retry + backoff."""
+    """GET from orchestrator API with retry + backoff + 5s cache."""
+    cached = _orch_cache.get(path)
+    if cached and (time.time() - cached[1]) < _CACHE_TTL:
+        return cached[0]
     last_err = None
     for attempt in range(retries + 1):
         try:
@@ -337,6 +343,7 @@ def _orch_get(path, retries=2):
             result = json.loads(resp.read())
             _track_latency(time.time() - t0)
             _track_api_health(True)
+            _orch_cache[path] = (result, time.time())
             return result
         except HTTPError as e:
             if e.code == 401:

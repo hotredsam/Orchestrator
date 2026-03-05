@@ -1624,11 +1624,16 @@ function Dashboard() {
             {/* Cross-repo search */}
             <details style={{ maxWidth: 600, margin: "0 auto 12px" }}>
               <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1, textAlign: "center" }}>Cross-Repo Search</summary>
-              <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "center" }}>
-                <Inp placeholder="Search items, logs, mistakes across all repos..." value={globalSearch}
-                  onChange={e => setGlobalSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && searchGlobal(globalSearch)}
-                  style={{ flex: 1, maxWidth: 400, fontSize: 12 }} />
-                <Btn bg={C.teal} onClick={() => searchGlobal(globalSearch)} style={{ fontSize: 12, padding: "6px 14px" }}>Search</Btn>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "center", position: "relative" }}>
+                <div style={{ flex: 1, maxWidth: 400, position: "relative" }}>
+                  <Inp placeholder="Search items, logs, mistakes across all repos..." value={globalSearch}
+                    onChange={e => setGlobalSearch(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { const hist = JSON.parse(localStorage.getItem("swarm_search_hist") || "[]"); const q = globalSearch.trim(); if (q && !hist.includes(q)) { hist.unshift(q); if (hist.length > 8) hist.pop(); localStorage.setItem("swarm_search_hist", JSON.stringify(hist)); } searchGlobal(globalSearch); } }}
+                    onFocus={e => { const dd = e.target.parentElement.querySelector(".search-hist"); if (dd) dd.style.display = "block"; }}
+                    onBlur={() => setTimeout(() => { document.querySelectorAll(".search-hist").forEach(el => el.style.display = "none"); }, 200)}
+                    style={{ width: "100%", fontSize: 12 }} />
+                  {(() => { try { const hist = JSON.parse(localStorage.getItem("swarm_search_hist") || "[]"); if (hist.length === 0) return null; return <div className="search-hist" style={{ display: "none", position: "absolute", top: "100%", left: 0, right: 0, background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, marginTop: 2, zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>{hist.map((q, i) => <div key={i} onMouseDown={() => { setGlobalSearch(q); searchGlobal(q); }} style={{ padding: "6px 10px", fontSize: 11, cursor: "pointer", borderBottom: i < hist.length - 1 ? `1px solid ${C.darkBrown}11` : "none", color: C.brown }}>{"\uD83D\uDD0D"} {q}</div>)}</div>; } catch(e) { return null; } })()}
+                </div>
+                <Btn bg={C.teal} onClick={() => { const hist = JSON.parse(localStorage.getItem("swarm_search_hist") || "[]"); const q = globalSearch.trim(); if (q && !hist.includes(q)) { hist.unshift(q); if (hist.length > 8) hist.pop(); localStorage.setItem("swarm_search_hist", JSON.stringify(hist)); } searchGlobal(globalSearch); }} style={{ fontSize: 12, padding: "6px 14px" }}>Search</Btn>
               </div>
               {globalResults && globalResults.total > 0 && (
                 <div style={{ marginTop: 10, fontSize: 12, maxHeight: 300, overflowY: "auto" }}>
