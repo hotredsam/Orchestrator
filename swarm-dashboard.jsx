@@ -1036,7 +1036,9 @@ function Dashboard() {
             const badge = t.id === "items" ? items.filter(i => i.status === "pending").length
               : t.id === "mistakes" ? mistakes.length
               : t.id === "logs" && logs.some(l => l.error) ? logs.filter(l => l.error).length
+              : t.id === "plan" ? plan.filter(s => s.status === "in_progress").length
               : 0;
+            const badgeBg = t.id === "mistakes" || t.id === "logs" ? C.red : t.id === "plan" ? C.orange : C.teal;
             return (
               <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
                 padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
@@ -1048,7 +1050,7 @@ function Dashboard() {
                 position: "relative",
               }}>
                 {t.label}
-                {badge > 0 && <span style={{ position: "absolute", top: 2, right: 4, background: t.id === "mistakes" || t.id === "logs" ? C.red : C.teal, color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontFamily: "'Fredoka', sans-serif", border: `1px solid ${C.darkBrown}` }}>{badge > 99 ? "99" : badge}</span>}
+                {badge > 0 && <span style={{ position: "absolute", top: 2, right: 4, background: badgeBg, color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontFamily: "'Fredoka', sans-serif", border: `1px solid ${C.darkBrown}` }}>{badge > 99 ? "99" : badge}</span>}
               </button>
             );
           })}

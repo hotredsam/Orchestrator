@@ -40,6 +40,23 @@ os.makedirs(BRIDGE_DIR, exist_ok=True)
 _last_send = 0
 _SEND_INTERVAL = 1.0  # min 1 second between sends
 
+# Connection health tracking
+_api_consecutive_failures = 0
+_API_FAILURE_ALERT_THRESHOLD = 3
+
+def _track_api_health(success: bool, error=None):
+    """Track API connection health and alert on consecutive failures."""
+    global _api_consecutive_failures
+    if success:
+        if _api_consecutive_failures >= _API_FAILURE_ALERT_THRESHOLD:
+            queue_message("\u2705 Orchestrator connection restored!")
+        _api_consecutive_failures = 0
+    else:
+        _api_consecutive_failures += 1
+        if _api_consecutive_failures == _API_FAILURE_ALERT_THRESHOLD:
+            err_str = str(error)[:80] if error else "unknown"
+            queue_message(f"\u26A0\uFE0F *Connection issues:* {_api_consecutive_failures} consecutive API failures\nLast error: `{err_str}`")
+
 # ─── Message Batching ────────────────────────────────────────────────────────
 
 _message_buffer = []
@@ -293,7 +310,9 @@ def _orch_get(path, retries=2):
             if token:
                 req.add_header("Authorization", f"Bearer {token}")
             resp = urlopen(req, timeout=5)
-            return json.loads(resp.read())
+            result = json.loads(resp.read())
+            _track_api_health(True)
+            return result
         except HTTPError as e:
             if e.code == 401:
                 _invalidate_token()
@@ -306,6 +325,7 @@ def _orch_get(path, retries=2):
             last_err = e
         if attempt < retries:
             time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s backoff
+    _track_api_health(False, last_err)
     return {"error": str(last_err)}
 
 
