@@ -4563,6 +4563,15 @@ function Dashboard() {
       )}
 
       {/* Keyboard Shortcuts Help Overlay */}
+      {/* Status Footer */}
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: dark ? "#1E1E2E" : C.darkBrown, color: C.white, display: "flex", justifyContent: "center", gap: 16, padding: "3px 12px", fontSize: 9, fontFamily: "'Fredoka', sans-serif", zIndex: 50, opacity: 0.9 }}>
+        <span>{repos.length} repos</span>
+        <span>{repos.filter(r => r.running).length} running</span>
+        <span>{repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0)}/{repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0)} items</span>
+        <span>${repos.reduce((s, r) => s + (costs[r.id] || 0), 0).toFixed(2)}</span>
+        <span style={{ opacity: 0.6 }}>{lastRefresh ? `${Math.floor((Date.now() - lastRefresh) / 1000)}s ago` : ""}</span>
+      </div>
+
       {showHelp && (
         <div onClick={() => setShowHelp(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div onClick={e => e.stopPropagation()} style={{ background: C.cream, border: `4px solid ${C.darkBrown}`, borderRadius: 16, padding: 28, maxWidth: 420, width: "90%", boxShadow: "0 8px 32px rgba(0,0,0,0.3), 6px 6px 0 #3D2B1F" }}>
