@@ -1243,7 +1243,16 @@
         }
       } catch (e) {}
 
-      el.innerHTML = sysHeader + recsHtml + recentHtml + repos.map(r => {
+      // Error summary card
+      const errorRepos = repos.filter(r => (r.stats?.mistakes || 0) > 0);
+      const totalErrors = errorRepos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
+      const errorSummaryHtml = totalErrors > 0 ? `<div style="margin-bottom:8px;padding:6px 12px;background:linear-gradient(135deg,#FFEBEE,#FFCDD2);border:2px solid var(--red);border-radius:10px;">
+        <div style="font-size:10px;font-weight:700;color:var(--red);margin-bottom:3px;">❌ ${totalErrors} Errors across ${errorRepos.length} repos</div>
+        ${errorRepos.slice(0, 3).map(r => `<div style="font-size:11px;color:var(--text);padding:1px 0;display:flex;justify-content:space-between;"><span>${esc(r.name)}</span><span style="font-size:10px;color:var(--red);font-weight:700;">${r.stats?.mistakes || 0} err</span></div>`).join('')}
+        ${errorRepos.length > 3 ? `<div style="font-size:9px;color:var(--text-secondary);margin-top:2px;">+${errorRepos.length - 3} more</div>` : ''}
+      </div>` : '';
+
+      el.innerHTML = sysHeader + recsHtml + recentHtml + errorSummaryHtml + repos.map(r => {
         const st = r.state || 'idle';
         const running = r.running;
         const paused = r.paused;

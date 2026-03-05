@@ -1038,7 +1038,8 @@ function Dashboard() {
       <div style={{ position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: scrolledPast ? "none" : `3px solid ${C.darkBrown}`, gap: 0 }}>
           {TABS.map(t => {
-            const badge = t.id === "items" ? items.filter(i => i.status === "pending").length
+            const badge = t.id === "home" ? repos.filter(r => r.running).length
+              : t.id === "items" ? items.filter(i => i.status === "pending").length
               : t.id === "mistakes" ? mistakes.length
               : t.id === "logs" && logs.some(l => l.error) ? logs.filter(l => l.error).length
               : t.id === "plan" ? plan.filter(s => s.status === "in_progress").length

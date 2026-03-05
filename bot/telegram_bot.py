@@ -2878,6 +2878,32 @@ def cmd_cleanup(arg: str = ""):
     return f"🧹 *Cleanup done!* Archived {archived} items older than {days} days."
 
 
+def cmd_blocked():
+    """Show items blocked by dependencies across all repos."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    blocked = []
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        all_ids = {it["id"] for it in items}
+        done_ids = {it["id"] for it in items if it.get("status") == "completed"}
+        for it in items:
+            deps = it.get("depends_on") or []
+            if deps and it.get("status") == "pending":
+                unmet = [d for d in deps if d in all_ids and d not in done_ids]
+                if unmet:
+                    blocked.append((r["name"], it.get("title", "?"), len(unmet)))
+    if not blocked:
+        return "✅ No blocked items! All dependencies are satisfied."
+    lines = ["🚫 *Blocked Items*\n"]
+    for rname, title, deps_left in blocked[:20]:
+        lines.append(f"  🔒 *{rname}*: {title[:40]} ({deps_left} deps)")
+    if len(blocked) > 20:
+        lines.append(f"\n_...and {len(blocked) - 20} more_")
+    return "\n".join(lines)
+
+
 _repo_groups = {}  # group_name -> [repo_name, ...]
 
 
@@ -3398,6 +3424,8 @@ def handle_message(msg):
         reply = cmd_idle()
     elif t == "cleanup" or t.startswith("cleanup "):
         reply = cmd_cleanup(t[8:].strip() if t.startswith("cleanup ") else "")
+    elif t == "blocked":
+        reply = cmd_blocked()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3474,7 +3502,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
