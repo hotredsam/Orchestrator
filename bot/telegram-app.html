@@ -2229,10 +2229,20 @@
       const container = document.getElementById('toastContainer');
       const toast = document.createElement('div');
       toast.className = 'toast toast-' + type;
-      toast.textContent = message;
+      toast.style.cssText = 'display:flex;align-items:center;gap:8px;justify-content:space-between;';
+      const msg = document.createElement('span');
+      msg.textContent = message;
+      msg.style.flex = '1';
+      toast.appendChild(msg);
+      const close = document.createElement('button');
+      close.textContent = '\u2715';
+      close.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;font-size:14px;font-weight:700;padding:0 2px;opacity:0.7;';
+      close.onclick = () => toast.remove();
+      toast.appendChild(close);
       container.appendChild(toast);
       haptic(type === 'error' ? 'heavy' : type === 'warning' ? 'medium' : 'light');
-      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 3000);
+      const timer = setTimeout(() => { if (toast.parentNode) toast.remove(); }, 4000);
+      toast.addEventListener('mouseenter', () => clearTimeout(timer));
     }
 
     // ─── SSE Real-Time Events ──────────────────────────────────────────────────

@@ -1437,6 +1437,7 @@ function Dashboard() {
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 12, letterSpacing: 4 }}>
               YOUR REPOS
             </h2>
+            {(() => { const running = repos.filter(r => r.running && !r.paused).length; const idle = repos.filter(r => !r.running).length; const paused = repos.filter(r => r.paused).length; const errored = repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length; return <p style={{ textAlign: "center", fontSize: 12, color: C.cream, marginBottom: 10, fontWeight: 600, letterSpacing: 1 }}>{repos.length} total{running > 0 ? ` · ${running} running` : ""}{idle > 0 ? ` · ${idle} idle` : ""}{paused > 0 ? ` · ${paused} paused` : ""}{errored > 0 ? ` · ${errored} error` : ""}</p>; })()}
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16, flexWrap: "wrap" }}>
               <select value={repoFilter} onChange={e => setRepoFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
                 <option value="all">All</option>

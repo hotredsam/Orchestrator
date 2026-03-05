@@ -2730,6 +2730,50 @@ def cmd_benchmark(name: str = ""):
     return "\n".join(lines)
 
 
+_repo_groups = {}  # group_name -> [repo_name, ...]
+
+
+def cmd_group(arg: str = ""):
+    """Manage repo groups. Usage: /group add frontend blog,portfolio | /group list | /group show frontend."""
+    parts = arg.strip().split(None, 1) if arg.strip() else []
+    if not parts:
+        if not _repo_groups:
+            return "No groups defined.\nUsage: `/group add <name> <repo1,repo2,...>`"
+        lines = ["📂 *Repo Groups*\n"]
+        for name, members in sorted(_repo_groups.items()):
+            lines.append(f"  *{name}*: {', '.join(members)}")
+        return "\n".join(lines)
+    action = parts[0].lower()
+    rest = parts[1] if len(parts) > 1 else ""
+    if action == "add" and rest:
+        p = rest.split(None, 1)
+        if len(p) < 2:
+            return "Usage: `/group add <name> <repo1,repo2,...>`"
+        gname = p[0]
+        members = [m.strip() for m in p[1].split(",") if m.strip()]
+        _repo_groups[gname] = members
+        return f"📂 Group *{gname}* set to: {', '.join(members)}"
+    if action == "remove" and rest:
+        if rest in _repo_groups:
+            del _repo_groups[rest]
+            return f"📂 Group *{rest}* removed."
+        return f"Group '{rest}' not found."
+    if action in _repo_groups:
+        members = _repo_groups[action]
+        repos = _orch_get("/api/repos") or []
+        lines = [f"📂 *Group: {action}*\n"]
+        for rname in members:
+            r = next((x for x in repos if x.get("name") == rname), None)
+            if r:
+                s = r.get("stats", {})
+                state = "🟢" if r.get("running") else "⚪"
+                lines.append(f"  {state} *{rname}* — {s.get('items_done', 0)}/{s.get('items_total', 0)} items, {s.get('mistakes', 0)} errs")
+            else:
+                lines.append(f"  ❓ *{rname}* — not found")
+        return "\n".join(lines)
+    return "Usage: `/group add <name> <repos>` | `/group remove <name>` | `/group <name>` | `/group list`"
+
+
 def cmd_progress():
     """Compact progress overview with visual bars for every repo."""
     repos = _orch_get("/api/repos") or []
@@ -3192,6 +3236,8 @@ def handle_message(msg):
         reply = cmd_impact(t[7:].strip() if t.startswith("impact ") else "")
     elif t == "benchmark" or t.startswith("benchmark "):
         reply = cmd_benchmark(t[10:].strip() if t.startswith("benchmark ") else "")
+    elif t == "group" or t.startswith("group "):
+        reply = cmd_group(t[6:].strip() if t.startswith("group ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3268,7 +3314,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
