@@ -1116,8 +1116,11 @@
               <span class="card-label">Items</span>
               <span class="card-value">${stats.items_done || 0}/${stats.items_total || 0} done${((stats.items_total || 0) - (stats.items_done || 0)) > 0 ? ` <span style="font-size:9px;padding:1px 5px;border-radius:6px;background:var(--orange);color:#fff;font-weight:700;">${(stats.items_total || 0) - (stats.items_done || 0)} pending</span>` : ''}</span>
             </div>
-            ${(stats.items_total || 0) > 0 ? `<div style="margin:4px 0;height:5px;border-radius:3px;background:var(--bg);overflow:hidden;">
-              <div style="width:${Math.round((stats.items_done||0)/(stats.items_total||1)*100)}%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--green),var(--teal));transition:width .5s;"></div>
+            ${(stats.items_total || 0) > 0 ? `<div style="margin:4px 0;display:flex;align-items:center;gap:6px;">
+              <div style="flex:1;height:5px;border-radius:3px;background:var(--bg);overflow:hidden;">
+                <div style="width:${Math.round((stats.items_done||0)/(stats.items_total||1)*100)}%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--green),var(--teal));transition:width .5s;"></div>
+              </div>
+              <span style="font-size:9px;font-weight:700;color:${Math.round((stats.items_done||0)/(stats.items_total||1)*100) >= 75 ? 'var(--green)' : Math.round((stats.items_done||0)/(stats.items_total||1)*100) >= 40 ? 'var(--orange)' : 'var(--red)'};">${Math.round((stats.items_done||0)/(stats.items_total||1)*100)}%</span>
             </div>` : ''}
             <div class="card-row">
               <span class="card-label">Steps</span>

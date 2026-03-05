@@ -630,12 +630,22 @@ def cmd_items(name):
 
     type_emoji = {"issue": "🐛", "feature": "✨"}
     prio_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     for item in items[:10]:
         te = type_emoji.get(item.get("type", ""), "📋")
         pe = prio_emoji.get(item.get("priority", ""), "🟡")
         st = item.get("status", "pending")
         st_mark = "✅" if st == "completed" else "⏳" if st == "in_progress" else "○"
-        lines.append(f"{st_mark} {te}{pe} {item.get('title', '')[:60]}")
+        age_tag = ""
+        if item.get("created_at") and st == "pending":
+            try:
+                created = datetime.fromisoformat(item["created_at"].replace("Z", "+00:00"))
+                days = (now - created).days
+                age_tag = " 🆕" if days < 1 else f" 📅{days}d" if days <= 7 else f" ⏳{days}d"
+            except Exception:
+                pass
+        lines.append(f"{st_mark} {te}{pe} {item.get('title', '')[:55]}{age_tag}")
 
     if len(items) > 10:
         lines.append(f"\n_...and {len(items) - 10} more_")
