@@ -3376,6 +3376,9 @@ function Dashboard() {
                           <div style={{ textAlign: "center", padding: "3px 0", color: lat.p95_ms > 500 ? C.red : lat.p95_ms > 200 ? C.orange : C.green, fontWeight: 700 }}>{lat.p95_ms}ms</div>
                           <div style={{ textAlign: "center", padding: "3px 0", color: lat.max_ms > 1000 ? C.red : C.brown }}>{lat.max_ms}ms</div>
                           <div style={{ textAlign: "center", padding: "3px 0", color: spikeColor, fontWeight: 700, fontSize: 10 }}>{spikeRatio > 3 ? "\uD83D\uDCC8" : spikeRatio > 2 ? "\u26A0\uFE0F" : "\u2705"} {spikeRatio.toFixed(1)}x</div>
+                          <div style={{ gridColumn: "1 / -1", height: 6, background: C.cream, borderRadius: 3, overflow: "hidden", margin: "0 0 4px" }}>
+                            <div style={{ height: "100%", borderRadius: 3, background: `linear-gradient(90deg, ${C.green}, ${lat.p95_ms > 500 ? C.red : lat.p95_ms > 200 ? C.orange : C.teal})`, width: `${Math.min(100, Math.round(lat.p95_ms / 10))}%`, transition: "width 0.3s" }} />
+                          </div>
                         </React.Fragment>
                       );})}
                     </div>

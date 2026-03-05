@@ -1387,7 +1387,7 @@
               ${item.created_at ? `<div style="font-size:10px;margin-top:2px;">Created: ${timeAgo(item.created_at)}</div>` : ''}
             </div>` : ''}
             <div class="flex-between" style="font-size:11px;color:var(--text-secondary);">
-              <span>${prioEmoji[item.priority] || '🟡'} ${item.priority} | ${item.source || 'manual'}${hasDetails ? ' | tap to expand' : ''}</span>
+              <span>${prioEmoji[item.priority] || '🟡'} ${item.priority} | <span style="padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;background:${item.source === 'audio' ? '#E3F2FD' : item.source === 'error_detected' ? '#FFEBEE' : item.source === 'telegram' ? '#E8F5E9' : '#F5F5F5'};color:${item.source === 'audio' ? 'var(--teal)' : item.source === 'error_detected' ? 'var(--red)' : item.source === 'telegram' ? 'var(--green)' : 'var(--text-secondary)'};">${item.source === 'audio' ? '🎙️' : item.source === 'error_detected' ? '🐛' : item.source === 'telegram' ? '📱' : '📝'} ${item.source || 'manual'}</span>${hasDetails ? ' | tap to expand' : ''}</span>
               ${item.status === 'pending' ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:10px;background:var(--green);color:#fff;" onclick="changeItemStatus(${repoId},${item.id},'completed')">✅ Done</button>` : ''}
               ${item.status === 'completed' ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:10px;background:var(--orange);color:#fff;" onclick="changeItemStatus(${repoId},${item.id},'pending')">🔄 Retry</button>` : ''}
               <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:var(--red);border-color:var(--red);" onclick="deleteItem(${repoId},${item.id})">Del</button>

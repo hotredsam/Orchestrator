@@ -1707,6 +1707,32 @@ def cmd_deps(name: str = ""):
     return "\n".join(lines)
 
 
+def cmd_hot():
+    """Show hottest repos by recent completions."""
+    from datetime import datetime, timezone, timedelta
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos found."
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    ranked = []
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        recent_done = sum(1 for i in items if i.get("status") == "completed" and (i.get("completed_at") or "") >= cutoff)
+        total_pending = sum(1 for i in items if i.get("status") == "pending")
+        ranked.append({"name": r["name"], "done_7d": recent_done, "pending": total_pending, "running": r.get("running", False)})
+    ranked.sort(key=lambda x: -x["done_7d"])
+    lines = ["\U0001F525 *Hot Repos* (7-day completions):\n"]
+    medals = ["\U0001F947", "\U0001F948", "\U0001F949", "4\uFE0F\u20E3", "5\uFE0F\u20E3"]
+    for i, r in enumerate(ranked[:5]):
+        icon = medals[i] if i < 5 else f"{i+1}."
+        status = "\U0001F7E2" if r["running"] else "\u26AA"
+        lines.append(f"  {icon} {status} *{r['name']}* — {r['done_7d']} done | {r['pending']} pending")
+    cold = [r for r in ranked if r["done_7d"] == 0]
+    if cold:
+        lines.append(f"\n\u2744\uFE0F *Cold repos (0 completions):* {len(cold)}")
+    return "\n".join(lines)
+
+
 def cmd_agents(name: str = ""):
     """Show agent activity for a repo."""
     repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
@@ -2216,6 +2242,8 @@ def handle_message(msg):
         reply = cmd_pick(t[5:].strip() if t.startswith("pick ") else "")
     elif t == "deps" or t.startswith("deps "):
         reply = cmd_deps(t[5:].strip() if t.startswith("deps ") else "")
+    elif t in ("hot", "hottest", "top_repos"):
+        reply = cmd_hot()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2292,7 +2320,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
