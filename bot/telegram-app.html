@@ -1104,6 +1104,9 @@
       if (secs < 5) el.textContent = 'just now';
       else if (secs < 60) el.textContent = secs + 's ago';
       else el.textContent = Math.floor(secs / 60) + 'm ago';
+      // Freshness color: green < 15s, orange < 60s, red > 60s
+      el.style.color = secs < 15 ? 'var(--green)' : secs < 60 ? 'var(--orange)' : 'var(--red)';
+      el.style.fontWeight = secs > 30 ? '700' : '600';
     }, 5000);
 
     // ─── Tab Navigation ───────────────────────────────────────────────────────

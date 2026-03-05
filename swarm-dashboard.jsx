@@ -1627,6 +1627,15 @@ function Dashboard() {
                       </div>;
                     })()}
 
+                    {/* State change timestamp */}
+                    {r.last_state_change && (() => {
+                      const ago = Math.floor((Date.now() / 1000) - r.last_state_change);
+                      if (ago > 86400 * 7) return null;
+                      const label = ago < 60 ? "just now" : ago < 3600 ? `${Math.floor(ago/60)}m ago` : ago < 86400 ? `${Math.floor(ago/3600)}h ago` : `${Math.floor(ago/86400)}d ago`;
+                      const rst2 = STATES[r.state] || STATES.idle;
+                      return <div style={{ fontSize: 9, color: rst2.color, fontWeight: 600, opacity: Math.max(0.3, 1 - ago / 86400), marginBottom: 4 }}>State changed {label}</div>;
+                    })()}
+
                     {/* Expanded details (double-click) */}
                     {expandedCards.has(r.id) && <div style={{ padding: "8px 0", borderTop: `1px dashed ${C.darkBrown}22`, marginTop: 4, fontSize: 11, color: C.brown }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>

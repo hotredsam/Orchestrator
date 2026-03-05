@@ -2730,6 +2730,35 @@ def cmd_benchmark(name: str = ""):
     return "\n".join(lines)
 
 
+_alert_history = []  # [(timestamp, type, message), ...]
+_MAX_ALERTS = 50
+
+
+def _log_alert(alert_type: str, message: str):
+    """Record an alert in the history."""
+    _alert_history.append((datetime.now(timezone.utc).isoformat(), alert_type, message))
+    if len(_alert_history) > _MAX_ALERTS:
+        _alert_history.pop(0)
+
+
+def cmd_alerts(filter_type: str = ""):
+    """Show recent alert history. Optionally filter by type."""
+    if not _alert_history:
+        return "🔔 No alerts recorded yet."
+    filtered = _alert_history
+    if filter_type:
+        filtered = [a for a in _alert_history if filter_type.lower() in a[1].lower()]
+    lines = [f"🔔 *Alert History* ({len(filtered)} entries)\n"]
+    icons = {"cost": "💰", "error": "❌", "health": "🏥", "connection": "🔗", "latency": "🐌", "threshold": "⚠️"}
+    for ts, atype, msg in filtered[-15:]:
+        icon = icons.get(atype, "🔔")
+        t_short = ts[5:16].replace("T", " ")
+        lines.append(f"  {icon} `{t_short}` *{atype}*: {msg[:60]}")
+    if len(filtered) > 15:
+        lines.append(f"\n_...showing last 15 of {len(filtered)}_")
+    return "\n".join(lines)
+
+
 _repo_groups = {}  # group_name -> [repo_name, ...]
 
 
@@ -3238,6 +3267,8 @@ def handle_message(msg):
         reply = cmd_benchmark(t[10:].strip() if t.startswith("benchmark ") else "")
     elif t == "group" or t.startswith("group "):
         reply = cmd_group(t[6:].strip() if t.startswith("group ") else "")
+    elif t == "alerts" or t.startswith("alerts "):
+        reply = cmd_alerts(t[7:].strip() if t.startswith("alerts ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3314,7 +3345,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
