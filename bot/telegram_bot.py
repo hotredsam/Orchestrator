@@ -1453,6 +1453,28 @@ def cmd_wait_time(name: str = ""):
     return "\n".join(lines)
 
 
+def cmd_sync(name: str = ""):
+    """Sync repo: refresh metadata and validate item counts."""
+    if not name:
+        repos = _orch_get("/api/repos") or []
+        if not repos:
+            return "No repos registered."
+        synced = 0
+        for r in repos:
+            _orch_post("/api/repos/scan", {"repo_id": r["id"]})
+            synced += 1
+        _orch_cache.clear()
+        return f"🔄 *Synced {synced} repos* — cache cleared, metadata refreshed."
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    result = _orch_post("/api/repos/scan", {"repo_id": repo["id"]})
+    _orch_cache.clear()
+    if isinstance(result, dict) and result.get("ok"):
+        return f"🔄 *{repo['name']}* synced and refreshed."
+    return f"🔄 *{repo['name']}* scan sent (check `/status {name}` for result)."
+
+
 def cmd_overview():
     """Compact one-line-per-repo overview with urgency scores."""
     repos = _orch_get("/api/repos") or []
@@ -2909,6 +2931,8 @@ def handle_message(msg):
         reply = cmd_clone(t[6:].strip())
     elif t == "threshold" or t.startswith("threshold "):
         reply = cmd_threshold(t[10:].strip() if t.startswith("threshold ") else "")
+    elif t == "sync" or t.startswith("sync "):
+        reply = cmd_sync(t[5:].strip() if t.startswith("sync ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2985,7 +3009,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

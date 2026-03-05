@@ -861,6 +861,24 @@
           <button class="btn btn-outline btn-sm" data-prio="medium" onclick="setItemPrio('medium')" style="padding:2px 8px;font-size:10px;">🟡 Med</button>
           <button class="btn btn-outline btn-sm" data-prio="low" onclick="setItemPrio('low')" style="padding:2px 8px;font-size:10px;">🟢 Low</button>
           <button class="btn btn-sm" onclick="batchCompleteItems()" style="padding:2px 8px;font-size:10px;background:var(--green);color:#fff;margin-left:auto;">✅ Complete All</button>
+          <button class="btn btn-sm" onclick="toggleBatchPanel()" style="padding:2px 8px;font-size:10px;background:var(--teal);color:#fff;">⚙️ Batch</button>
+        </div>
+        <div id="batchPanel" style="display:none;padding:10px;background:linear-gradient(135deg,rgba(38,166,154,0.08),rgba(255,152,0,0.08));border:2px dashed var(--teal);border-radius:10px;margin-bottom:8px;">
+          <div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:6px;">⚙️ Batch Operations</div>
+          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+            <select id="batchStatus" class="input" style="font-size:11px;padding:4px 6px;flex:1;" onchange="updateBatchCount()">
+              <option value="">All Statuses</option><option value="pending">Pending</option><option value="completed">Completed</option>
+            </select>
+            <select id="batchPrio" class="input" style="font-size:11px;padding:4px 6px;flex:1;" onchange="updateBatchCount()">
+              <option value="">All Priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+            </select>
+          </div>
+          <div style="font-size:10px;color:var(--text-secondary);margin-bottom:6px;" id="batchCount">0 items match</div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm" style="background:var(--green);color:#fff;font-size:10px;padding:3px 8px;" onclick="executeBatch('completed')">✅ Done</button>
+            <button class="btn btn-sm" style="background:var(--red);color:#fff;font-size:10px;padding:3px 8px;" onclick="executeBatch('delete')">🗑️ Delete</button>
+            <button class="btn btn-sm btn-outline" style="font-size:10px;padding:3px 8px;" onclick="toggleBatchPanel()">Cancel</button>
+          </div>
         </div>
         <div id="itemsList">
           <div class="empty-state"><div class="empty-emoji">📦</div><p>Select a repo to view items</p></div>
@@ -1544,6 +1562,44 @@
         done++;
       }
       showToast(`Completed ${done} items`, 'success');
+      loadItems();
+    }
+
+    function toggleBatchPanel() {
+      const p = document.getElementById('batchPanel');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+      if (p.style.display === 'block') updateBatchCount();
+    }
+    async function updateBatchCount() {
+      const repoId = document.getElementById('itemsRepoSelect')?.value;
+      if (!repoId) return;
+      const data = await api('/api/items?repo_id=' + repoId, undefined, { silent: true });
+      let filtered = data || [];
+      const sf = document.getElementById('batchStatus')?.value;
+      const pf = document.getElementById('batchPrio')?.value;
+      if (sf) filtered = filtered.filter(i => i.status === sf);
+      if (pf) filtered = filtered.filter(i => (i.priority || 'medium') === pf);
+      document.getElementById('batchCount').textContent = filtered.length + ' items match';
+    }
+    async function executeBatch(action) {
+      const repoId = document.getElementById('itemsRepoSelect')?.value;
+      if (!repoId) { showToast('Select repo', 'error'); return; }
+      const data = await api('/api/items?repo_id=' + repoId);
+      let filtered = data || [];
+      const sf = document.getElementById('batchStatus')?.value;
+      const pf = document.getElementById('batchPrio')?.value;
+      if (sf) filtered = filtered.filter(i => i.status === sf);
+      if (pf) filtered = filtered.filter(i => (i.priority || 'medium') === pf);
+      if (!filtered.length) { showToast('No items match', 'info'); return; }
+      haptic('heavy');
+      let count = 0;
+      for (const it of filtered) {
+        if (action === 'delete') await api('/api/items/delete', { method: 'POST', body: JSON.stringify({ repo_id: parseInt(repoId), item_id: it.id }) });
+        else await api('/api/items/update', { method: 'POST', body: JSON.stringify({ repo_id: parseInt(repoId), item_id: it.id, status: action }) });
+        count++;
+      }
+      showToast(`${action === 'delete' ? 'Deleted' : 'Updated'} ${count} items`, 'success');
+      toggleBatchPanel();
       loadItems();
     }
 

@@ -241,6 +241,8 @@ function Dashboard() {
 
   // Toast notification system
   const [toastHistory, setToastHistory] = useState([]);
+  const [tabPulse, setTabPulse] = useState({});
+  const prevBadges = useRef({});
   const [showToastHistory, setShowToastHistory] = useState(false);
   const showToast = useCallback((message, type = "info") => {
     const id = Date.now() + Math.random();
@@ -1039,8 +1041,12 @@ function Dashboard() {
               : t.id === "plan" ? plan.filter(s => s.status === "in_progress").length
               : 0;
             const badgeBg = t.id === "mistakes" || t.id === "logs" ? C.red : t.id === "plan" ? C.orange : C.teal;
+            const prev = prevBadges.current[t.id] || 0;
+            const pulse = badge > prev && tab !== t.id;
+            if (badge !== prev) { prevBadges.current[t.id] = badge; if (pulse) { setTabPulse(p => ({ ...p, [t.id]: Date.now() })); } }
+            const showPulse = tabPulse[t.id] && Date.now() - tabPulse[t.id] < 8000 && tab !== t.id;
             return (
-              <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => setTab(t.id)} style={{
+              <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => { setTab(t.id); setTabPulse(p => { const n = { ...p }; delete n[t.id]; return n; }); }} style={{
                 padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
                 border: "none", borderRight: `2px solid ${C.darkBrown}`,
                 borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
@@ -1051,6 +1057,7 @@ function Dashboard() {
               }}>
                 {t.label}
                 {badge > 0 && <span style={{ position: "absolute", top: 2, right: 4, background: badgeBg, color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontFamily: "'Fredoka', sans-serif", border: `1px solid ${C.darkBrown}` }}>{badge > 99 ? "99" : badge}</span>}
+                {showPulse && <span style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", width: 6, height: 6, borderRadius: "50%", background: C.green, animation: "pulse 1s infinite" }} />}
               </button>
             );
           })}
