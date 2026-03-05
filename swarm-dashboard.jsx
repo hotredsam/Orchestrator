@@ -1653,6 +1653,8 @@ function Dashboard() {
                         <span>Tags: {r.tags || "none"}</span>
                         <span>Steps: {s.steps_done || 0}/{s.steps_total || 0}</span>
                         <span>Cycles: {s.cycles || 0}</span>
+                        <span>Cost: <strong style={{ color: (costs[r.id]||0) > 1 ? C.red : (costs[r.id]||0) > 0.3 ? C.orange : C.green }}>${(costs[r.id]||0).toFixed(4)}</strong></span>
+                        <span>$/item: <strong style={{ color: (() => { const c = costs[r.id]||0; const d = s.items_done||0; if (!d) return C.brown; const cpi = c/d; return cpi > 0.5 ? C.red : cpi > 0.1 ? C.orange : C.green; })() }}>{(s.items_done||0) > 0 ? `$${((costs[r.id]||0)/(s.items_done||1)).toFixed(4)}` : "n/a"}</strong></span>
                       </div>
                       <div style={{ fontSize: 9, color: C.brown, opacity: 0.6, marginTop: 4 }}>Double-click to collapse</div>
                     </div>}

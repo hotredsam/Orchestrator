@@ -1273,7 +1273,7 @@
                           running ? 'Running' : 'Idle';
         const stats = r.stats || {};
         return `
-          <div class="card" data-repo-state="${running ? 'running' : st}">
+          <div class="card" data-repo-state="${running ? 'running' : st}" data-repo-id="${r.id}" data-repo-name="${esc(r.name)}">
             <div class="flex-between mb-8">
               <div class="card-title" style="display:flex;align-items:center;gap:4px;">${esc(r.name)} <button onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(r.name)}');haptic('light');showToast('Copied: ${esc(r.name)}','info');" style="background:none;border:none;cursor:pointer;font-size:11px;opacity:0.5;padding:0 2px;" title="Copy name">📋</button></div>
               <span class="badge ${badgeClass}">${badgeText}</span>
@@ -1347,6 +1347,28 @@
           }
         });
         card.addEventListener('touchstart', e => { e.target._sy = e.touches[0].clientY; }, { passive: true });
+      });
+
+      // Long-press on repo card to pin/favorite
+      document.querySelectorAll('#homeRepoList .card[data-repo-id]').forEach(card => {
+        let lpTimer = null;
+        card.addEventListener('touchstart', () => {
+          lpTimer = setTimeout(() => {
+            const name = card.dataset.repoName;
+            const id = card.dataset.repoId;
+            const pins = JSON.parse(localStorage.getItem('swarm-pinned-repos') || '[]');
+            const idx = pins.indexOf(id);
+            if (idx >= 0) { pins.splice(idx, 1); haptic('light'); showToast(`Unpinned ${name}`, 'info'); }
+            else { pins.unshift(id); haptic('heavy'); showToast(`📌 Pinned ${name}`, 'success'); }
+            localStorage.setItem('swarm-pinned-repos', JSON.stringify(pins));
+            card.style.outline = idx >= 0 ? '' : '2px solid var(--teal)';
+          }, 600);
+        }, { passive: true });
+        card.addEventListener('touchend', () => { clearTimeout(lpTimer); });
+        card.addEventListener('touchmove', () => { clearTimeout(lpTimer); });
+        // Apply pin outline on load
+        const pins = JSON.parse(localStorage.getItem('swarm-pinned-repos') || '[]');
+        if (pins.includes(card.dataset.repoId)) card.style.outline = '2px solid var(--teal)';
       });
     }
 
