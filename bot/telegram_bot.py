@@ -2809,6 +2809,26 @@ def cmd_streak():
     return "\n".join(lines)
 
 
+def cmd_top_errors():
+    """Rank repos by error count (most errors first)."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    ranked = sorted(repos, key=lambda r: r.get("stats", {}).get("mistakes", 0), reverse=True)
+    ranked = [r for r in ranked if r.get("stats", {}).get("mistakes", 0) > 0]
+    if not ranked:
+        return "🎉 *No errors anywhere!* All repos are clean."
+    lines = ["❌ *Top Errors*\n"]
+    for i, r in enumerate(ranked[:15], 1):
+        s = r.get("stats", {})
+        errs = s.get("mistakes", 0)
+        total = s.get("items_total", 0)
+        pct = round(errs / max(1, total) * 100)
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        lines.append(f"  {medal} *{r['name']}* — {errs} errors ({pct}% rate)")
+    return "\n".join(lines)
+
+
 _repo_groups = {}  # group_name -> [repo_name, ...]
 
 
@@ -3323,6 +3343,8 @@ def handle_message(msg):
         reply = cmd_rate(t[5:].strip() if t.startswith("rate ") else "")
     elif t == "streak":
         reply = cmd_streak()
+    elif t in ("top_errors", "top errors", "toperrors"):
+        reply = cmd_top_errors()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3399,7 +3421,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

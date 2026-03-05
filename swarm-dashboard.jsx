@@ -1455,6 +1455,7 @@ function Dashboard() {
                 <option value="cost">Sort: Cost</option>
                 <option value="errors">Sort: Errors</option>
                 <option value="health">Sort: Health</option>
+                <option value="activity">Sort: Activity</option>
               </select>
               <button onClick={() => setCompactRepos(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactRepos ? C.teal : C.cream, color: compactRepos ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact repo cards">{compactRepos ? "\u2630 Compact" : "\u2637 Full"}</button>
             </div>
@@ -1477,6 +1478,7 @@ function Dashboard() {
                 if (repoSort === "cost") return ((costs[b.id] || 0) - (costs[a.id] || 0));
                 if (repoSort === "errors") return ((b.stats?.mistakes || 0) - (a.stats?.mistakes || 0));
                 if (repoSort === "health") { const ha = (a.stats?.items_done || 0) / Math.max(a.stats?.items_total || 1, 1) * 80 + (1 - (a.stats?.mistakes || 0) / Math.max(a.stats?.items_total || 1, 1)) * 20; const hb = (b.stats?.items_done || 0) / Math.max(b.stats?.items_total || 1, 1) * 80 + (1 - (b.stats?.mistakes || 0) / Math.max(b.stats?.items_total || 1, 1)) * 20; return hb - ha; }
+                if (repoSort === "activity") return ((b.last_activity || 0) - (a.last_activity || 0));
                 return 0;
               }).map(r => {
                 const rst = STATES[r.state] || STATES.idle;

@@ -1257,7 +1257,7 @@
                           running ? 'Running' : 'Idle';
         const stats = r.stats || {};
         return `
-          <div class="card">
+          <div class="card" data-repo-state="${running ? 'running' : st}">
             <div class="flex-between mb-8">
               <div class="card-title" style="display:flex;align-items:center;gap:4px;">${esc(r.name)} <button onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(r.name)}');haptic('light');showToast('Copied: ${esc(r.name)}','info');" style="background:none;border:none;cursor:pointer;font-size:11px;opacity:0.5;padding:0 2px;" title="Copy name">📋</button></div>
               <span class="badge ${badgeClass}">${badgeText}</span>
@@ -1308,6 +1308,12 @@
             </div>
           </div>`;
       }).join('');
+
+      // Auto-scroll to first running repo
+      setTimeout(() => {
+        const runningCard = document.querySelector('#homeRepoList .card[data-repo-state="running"]');
+        if (runningCard && window.scrollY < 100) runningCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
     }
 
     async function registerRepo() {
