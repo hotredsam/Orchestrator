@@ -63,15 +63,19 @@ _SLOW_THRESHOLD = 4.0  # seconds
 _slow_alert_sent = False
 
 def _track_latency(elapsed: float):
-    """Track API response latency and alert on sustained slowness."""
+    """Track API response latency and alert on sustained slowness with trend detection."""
     global _slow_alert_sent
     _request_times.append(elapsed)
     if len(_request_times) > 50:
         _request_times.pop(0)
     if len(_request_times) >= 5:
         avg = sum(_request_times[-5:]) / 5
+        # Trend detection: compare recent vs baseline
+        baseline = sum(_request_times[:max(1, len(_request_times)-5)]) / max(1, len(_request_times)-5) if len(_request_times) > 10 else avg
+        pct_change = ((avg - baseline) / max(0.01, baseline)) * 100
+        trend = f" (+{pct_change:.0f}% from baseline)" if pct_change > 25 else ""
         if avg > _SLOW_THRESHOLD and not _slow_alert_sent:
-            queue_message(f"\U0001F422 *Slow API:* avg {avg:.1f}s over last 5 requests (threshold: {_SLOW_THRESHOLD}s)")
+            queue_message(f"\U0001F422 *Slow API:* avg {avg:.1f}s over last 5 requests{trend}")
             _slow_alert_sent = True
         elif avg <= _SLOW_THRESHOLD / 2:
             _slow_alert_sent = False

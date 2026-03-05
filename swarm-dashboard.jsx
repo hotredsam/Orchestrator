@@ -1515,7 +1515,7 @@ function Dashboard() {
                         { l: "Steps", v: `${s.steps_done||0}/${s.steps_total||0}`, bg: C.lightTeal },
                         { l: "Agents", v: s.agents||0, bg: C.yellow },
                         { l: "Cycles", v: r.cycle_count||0, bg: C.cream },
-                        { l: "Cost", v: `$${(costs[r.id]||0).toFixed(2)}`, bg: "#E8F5E9" },
+                        { l: "Cost", v: (() => { const c = costs[r.id]||0; try { const k = `cr_${r.id}`; const h = JSON.parse(localStorage.getItem(k)||"[]"); const now = new Date().toISOString().slice(0,13); if (!h.length||h[h.length-1].t!==now) h.push({t:now,v:c}); else h[h.length-1].v=c; if(h.length>24) h.splice(0,h.length-24); localStorage.setItem(k,JSON.stringify(h)); if(h.length>=2){const d=h[h.length-1].v-h[h.length-2].v; return `$${c.toFixed(2)}${d>0.01?"\u2197":d<-0.01?"\u2198":""}`} } catch(e){} return `$${c.toFixed(2)}`; })(), bg: "#E8F5E9" },
                         ...(r.created_at && (s.items_done||0) > 0 ? [{ l: "Vel", v: `${(((s.items_done||0) / Math.max(1, (Date.now() - new Date(r.created_at).getTime()) / 86400000))).toFixed(1)}/d`, bg: "#E3F2FD" }] : []),
                         ...(() => { const pend = (s.items_total||0)-(s.items_done||0); const urg = Math.min(99, pend*3 + (s.mistakes||0)*5); return urg > 0 ? [{ l: "Urg", v: urg, bg: urg > 50 ? "#FFEBEE" : urg > 20 ? "#FFF3E0" : "#E8F5E9" }] : []; })(),
                       ].map((x,i) => (
