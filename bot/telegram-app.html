@@ -973,8 +973,8 @@
 
     <!-- Tab Bar -->
     <div class="tab-bar" role="tablist" aria-label="Navigation tabs">
-      <button class="tab-btn active" data-tab="home" onclick="switchTab('home')" role="tab" aria-selected="true" aria-label="Home">
-        <span>🏠</span><span class="tab-label">Home</span>
+      <button class="tab-btn active" data-tab="home" onclick="switchTab('home')" role="tab" aria-selected="true" aria-label="Home" style="position:relative;">
+        <span>🏠</span><span class="tab-label">Home</span><span class="tab-badge home-badge" style="position:absolute;top:-2px;right:-2px;font-size:8px;min-width:14px;height:14px;line-height:14px;text-align:center;border-radius:7px;background:var(--green);color:#fff;font-weight:700;"></span>
       </button>
       <button class="tab-btn" data-tab="add" onclick="switchTab('add')" role="tab" aria-selected="false" aria-label="Add item">
         <span>➕</span><span class="tab-label">Add</span>
@@ -1181,6 +1181,9 @@
       const errorBadge = document.querySelector('[data-tab="mistakes"] .tab-badge');
       if (itemsBadge) itemsBadge.textContent = totalPending > 0 ? totalPending : '';
       if (errorBadge) errorBadge.textContent = totalErrors > 0 ? totalErrors : '';
+      const homeBadge = document.querySelector('[data-tab="home"] .home-badge');
+      const runningCount = data.filter(r => r.running).length;
+      if (homeBadge) homeBadge.textContent = runningCount > 0 ? runningCount : '';
 
       // Sort repos
       const sortBy = document.getElementById('homeSortSelect')?.value || 'name';
