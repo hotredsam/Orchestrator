@@ -1198,7 +1198,7 @@
 
       const el = document.getElementById('homeRepoList');
       if (!repos.length) {
-        el.innerHTML = '<div class="empty-state"><div class="empty-emoji">🏜️</div><p>No repos registered yet.<br>Add one via the API!</p></div>';
+        el.innerHTML = '<div class="empty-state"><div class="empty-emoji" style="animation:tumbleweed 3s ease-in-out infinite;">🏜️</div><p>No repos registered yet.<br>Tap <strong>➕ Add</strong> to get started!</p></div><style>@keyframes tumbleweed{0%,100%{transform:translateX(0) rotate(0deg);}50%{transform:translateX(20px) rotate(15deg);}}</style>';
         return;
       }
 

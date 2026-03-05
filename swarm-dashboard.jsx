@@ -1521,7 +1521,7 @@ function Dashboard() {
                         {rst.emoji}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 1.5, lineHeight: 1.1 }}>{r.name}</div>
+                        <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 1.5, lineHeight: 1.1, display: "flex", alignItems: "center", gap: 6 }}>{r.name}{r.last_activity > 0 && (Date.now()/1000 - r.last_activity) < 300 && <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: C.green, animation: "pulse 1.2s infinite", flexShrink: 0 }} title="Active in last 5 min" />}</div>
                         <div style={{ fontSize: 10, color: C.brown, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{r.path}</div>
                         {r.last_activity > 0 && <div style={{ fontSize: 9, color: C.brown, opacity: 0.5, marginTop: 1, display: "flex", alignItems: "center", gap: 4 }}>
                           {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); return ago < 60 ? "active just now" : ago < 3600 ? `active ${Math.floor(ago/60)}m ago` : ago < 86400 ? `active ${Math.floor(ago/3600)}h ago` : `active ${Math.floor(ago/86400)}d ago`; })()}

@@ -2968,6 +2968,27 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_capacity():
+    """Show remaining capacity per repo — pending items vs completion rate."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    lines = ["📦 *Repo Capacity*\n"]
+    for r in sorted(repos, key=lambda x: (x.get("stats", {}).get("items_total", 0) - x.get("stats", {}).get("items_done", 0)), reverse=True):
+        s = r.get("stats", {})
+        total = s.get("items_total", 0)
+        done = s.get("items_done", 0)
+        pending = total - done
+        pct = round(done / total * 100) if total > 0 else 0
+        icon = "🟢" if pct >= 80 else "🟡" if pct >= 50 else "🔴"
+        status = "✅ Complete" if pending == 0 and total > 0 else f"{pending} remaining"
+        running = "▶️" if r.get("running") else "⏹️"
+        lines.append(f"  {running} {icon} *{r['name']}*: {done}/{total} ({pct}%) — {status}")
+    total_pending = sum((r.get("stats", {}).get("items_total", 0) - r.get("stats", {}).get("items_done", 0)) for r in repos)
+    lines.append(f"\n📊 Total pending: *{total_pending}* items across {len(repos)} repos")
+    return "\n".join(lines)
+
+
 def cmd_cost_rank():
     """Rank repos by total API cost (most expensive first)."""
     repos = _orch_get("/api/repos") or []
@@ -3613,6 +3634,8 @@ def handle_message(msg):
         reply = cmd_blame()
     elif t in ("cost_rank", "cost rank", "costrank", "expensive"):
         reply = cmd_cost_rank()
+    elif t in ("capacity", "cap", "remaining"):
+        reply = cmd_capacity()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3689,7 +3712,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
