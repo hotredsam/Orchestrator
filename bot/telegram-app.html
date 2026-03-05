@@ -2421,6 +2421,28 @@
       });
     }
 
+    // ─── Shake to Refresh ──────────────────────────────────────────────────
+    let _shakeLastX = 0, _shakeLastY = 0, _shakeLastZ = 0, _shakeLastTime = 0;
+    const SHAKE_THRESHOLD = 15;
+    window.addEventListener('devicemotion', (e) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const now = Date.now();
+      if (now - _shakeLastTime < 500) return;
+      const dx = Math.abs(acc.x - _shakeLastX);
+      const dy = Math.abs(acc.y - _shakeLastY);
+      const dz = Math.abs(acc.z - _shakeLastZ);
+      if (dx + dy + dz > SHAKE_THRESHOLD) {
+        _shakeLastTime = now;
+        haptic('medium');
+        showToast('Refreshing...', 'info');
+        if (currentTab === 'home') refreshHome();
+        else if (currentTab === 'stats') refreshStats();
+        else if (currentTab === 'items') loadItems(repos.find(r => r.id)?.id);
+      }
+      _shakeLastX = acc.x; _shakeLastY = acc.y; _shakeLastZ = acc.z;
+    });
+
     // ─── Init ─────────────────────────────────────────────────────────────────
     async function init() {
       // Detect dark mode from Telegram or system preference

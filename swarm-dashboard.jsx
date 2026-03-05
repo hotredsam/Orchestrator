@@ -1161,6 +1161,7 @@ function Dashboard() {
                   <div style={{ fontSize: 26 }}>{s.emoji}</div>
                   <div style={{ fontFamily: "'Bangers', cursive", fontSize: 32, letterSpacing: 1, lineHeight: 1 }}>{s.val}</div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: C.brown, marginTop: 2 }}>{s.label}</div>
+                  {typeof s.val === "number" && (() => { try { const k = `stat_prev_${s.label}`; const prev = parseInt(localStorage.getItem(k) || "0"); localStorage.setItem(k, String(s.val)); const diff = s.val - prev; if (prev > 0 && diff !== 0) return <div style={{ fontSize: 9, fontWeight: 700, color: diff > 0 ? C.green : C.red, marginTop: 1 }}>{diff > 0 ? "+" : ""}{diff}</div>; } catch(e) {} return null; })()}
                 </div>
               ))}
             </div>
