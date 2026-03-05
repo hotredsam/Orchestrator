@@ -1447,6 +1447,39 @@ def cmd_overview():
     return "\n".join(lines)
 
 
+# Quiet mode: normal (all), busy (errors+completions only), silent (errors only)
+_quiet_mode = "normal"
+
+def cmd_quiet(mode: str = ""):
+    """Set notification throttle level: normal, busy, or silent."""
+    global _quiet_mode
+    mode = mode.strip().lower()
+    if mode in ("normal", "busy", "silent"):
+        _quiet_mode = mode
+        icons = {"normal": "\U0001F514", "busy": "\U0001F515", "silent": "\U0001F507"}
+        descs = {"normal": "All notifications", "busy": "Errors + completions only", "silent": "Critical errors only"}
+        return f"{icons[mode]} Quiet mode set to *{mode}*\n{descs[mode]}"
+    lines = ["\U0001F514 *Quiet Mode*\n"]
+    lines.append(f"Current: *{_quiet_mode}*\n")
+    lines.append("Modes:")
+    lines.append("  \U0001F514 `normal` — all notifications")
+    lines.append("  \U0001F515 `busy` — errors + completions only")
+    lines.append("  \U0001F507 `silent` — critical errors only")
+    lines.append(f"\nUsage: `/quiet normal` or `/quiet busy`")
+    return "\n".join(lines)
+
+
+def should_notify(category: str) -> bool:
+    """Check if a notification should be sent based on quiet mode."""
+    if _quiet_mode == "normal":
+        return True
+    if _quiet_mode == "busy":
+        return category in ("errors", "completions", "credits")
+    if _quiet_mode == "silent":
+        return category == "errors"
+    return True
+
+
 def cmd_completions(name: str = ""):
     """Show recently completed items with timestamps."""
     repos = _orch_get("/api/repos") or []
@@ -2791,6 +2824,8 @@ def handle_message(msg):
         reply = cmd_wait_time(t[10:].strip() if t.startswith("wait_time ") else "")
     elif t in ("overview", "ov"):
         reply = cmd_overview()
+    elif t == "quiet" or t.startswith("quiet "):
+        reply = cmd_quiet(t[6:].strip() if t.startswith("quiet ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2867,7 +2902,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

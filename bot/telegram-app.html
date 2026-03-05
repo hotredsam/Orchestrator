@@ -2193,8 +2193,60 @@
       updateSubtitle();
     }
 
+    // Command palette
+    const _cmdPaletteActions = [
+      { label: 'Home', key: '1', fn: () => switchTab('home') },
+      { label: 'Add Item', key: '2', fn: () => switchTab('add') },
+      { label: 'Items', key: '3', fn: () => switchTab('items') },
+      { label: 'Plan', key: '4', fn: () => switchTab('plan') },
+      { label: 'Logs', key: '5', fn: () => switchTab('logs') },
+      { label: 'Chat', key: '6', fn: () => switchTab('chat') },
+      { label: 'Stats', key: '7', fn: () => switchTab('stats') },
+      { label: 'Health', key: '8', fn: () => switchTab('health') },
+      { label: 'Start All', fn: () => sendChat('start all') },
+      { label: 'Stop All', fn: () => sendChat('stop all') },
+      { label: 'Retry All', fn: () => sendChat('retry_all') },
+      { label: 'Refresh', key: 'R', fn: () => { if (currentTab === 'home') refreshHome(); else switchTab(currentTab); } },
+      { label: 'Dark Mode', fn: () => { document.getElementById('darkToggle')?.click(); } },
+      { label: 'Backlog', fn: () => sendChat('backlog') },
+      { label: 'Overview', fn: () => sendChat('overview') },
+    ];
+    function openCmdPalette() {
+      let ov = document.getElementById('cmdPalette');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'cmdPalette';
+        ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:400;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;';
+        ov.innerHTML = `<div style="background:var(--card-bg);border:3px solid var(--border);border-radius:12px;width:90%;max-width:320px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+          <input id="cmdPaletteInput" type="text" placeholder="Type a command..." style="width:100%;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);box-sizing:border-box;outline:none;" autocomplete="off">
+          <div id="cmdPaletteList" style="margin-top:8px;max-height:240px;overflow-y:auto;"></div>
+        </div>`;
+        ov.addEventListener('click', function(ev) { if (ev.target === ov) closeCmdPalette(); });
+        document.body.appendChild(ov);
+        const inp = document.getElementById('cmdPaletteInput');
+        inp.addEventListener('input', renderCmdPalette);
+        inp.addEventListener('keydown', function(ev) {
+          if (ev.key === 'Escape') closeCmdPalette();
+          if (ev.key === 'Enter') { const first = document.querySelector('#cmdPaletteList > div'); if (first) first.click(); }
+        });
+      }
+      ov.style.display = 'flex';
+      const inp = document.getElementById('cmdPaletteInput');
+      inp.value = '';
+      renderCmdPalette();
+      setTimeout(() => inp.focus(), 50);
+    }
+    function closeCmdPalette() { const ov = document.getElementById('cmdPalette'); if (ov) ov.style.display = 'none'; }
+    function renderCmdPalette() {
+      const q = (document.getElementById('cmdPaletteInput')?.value || '').toLowerCase();
+      const filtered = _cmdPaletteActions.filter(a => a.label.toLowerCase().includes(q));
+      const list = document.getElementById('cmdPaletteList');
+      list.innerHTML = filtered.slice(0, 8).map(a => `<div onclick="closeCmdPalette();(${a.fn.toString()})()" style="padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;display:flex;justify-content:space-between;color:var(--text);" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'">${a.label}${a.key ? '<span style="font-size:10px;opacity:0.5;">'+a.key+'</span>' : ''}</div>`).join('');
+    }
+
     // Keyboard shortcuts (desktop)
     document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); return; }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
       const tabMap = { '1': 'home', '2': 'add', '3': 'items', '4': 'plan', '5': 'logs', '6': 'chat', '7': 'stats', '8': 'health', '9': 'mistakes' };
       if (tabMap[e.key]) { e.preventDefault(); switchTab(tabMap[e.key]); return; }

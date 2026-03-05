@@ -2628,8 +2628,11 @@ function Dashboard() {
                             return hrs > 0 ? <span style={{ fontSize: 9, color: C.orange, background: C.lightOrange, padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>{"\u23F1\uFE0F"} ~{hrs < 24 ? `${hrs}h` : `${Math.round(hrs/24)}d`}</span> : null;
                           })()}
                           {it.created_at && <span style={{ fontSize: 9, color: C.brown, opacity: 0.6 }}>{it.created_at.slice(0, 10)}{it.status === "pending" && (() => { const days = Math.floor((Date.now() - new Date(it.created_at).getTime()) / 86400000); return days > 7 ? <span style={{ marginLeft: 3, color: C.red, fontWeight: 700 }}>{"\u23F3"}{days}d</span> : days >= 1 ? <span style={{ marginLeft: 3, color: C.orange }}>{days}d</span> : null; })()}</span>}
-                          <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
-                            {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ background: it.status==="completed" ? C.green : it.status==="in_progress" ? C.orange : "rgba(93,64,55,0.2)", border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: it.status==="completed" || it.status==="in_progress" ? C.white : C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>
+                              {it.status === "completed" ? "\u2705 Done" : it.status === "in_progress" ? "\u26A1 In Progress" : "\u23F3 Pending"}
+                            </div>
+                            {it.status === "pending" && it.created_at && (() => { const d = Math.floor((Date.now() - new Date(it.created_at).getTime()) / 86400000); const pct = Math.min(100, d * 7); const c = d > 14 ? C.red : d > 7 ? C.orange : C.teal; return <div style={{ width: 60, height: 3, background: `${c}33`, borderRadius: 2, marginTop: 3, marginLeft: "auto" }}><div style={{ width: `${pct}%`, height: "100%", background: c, borderRadius: 2, transition: "width 0.3s" }} /></div>; })()}
                           </div>
                         </div>
                       </div>
