@@ -4626,7 +4626,7 @@ function Dashboard() {
         <span>{repos.length} repos</span>
         <span>{repos.filter(r => r.running).length > 0 ? <>{repos.filter(r => r.running).length} running <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: C.green, animation: "pulse 1.5s infinite", verticalAlign: "middle" }} /></> : "0 running"}</span>
         <span>{repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0)}/{repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0)} items</span>
-        <span>${repos.reduce((s, r) => s + (costs[r.id] || 0), 0).toFixed(2)}</span>
+        <span style={{ color: (() => { const t = repos.reduce((s, r) => s + (costs[r.id] || 0), 0); return t > 5 ? "#FF6B6B" : t > 1 ? "#FFD93D" : "#6BCB77"; })(), fontWeight: 700 }}>${repos.reduce((s, r) => s + (costs[r.id] || 0), 0).toFixed(2)}</span>
         <span style={{ opacity: 0.6, display: "flex", alignItems: "center", gap: 4 }}>{lastRefresh ? `${Math.floor((Date.now() - lastRefresh) / 1000)}s` : ""}<span style={{ display: "inline-block", width: 24, height: 3, borderRadius: 2, background: `${C.white}33`, overflow: "hidden" }}><span style={{ display: "block", height: "100%", borderRadius: 2, background: C.green, width: `${Math.min(100, Math.max(0, lastRefresh ? ((Date.now() - lastRefresh) / refreshInterval * 100) : 0))}%`, transition: "width 1s linear" }} /></span></span>
       </div>
 

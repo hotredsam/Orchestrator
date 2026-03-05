@@ -828,7 +828,10 @@
 
       <!-- Screen 6: Stats -->
       <div class="screen" id="screen-stats">
-        <h2 class="section-title">Dashboard Stats</h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h2 class="section-title" style="margin-bottom:0;">Dashboard Stats</h2>
+          <button class="btn btn-outline btn-sm" onclick="copyStats()" style="font-size:10px;padding:4px 10px;">📋 Copy Stats</button>
+        </div>
         <div class="stats-grid" id="statsGrid">
           <div class="stat-card"><div class="stat-emoji">📦</div><div class="stat-number" id="statItems">-</div><div class="stat-label">Total Items</div></div>
           <div class="stat-card"><div class="stat-emoji">🤖</div><div class="stat-number" id="statAgents">-</div><div class="stat-label">Active Agents</div></div>
@@ -2387,6 +2390,17 @@
         } catch(e) {}
       });
       es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    function copyStats() {
+      const items = document.getElementById('statItems')?.textContent || '-';
+      const agents = document.getElementById('statAgents')?.textContent || '-';
+      const cycles = document.getElementById('statCycles')?.textContent || '-';
+      const mistakes = document.getElementById('statMistakes')?.textContent || '-';
+      const cost = document.getElementById('statCost')?.textContent || '-';
+      const numRepos = document.getElementById('statRepos')?.textContent || '-';
+      const text = `Swarm Town Stats\nRepos: ${numRepos}\nItems: ${items}\nAgents: ${agents}\nCycles: ${cycles}\nMistakes: ${mistakes}\nCost: ${cost}`;
+      navigator.clipboard.writeText(text).then(() => { haptic('light'); showToast('Stats copied to clipboard', 'success'); });
     }
 
     function updateCostBadge() {

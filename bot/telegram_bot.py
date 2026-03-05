@@ -2968,6 +2968,26 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_hall_of_fame():
+    """Show all-time top repos by items completed — the Hall of Fame."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    ranked = [(r["name"], r.get("stats", {}).get("items_done", 0), r.get("stats", {}).get("items_total", 0), r.get("cycle_count", 0)) for r in repos]
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    lines = ["🏆 *Hall of Fame — All-Time Top Repos*\n"]
+    for i, (name, done, total, cycles) in enumerate(ranked[:15]):
+        if done == 0:
+            break
+        medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f" {i+1}."
+        pct = round(done / total * 100) if total > 0 else 0
+        stars = "⭐" * min(5, done // 5 + 1)
+        lines.append(f"  {medal} *{name}*: {done} done ({pct}%) · {cycles} cycles {stars}")
+    total_done = sum(x[1] for x in ranked)
+    lines.append(f"\n🏅 Total items completed: *{total_done}*")
+    return "\n".join(lines)
+
+
 def cmd_daily():
     """Show today's activity summary: items completed, errors, cost."""
     repos = _orch_get("/api/repos") or []
@@ -3757,6 +3777,8 @@ def handle_message(msg):
         reply = cmd_zero()
     elif t in ("daily", "today", "day"):
         reply = cmd_daily()
+    elif t in ("hall_of_fame", "hall of fame", "hof", "fame"):
+        reply = cmd_hall_of_fame()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3833,7 +3855,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily", "hall_of_fame"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
