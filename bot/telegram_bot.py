@@ -2701,6 +2701,35 @@ def cmd_diff(name: str = ""):
     return f"📝 *{repo['name']}*: No recent changes or diff unavailable."
 
 
+def cmd_benchmark(name: str = ""):
+    """Compare a repo's current metrics against its 7-day average."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("benchmark") if not name else f"Repo '{name}' not found."
+    s = repo.get("stats", {})
+    done = s.get("items_done", 0)
+    total = s.get("items_total", 0)
+    errs = s.get("mistakes", 0)
+    cycles = repo.get("cycle_count", 0)
+    # Fetch trends for 7-day baseline
+    trends = _orch_get(f"/api/trends?repo_id={repo['id']}") or {}
+    avg_done = trends.get("avg_items_done", done)
+    avg_errs = trends.get("avg_mistakes", errs)
+    avg_cycles = trends.get("avg_cycles", cycles)
+    def arrow(cur, avg):
+        if avg == 0:
+            return "➡️" if cur == 0 else "⬆️"
+        pct = ((cur - avg) / avg) * 100
+        return f"⬆️ +{pct:.0f}%" if pct > 5 else f"⬇️ {pct:.0f}%" if pct < -5 else "➡️ ~same"
+    lines = [f"📐 *Benchmark: {repo['name']}*\n"]
+    lines.append(f"  Items done: `{done}` vs avg `{avg_done}` {arrow(done, avg_done)}")
+    lines.append(f"  Errors: `{errs}` vs avg `{avg_errs}` {arrow(errs, avg_errs)}")
+    lines.append(f"  Cycles: `{cycles}` vs avg `{avg_cycles}` {arrow(cycles, avg_cycles)}")
+    comp_rate = round(done / max(total, 1) * 100)
+    lines.append(f"  Completion: `{comp_rate}%` ({done}/{total})")
+    return "\n".join(lines)
+
+
 def cmd_progress():
     """Compact progress overview with visual bars for every repo."""
     repos = _orch_get("/api/repos") or []
@@ -3161,6 +3190,8 @@ def handle_message(msg):
         reply = cmd_diff(t[5:].strip() if t.startswith("diff ") else "")
     elif t == "impact" or t.startswith("impact "):
         reply = cmd_impact(t[7:].strip() if t.startswith("impact ") else "")
+    elif t == "benchmark" or t.startswith("benchmark "):
+        reply = cmd_benchmark(t[10:].strip() if t.startswith("benchmark ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3237,7 +3268,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

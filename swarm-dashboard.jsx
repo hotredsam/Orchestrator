@@ -1451,6 +1451,8 @@ function Dashboard() {
                 <option value="items">Sort: Items</option>
                 <option value="cycles">Sort: Cycles</option>
                 <option value="cost">Sort: Cost</option>
+                <option value="errors">Sort: Errors</option>
+                <option value="health">Sort: Health</option>
               </select>
             </div>
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
@@ -1470,6 +1472,8 @@ function Dashboard() {
                 if (repoSort === "items") return ((b.stats?.items_total || 0) - (a.stats?.items_total || 0));
                 if (repoSort === "cycles") return ((b.cycle_count || 0) - (a.cycle_count || 0));
                 if (repoSort === "cost") return ((costs[b.id] || 0) - (costs[a.id] || 0));
+                if (repoSort === "errors") return ((b.stats?.mistakes || 0) - (a.stats?.mistakes || 0));
+                if (repoSort === "health") { const ha = (a.stats?.items_done || 0) / Math.max(a.stats?.items_total || 1, 1) * 80 + (1 - (a.stats?.mistakes || 0) / Math.max(a.stats?.items_total || 1, 1)) * 20; const hb = (b.stats?.items_done || 0) / Math.max(b.stats?.items_total || 1, 1) * 80 + (1 - (b.stats?.mistakes || 0) / Math.max(b.stats?.items_total || 1, 1)) * 20; return hb - ha; }
                 return 0;
               }).map(r => {
                 const rst = STATES[r.state] || STATES.idle;
