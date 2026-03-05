@@ -986,6 +986,7 @@ function Dashboard() {
           {uptime && (
             <div title={`PID: ${sysInfo.pid || "?"} | Threads: ${sysInfo.threads || "?"} | RAM: ${sysInfo.mem || "?"}MB`} style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: C.darkBrown, cursor: "help" }}>{"\u23F1\uFE0F"} {uptime}{sysInfo.mem ? ` | ${sysInfo.mem}MB` : ""}</div>
           )}
+          {repos.length > 0 && (() => { const td = repos.reduce((s,r) => s + (r.stats?.items_done||0), 0); const tt = repos.reduce((s,r) => s + (r.stats?.items_total||0), 0); return tt > 0 ? <div style={{ background: "#E3F2FD", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#1565C0" }}>{td}/{tt} items</div> : null; })()}
           {Object.keys(costs).length > 0 && (
             <div style={{ background: "#E8F5E9", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#2E7D32" }}>
               ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}

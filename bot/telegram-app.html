@@ -1314,6 +1314,24 @@
         const runningCard = document.querySelector('#homeRepoList .card[data-repo-state="running"]');
         if (runningCard && window.scrollY < 100) runningCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }, 100);
+
+      // Swipe gesture on home repo cards: right=start, left=stop
+      document.querySelectorAll('#homeRepoList .card[data-repo-state]').forEach(card => {
+        let sx = 0;
+        card.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+        card.addEventListener('touchend', e => {
+          const dx = e.changedTouches[0].clientX - sx;
+          const dy = Math.abs(e.changedTouches[0].clientY - (e.target._sy || 0));
+          if (Math.abs(dx) > 80 && dy < 40) {
+            const state = card.dataset.repoState;
+            const btn = dx > 0
+              ? card.querySelector('.btn-green')
+              : card.querySelector('.btn-red');
+            if (btn) { btn.click(); haptic('medium'); }
+          }
+        });
+        card.addEventListener('touchstart', e => { e.target._sy = e.touches[0].clientY; }, { passive: true });
+      });
     }
 
     async function registerRepo() {
