@@ -2291,12 +2291,14 @@
 
     async function updateSubtitle() {
       const sub = document.getElementById('headerSubtitle');
-      const data = await api('/api/status');
-      if (data && data.uptime) {
-        sub.textContent = repos.length + ' repos | Up ' + data.uptime;
-      } else if (repos.length) {
-        sub.textContent = repos.length + ' repos loaded';
-      }
+      const data = await api('/api/status', undefined, { silent: true });
+      const running = repos.filter(r => r.running).length;
+      const errs = repos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
+      const parts = [repos.length + ' repos'];
+      if (running > 0) parts.push(running + ' running');
+      if (errs > 0) parts.push(errs + ' errors');
+      if (data && data.uptime) parts.push('Up ' + data.uptime);
+      sub.textContent = parts.join(' · ');
     }
 
     // ─── Adaptive Polling (faster when active, slower when idle) ────────────

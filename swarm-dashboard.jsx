@@ -1610,6 +1610,18 @@ function Dashboard() {
                       } catch (e) { return null; }
                     })()}
 
+                    {/* Error rate bar */}
+                    {(s.mistakes || 0) > 0 && (s.items_total || 0) > 0 && (() => {
+                      const errPct = Math.min(100, Math.round((s.mistakes || 0) / (s.items_total || 1) * 100));
+                      const c = errPct > 30 ? C.red : errPct > 10 ? C.orange : C.teal;
+                      return <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 9, color: c, fontWeight: 700, minWidth: 36 }}>{errPct}% err</span>
+                        <div style={{ flex: 1, height: 4, background: `${C.darkBrown}11`, borderRadius: 2, overflow: "hidden", maxWidth: 80 }}>
+                          <div style={{ width: `${errPct}%`, height: "100%", background: c, borderRadius: 2 }} />
+                        </div>
+                      </div>;
+                    })()}
+
                     {/* Expanded details (double-click) */}
                     {expandedCards.has(r.id) && <div style={{ padding: "8px 0", borderTop: `1px dashed ${C.darkBrown}22`, marginTop: 4, fontSize: 11, color: C.brown }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>

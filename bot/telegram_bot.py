@@ -2659,6 +2659,32 @@ def cmd_focus():
     return "\n".join(lines)
 
 
+def cmd_impact(name: str = ""):
+    """Show impact score for a repo based on completions, efficiency, and errors."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("impact") if not name else f"Repo '{name}' not found."
+    s = repo.get("stats", {})
+    done = s.get("items_done", 0)
+    total = s.get("items_total", 0)
+    errs = s.get("mistakes", 0)
+    cost = s.get("cost", 0)
+    cycles = s.get("cycles", 0)
+    efficiency = done / max(1, total) * 100
+    cost_per_item = cost / max(1, done) if done > 0 else 0
+    impact = max(0, min(100, int(done * 2 + efficiency * 0.5 - errs * 3 + cycles * 0.5)))
+    grade = "S" if impact >= 90 else "A" if impact >= 75 else "B" if impact >= 50 else "C" if impact >= 25 else "D"
+    bar = "█" * int(impact / 10) + "░" * (10 - int(impact / 10))
+    lines = [
+        f"💥 *Impact: {repo['name']}*\n",
+        f"  {bar} {impact}/100 (Grade: *{grade}*)",
+        f"  ✅ {done}/{total} items ({efficiency:.0f}%)",
+        f"  💰 ${cost_per_item:.4f}/item" if done > 0 else "  💰 No completions yet",
+        f"  🐛 {errs} errors | 🔄 {cycles} cycles",
+    ]
+    return "\n".join(lines)
+
+
 def cmd_diff(name: str = ""):
     """Show recent git changes (last commit diff summary) for a repo."""
     repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
@@ -3133,6 +3159,8 @@ def handle_message(msg):
         reply = cmd_progress()
     elif t == "diff" or t.startswith("diff "):
         reply = cmd_diff(t[5:].strip() if t.startswith("diff ") else "")
+    elif t == "impact" or t.startswith("impact "):
+        reply = cmd_impact(t[7:].strip() if t.startswith("impact ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3209,7 +3237,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
