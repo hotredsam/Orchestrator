@@ -2968,6 +2968,42 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_uptime_rank():
+    """Rank running repos by continuous uptime duration."""
+    repos = _orch_get("/api/repos") or []
+    running = [r for r in repos if r.get("running")]
+    if not running:
+        return "⏹️ No repos currently running."
+    now = datetime.now(timezone.utc)
+    ranked = []
+    for r in running:
+        started = r.get("started_at", "")
+        if started:
+            try:
+                st = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                uptime_s = (now - st).total_seconds()
+                ranked.append((r["name"], uptime_s, r.get("paused", False)))
+            except (ValueError, TypeError):
+                ranked.append((r["name"], 0, r.get("paused", False)))
+        else:
+            ranked.append((r["name"], 0, r.get("paused", False)))
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    lines = ["⏱️ *Uptime Rankings*\n"]
+    for i, (name, secs, paused) in enumerate(ranked[:20]):
+        if secs >= 86400:
+            label = f"{secs/86400:.1f}d"
+        elif secs >= 3600:
+            label = f"{secs/3600:.1f}h"
+        elif secs >= 60:
+            label = f"{int(secs/60)}m"
+        else:
+            label = f"{int(secs)}s"
+        status = "⏸️" if paused else "▶️"
+        medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
+        lines.append(f"  {medal} {status} *{name}*: {label}")
+    return "\n".join(lines)
+
+
 def cmd_roi():
     """Show return on investment: items completed per dollar spent."""
     repos = _orch_get("/api/repos") or []
@@ -3668,6 +3704,8 @@ def handle_message(msg):
         reply = cmd_capacity()
     elif t in ("roi", "return", "investment"):
         reply = cmd_roi()
+    elif t in ("uptime_rank", "uptime rank", "uptimerank"):
+        reply = cmd_uptime_rank()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3744,7 +3782,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

@@ -494,7 +494,8 @@ function Dashboard() {
       if (e.key === "/") { e.preventDefault(); setTab("home"); setTimeout(() => { const el = document.querySelector("input[placeholder*='command']"); if (el) el.focus(); }, 100); }
       if (e.key === "Escape") { setShowHelp(false); setSelectedItems(new Set()); setConfirmDialog(null); }
       if (e.key === "?") setShowHelp(prev => !prev);
-      if (e.key === "f" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
+      if (e.key === "f" && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
+      if (e.key === "F" && e.shiftKey && !e.ctrlKey) { e.preventDefault(); const cycle = ["all", "running", "idle", "paused", "error"]; const ci = cycle.indexOf(repoFilter); setRepoFilter(cycle[(ci + 1) % cycle.length]); }
       if (e.key === "n" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTab("items"); setTimeout(() => { const el = document.querySelector("input[placeholder*='Bounty title']"); if (el) el.focus(); }, 100); }
       if (e.key === "i" && e.altKey) { e.preventDefault(); setShowQuickAdd(true); }
       if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
