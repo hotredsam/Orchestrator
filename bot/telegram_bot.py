@@ -1934,10 +1934,14 @@ def cmd_slowest():
     for s in all_steps[:10]:
         dur = s.get("duration_sec", 0)
         cost = s.get("cost_usd", 0)
-        desc = (s.get("description") or "")[:45]
-        lines.append(f"  \u23F3 *{s['_repo']}*: {dur:.0f}s ${cost:.3f} — {desc}")
+        desc = (s.get("description") or "")[:40]
+        cps = f" ({cost/dur:.4f}$/s)" if dur > 0 and cost > 0 else ""
+        lines.append(f"  \u23F3 *{s['_repo']}*: {dur:.0f}s ${cost:.3f}{cps} — {desc}")
     avg_dur = sum(s.get("duration_sec", 0) for s in all_steps) / len(all_steps)
+    total_cost = sum(s.get("cost_usd", 0) for s in all_steps)
     lines.append(f"\n\U0001F4CA *Avg duration:* {avg_dur:.0f}s across {len(all_steps)} steps")
+    if total_cost > 0:
+        lines.append(f"\U0001F4B0 *Total slow cost:* ${total_cost:.3f} (avg ${total_cost/len(all_steps):.4f}/step)")
     return "\n".join(lines)
 
 

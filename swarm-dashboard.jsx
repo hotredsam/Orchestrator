@@ -228,6 +228,7 @@ function Dashboard() {
   const [editingItem, setEditingItem] = useState(null); // { id, title, priority }
   const [planSearch, setPlanSearch] = useState("");
   const [planCollapsed, setPlanCollapsed] = useState(false); // collapse all long descriptions
+  const [planDurFilter, setPlanDurFilter] = useState(0); // min duration filter in seconds (0=off)
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const [expandedLog, setExpandedLog] = useState(null); // log id
   const [histFilter, setHistFilter] = useState("all"); // history action filter
@@ -2612,6 +2613,7 @@ function Dashboard() {
                 <Inp placeholder="Search plan steps..." value={planSearch} onChange={e => setPlanSearch(e.target.value)}
                   style={{ maxWidth: 320, fontSize: 12, padding: "6px 12px" }} />
                 <button onClick={() => setPlanCollapsed(c => !c)} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 10, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: planCollapsed ? C.teal : C.cream, color: planCollapsed ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s", whiteSpace: "nowrap" }}>{planCollapsed ? "Expand All" : "Collapse"}</button>
+                {[{ l: "All", v: 0 }, { l: ">30s", v: 30 }, { l: ">60s", v: 60 }, { l: ">120s", v: 120 }].map(f => <button key={f.v} onClick={() => setPlanDurFilter(f.v)} style={{ padding: "4px 8px", borderRadius: 8, fontSize: 9, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: planDurFilter === f.v ? C.orange : C.cream, color: planDurFilter === f.v ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s", whiteSpace: "nowrap" }}>{f.l}</button>)}
               </div>
             )}
             <div style={{ maxWidth: 620, margin: "0 auto" }}>
@@ -2622,7 +2624,7 @@ function Dashboard() {
                   <div style={{ fontSize: 13, color: C.brown }}>Add items to the Bounty Board first -- the swarm will draw up a plan!</div>
                 </Card>
               ) :
-                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); const completedSteps = plan.filter(p => p.status === "completed" && p.duration_sec > 0); const avgDur = completedSteps.length ? completedSteps.reduce((a, p) => a + p.duration_sec, 0) / completedSteps.length : 0; const firstPendingId = plan.find(s => s.status !== "completed")?.id; const searchedPlan = planSearch ? plan.filter(s => (s.description || "").toLowerCase().includes(planSearch.toLowerCase())) : plan; return searchedPlan.map((s,i) => {
+                (() => { const maxCost = Math.max(...plan.map(p => p.cost_usd || 0), 0.001); const completedSteps = plan.filter(p => p.status === "completed" && p.duration_sec > 0); const avgDur = completedSteps.length ? completedSteps.reduce((a, p) => a + p.duration_sec, 0) / completedSteps.length : 0; const firstPendingId = plan.find(s => s.status !== "completed")?.id; const searchedPlan = (planSearch ? plan.filter(s => (s.description || "").toLowerCase().includes(planSearch.toLowerCase())) : plan).filter(s => planDurFilter <= 0 || (s.duration_sec || 0) >= planDurFilter); return searchedPlan.map((s,i) => {
                   const done = s.status==="completed";
                   const isNextStep = s.id === firstPendingId;
                   return (

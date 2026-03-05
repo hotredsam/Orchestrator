@@ -1534,11 +1534,12 @@
           </div>
           ${planFilter !== 'all' ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;text-align:center;">Showing ${filtered.length} ${planFilter} steps</div>` : ''}
         </div>
-        ${filtered.map((step, i) => {
+        ${(() => { let cumCost = 0; return filtered.map((step, i) => {
+          cumCost += (step.cost_usd || 0);
           const done = step.status === 'completed';
           const icon = done ? '✅' : '⏳';
           const agentBadge = step.agent_type ? `<span style="font-size:10px;padding:1px 6px;border-radius:6px;background:var(--teal);color:#fff;">${step.agent_type}</span>` : '';
-          const costBadge = step.cost_usd > 0 ? `<span style="font-size:10px;color:var(--green);font-weight:600;">$${step.cost_usd.toFixed(4)}</span>` : '';
+          const costBadge = step.cost_usd > 0 ? `<span style="font-size:10px;color:var(--green);font-weight:600;">$${step.cost_usd.toFixed(4)} <span style="opacity:0.6;">(Σ$${cumCost.toFixed(4)})</span></span>` : '';
           return `
             <div style="padding:8px 0;border-bottom:1px solid var(--shadow);display:flex;gap:8px;align-items:flex-start;${done ? 'opacity:0.6;' : ''}">
               <span style="font-size:14px;min-width:24px;text-align:center;">${icon}</span>
@@ -1550,7 +1551,7 @@
                 </div>
               </div>
             </div>`;
-        }).join('')}`;
+        }).join(''); })()}`;
     }
 
     // ─── Screen 9: Logs ─────────────────────────────────────────────────────
