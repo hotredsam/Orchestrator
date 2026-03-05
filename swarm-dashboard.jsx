@@ -2288,6 +2288,14 @@ function Dashboard() {
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
                 </span>
+                {items.filter(i => i.status === "pending" && i.created_at).length > 0 && (() => {
+                  const pending = items.filter(i => i.status === "pending" && i.created_at);
+                  const now = Date.now();
+                  const fresh = pending.filter(i => (now - new Date(i.created_at).getTime()) < 86400000).length;
+                  const mid = pending.filter(i => { const d = (now - new Date(i.created_at).getTime()) / 86400000; return d >= 1 && d <= 7; }).length;
+                  const stale = pending.filter(i => (now - new Date(i.created_at).getTime()) > 7 * 86400000).length;
+                  return <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontWeight: 600, background: C.cream, color: C.brown, border: `1px solid ${C.darkBrown}22` }}>{"\uD83D\uDCC5"} {fresh > 0 ? `${fresh} new` : ""}{fresh > 0 && (mid > 0 || stale > 0) ? " · " : ""}{mid > 0 ? `${mid} this week` : ""}{mid > 0 && stale > 0 ? " · " : ""}{stale > 0 ? <span style={{ color: C.red }}>{stale} stale</span> : ""}</span>;
+                })()}
                 {items.length > 0 && (() => {
                   const done = items.filter(i => i.status === "completed").length;
                   const rate = Math.round((done / items.length) * 100);

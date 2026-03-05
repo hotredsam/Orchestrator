@@ -74,6 +74,10 @@ def _save_prefs():
 
 _notify_prefs = _load_prefs()
 
+# Daily cost alert threshold (0 = disabled)
+_cost_alert_threshold = 0.0
+_cost_alert_fired_today = False
+
 # Pinned repo — default repo for commands that require one
 _pinned_repo = ""
 
@@ -1901,6 +1905,29 @@ def cmd_notify(arg: str = ""):
     return f"\U0001F514 *{key.replace('_', ' ').title()}* → {state}"
 
 
+def cmd_cost_alert(arg: str = ""):
+    """Set or view daily cost alert threshold."""
+    global _cost_alert_threshold, _cost_alert_fired_today
+    if not arg:
+        if _cost_alert_threshold <= 0:
+            return "\U0001F4B0 *Cost Alert:* OFF\n\nSet with `/cost_alert 5.00` to alert when daily costs exceed $5."
+        status = "(\u2705 Not triggered today)" if not _cost_alert_fired_today else "(\u26A0\uFE0F Already triggered today)"
+        return f"\U0001F4B0 *Cost Alert:* ${_cost_alert_threshold:.2f}/day\n{status}"
+    if arg.strip().lower() in ("off", "0", "disable"):
+        _cost_alert_threshold = 0.0
+        _cost_alert_fired_today = False
+        return "\U0001F4B0 Cost alert disabled."
+    try:
+        val = float(arg.strip().replace("$", ""))
+        if val <= 0:
+            return "Threshold must be positive. Use `off` to disable."
+        _cost_alert_threshold = val
+        _cost_alert_fired_today = False
+        return f"\U0001F4B0 Cost alert set to *${val:.2f}/day*. You'll be notified when daily spend exceeds this."
+    except ValueError:
+        return "Usage: `/cost_alert 5.00` or `/cost_alert off`"
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -2263,6 +2290,8 @@ def handle_message(msg):
         reply = cmd_deps(t[5:].strip() if t.startswith("deps ") else "")
     elif t in ("hot", "hottest", "top_repos"):
         reply = cmd_hot()
+    elif t == "cost_alert" or t.startswith("cost_alert "):
+        reply = cmd_cost_alert(t[11:].strip() if t.startswith("cost_alert ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2339,7 +2368,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
