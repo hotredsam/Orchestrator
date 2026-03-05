@@ -1217,6 +1217,35 @@ def cmd_oldest(days_str: str = "7"):
     return "\n".join(lines)
 
 
+def cmd_throughput(name: str = ""):
+    """Show execution throughput (items + steps per day) for a repo."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("throughput") if not name else f"Repo '{name}' not found."
+    rid = repo["id"]
+    items = _orch_get(f"/api/items?repo_id={rid}") or []
+    plan = _orch_get(f"/api/plan?repo_id={rid}") or []
+    done_items = [i for i in items if i.get("status") == "completed" and i.get("completed_at")]
+    done_steps = [s for s in plan if s.get("status") == "completed" and s.get("duration_sec", 0) > 0]
+    lines = [f"\u26A1 *Throughput — {repo['name']}*\n"]
+    if done_items:
+        ts = sorted(datetime.fromisoformat(i["completed_at"].replace("Z", "+00:00")) for i in done_items)
+        span_days = max(1, (ts[-1] - ts[0]).total_seconds() / 86400)
+        item_rate = len(done_items) / span_days
+        lines.append(f"  \U0001F4E6 Items: *{item_rate:.1f}/day* ({len(done_items)} in {span_days:.1f}d)")
+    else:
+        lines.append("  \U0001F4E6 Items: no completions yet")
+    if done_steps:
+        total_dur = sum(s.get("duration_sec", 0) for s in done_steps)
+        avg_dur = total_dur / len(done_steps)
+        steps_per_hour = 3600 / avg_dur if avg_dur > 0 else 0
+        lines.append(f"  \U0001F527 Steps: *{steps_per_hour:.1f}/hr* (avg {avg_dur:.0f}s each)")
+        lines.append(f"  \u23F1 Total exec: {total_dur/60:.0f}m across {len(done_steps)} steps")
+    else:
+        lines.append("  \U0001F527 Steps: no completed steps yet")
+    return "\n".join(lines)
+
+
 def cmd_completions(name: str = ""):
     """Show recently completed items with timestamps."""
     repos = _orch_get("/api/repos") or []
@@ -2547,6 +2576,8 @@ def handle_message(msg):
         reply = cmd_oldest(t[7:].strip() if t.startswith("oldest ") else "")
     elif t == "completions" or t.startswith("completions "):
         reply = cmd_completions(t[12:].strip() if t.startswith("completions ") else "")
+    elif t == "throughput" or t.startswith("throughput "):
+        reply = cmd_throughput(t[11:].strip() if t.startswith("throughput ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2623,7 +2654,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

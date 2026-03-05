@@ -2598,6 +2598,15 @@ function Dashboard() {
                 </div>
               );
             })()}
+            {plan.filter(s => s.status === "in_progress" && s.started_at).length > 0 && (() => {
+              const stale = plan.filter(s => s.status === "in_progress" && s.started_at && (Date.now() - new Date(s.started_at).getTime()) > 3600000);
+              if (stale.length === 0) return null;
+              return <div style={{ textAlign: "center", marginBottom: 10 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#FFEBEE", border: `2px solid ${C.red}`, borderRadius: 12, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: C.red }}>
+                  {"\u26A0\uFE0F"} {stale.length} step{stale.length !== 1 ? "s" : ""} stuck in progress for 1+ hour
+                </span>
+              </div>;
+            })()}
             {plan.length > 3 && (
               <div style={{ maxWidth: 620, margin: "0 auto 10px", display: "flex", justifyContent: "center", gap: 6 }}>
                 <Inp placeholder="Search plan steps..." value={planSearch} onChange={e => setPlanSearch(e.target.value)}
