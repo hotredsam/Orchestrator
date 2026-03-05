@@ -2010,6 +2010,27 @@ def cmd_export(name: str = ""):
     return "```\n" + "\n".join(lines) + "\n```"
 
 
+def cmd_emoji():
+    """One-line emoji summary of all repos."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos."
+    state_icons = {
+        "idle": "\u26AA", "planning": "\U0001F4D0", "executing": "\u26A1",
+        "reviewing": "\U0001F50D", "pushing": "\U0001F680", "error": "\U0001F534",
+        "credits_exhausted": "\U0001F4B8", "completed": "\u2705", "paused": "\u23F8",
+    }
+    parts = []
+    for r in sorted(repos, key=lambda x: x.get("name", "")):
+        st = r.get("state", "idle")
+        icon = state_icons.get(st, "\u25AA")
+        if r.get("paused"):
+            icon = "\u23F8"
+        parts.append(f"{icon}{r['name']}")
+    running = len([r for r in repos if r.get("running")])
+    return " ".join(parts) + f"\n\n{running}/{len(repos)} running"
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -2378,6 +2399,8 @@ def handle_message(msg):
         reply = cmd_schedule(t[9:].strip() if t.startswith("schedule ") else "")
     elif t == "export" or t.startswith("export "):
         reply = cmd_export(t[7:].strip() if t.startswith("export ") else "")
+    elif t in ("emoji", "e", "quick"):
+        reply = cmd_emoji()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2454,7 +2477,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
