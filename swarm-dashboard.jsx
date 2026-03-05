@@ -1502,7 +1502,8 @@ function Dashboard() {
                     }}
                     title={`${r.name} | ${r.state} | Items: ${s.items_done||0}/${s.items_total||0} | Steps: ${s.steps_done||0}/${s.steps_total||0} | Errors: ${s.mistakes||0} | Cycles: ${r.cycle_count||0} | Cost: $${(costs[r.id]||0).toFixed(2)} | Branch: ${r.branch||'main'}`}
                     onClick={() => { setSR(r.id); setTab("flow"); }}
-                    onDoubleClick={(e) => { e.stopPropagation(); setExpandedCards(prev => { const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n; }); }}>
+                    onDoubleClick={(e) => { e.stopPropagation(); setExpandedCards(prev => { const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n; }); }}
+                    onContextMenu={(e) => { e.preventDefault(); const info = `${r.name} | ${r.state} | ${s.items_done||0}/${s.items_total||0} items | $${(costs[r.id]||0).toFixed(2)}`; navigator.clipboard?.writeText(info).then(() => showToast(`Copied: ${r.name}`, "success")).catch(() => {}); }}>
                     {/* Subtle card texture */}
                     <div style={{ position: "absolute", inset: 0, opacity: 0.025, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v20h2V0h2v20h2V0h2v20h2V0h2v20h2V0h2v20.5' fill='%233D2B1F' fill-opacity='.4' fill-rule='evenodd'/%3E%3C/svg%3E\")", pointerEvents: "none" }} />
 

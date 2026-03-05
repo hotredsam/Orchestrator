@@ -2968,6 +2968,34 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_blame():
+    """Show repos ranked by error-to-item ratio (worst offenders first)."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    scored = []
+    for r in repos:
+        s = r.get("stats", {})
+        errs = s.get("mistakes", 0)
+        total = s.get("items_total", 0)
+        if total == 0 and errs == 0:
+            continue
+        ratio = errs / max(1, total)
+        scored.append((r["name"], errs, total, ratio))
+    if not scored:
+        return "✅ No repos with items or errors to analyze."
+    scored.sort(key=lambda x: x[3], reverse=True)
+    lines = ["🔍 *Blame Report — Error/Item Ratio*\n"]
+    for i, (name, errs, total, ratio) in enumerate(scored[:15]):
+        pct = round(ratio * 100)
+        icon = "🔴" if pct > 20 else "🟡" if pct > 5 else "🟢"
+        medal = "🥇" if i == 0 and pct > 0 else "🥈" if i == 1 and pct > 0 else "🥉" if i == 2 and pct > 0 else " "
+        lines.append(f"  {medal} {icon} *{name}*: {errs}/{total} = {pct}%")
+    avg = round(sum(x[3] for x in scored) / len(scored) * 100)
+    lines.append(f"\n📊 Avg error rate: *{avg}%*")
+    return "\n".join(lines)
+
+
 def cmd_velocity():
     """Show items completed per day over the last 7 days."""
     repos = _orch_get("/api/repos") or []
@@ -3554,6 +3582,8 @@ def handle_message(msg):
         reply = cmd_last()
     elif t in ("velocity", "vel", "items_per_day"):
         reply = cmd_velocity()
+    elif t in ("blame", "fault", "error_ratio"):
+        reply = cmd_blame()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3630,7 +3660,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

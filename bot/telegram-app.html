@@ -2439,6 +2439,21 @@
       }, _pollInterval);
     }
 
+    // ─── Page Visibility — reduce polling when tab is hidden ─────────────────
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        // Pause polling when hidden to save bandwidth
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      } else {
+        // Resume polling and immediately refresh when visible again
+        startPolling();
+        if (currentTab === 'home') refreshHome();
+        else if (currentTab === 'stats') refreshStats();
+        fetchCosts();
+        updateSubtitle();
+      }
+    });
+
     // ─── Pull-to-Refresh ──────────────────────────────────────────────────────
     let pullStartY = 0;
     let pulling = false;
