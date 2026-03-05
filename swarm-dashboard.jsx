@@ -1496,6 +1496,8 @@ function Dashboard() {
                       backgroundImage: sr === r.id
                         ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)`
                         : `linear-gradient(135deg, #FFFFFF 0%, #FDFAF2 100%)`,
+                      borderLeft: r.running ? `4px solid ${C.green}` : r.state === "error" ? `4px solid ${C.red}` : undefined,
+                      boxShadow: r.running ? `inset 4px 0 12px -4px ${C.green}44` : undefined,
                     }}
                     title={`${r.name} | ${r.state} | Items: ${s.items_done||0}/${s.items_total||0} | Steps: ${s.steps_done||0}/${s.steps_total||0} | Errors: ${s.mistakes||0} | Cycles: ${r.cycle_count||0} | Cost: $${(costs[r.id]||0).toFixed(2)} | Branch: ${r.branch||'main'}`}
                     onClick={() => { setSR(r.id); setTab("flow"); }}

@@ -2968,6 +2968,28 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_last():
+    """Show the most recently completed item across all repos."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    latest = None
+    latest_repo = None
+    for r in repos:
+        items_data = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        for it in items_data:
+            if it.get("status") == "completed" and it.get("completed_at"):
+                if not latest or it["completed_at"] > latest["completed_at"]:
+                    latest = it
+                    latest_repo = r["name"]
+    if not latest:
+        return "📭 No completed items found across any repos."
+    title = latest.get("title", latest.get("name", "?"))
+    kind = latest.get("type", "item")
+    when = latest.get("completed_at", "?")[:19].replace("T", " ")
+    return f"🏁 *Last Completed Item*\n\n📦 *{latest_repo}*\n  {kind}: *{title}*\n  ✅ Completed: `{when}`"
+
+
 _repo_groups = {}  # group_name -> [repo_name, ...]
 
 
@@ -3498,6 +3520,8 @@ def handle_message(msg):
         reply = cmd_pause_all()
     elif t in ("resume_all", "resume all", "resumeall"):
         reply = cmd_resume_all()
+    elif t in ("last", "latest", "recent_item"):
+        reply = cmd_last()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3574,7 +3598,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

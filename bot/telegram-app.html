@@ -2380,6 +2380,23 @@
       if (totalCost > 0) {
         badge.textContent = '$' + totalCost.toFixed(2);
         badge.style.display = 'inline-block';
+        const threshold = parseFloat(localStorage.getItem('swarm-cost-alert') || '0');
+        if (threshold > 0 && totalCost >= threshold) {
+          badge.style.background = 'rgba(231,76,60,0.15)';
+          badge.style.color = 'var(--red)';
+          badge.style.borderColor = 'var(--red)';
+          badge.textContent = '⚠️ $' + totalCost.toFixed(2);
+          badge.style.animation = 'pulse 2s infinite';
+        } else if (totalCost > 5) {
+          badge.style.background = 'rgba(243,156,18,0.15)';
+          badge.style.color = 'var(--orange)';
+          badge.style.borderColor = 'var(--orange)';
+        } else {
+          badge.style.background = 'rgba(46,204,113,0.15)';
+          badge.style.color = 'var(--green)';
+          badge.style.borderColor = 'var(--green)';
+          badge.style.animation = '';
+        }
       }
     }
 
