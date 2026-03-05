@@ -2968,6 +2968,36 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_roi():
+    """Show return on investment: items completed per dollar spent."""
+    repos = _orch_get("/api/repos") or []
+    costs_data = _orch_get("/api/costs") or {}
+    repo_costs = costs_data.get("repos", {})
+    if not repos:
+        return "No repos registered."
+    data = []
+    for r in repos:
+        s = r.get("stats", {})
+        done = s.get("items_done", 0)
+        cost = repo_costs.get(r["name"], s.get("cost", 0))
+        if isinstance(cost, (int, float)) and cost > 0 and done > 0:
+            roi = done / cost
+            data.append((r["name"], done, cost, roi))
+    if not data:
+        return "📊 No repos with both completed items and costs."
+    data.sort(key=lambda x: x[3], reverse=True)
+    lines = ["📈 *ROI — Items per Dollar*\n"]
+    for i, (name, done, cost, roi) in enumerate(data[:15]):
+        medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
+        stars = "⭐" * min(5, max(1, int(roi / 5)))
+        lines.append(f"  {medal} *{name}*: {roi:.1f} items/$ ({done} items, ${cost:.4f}) {stars}")
+    total_done = sum(d[1] for d in data)
+    total_cost = sum(d[2] for d in data)
+    overall = total_done / total_cost if total_cost > 0 else 0
+    lines.append(f"\n📊 Overall ROI: *{overall:.1f} items/$*")
+    return "\n".join(lines)
+
+
 def cmd_capacity():
     """Show remaining capacity per repo — pending items vs completion rate."""
     repos = _orch_get("/api/repos") or []
@@ -3636,6 +3666,8 @@ def handle_message(msg):
         reply = cmd_cost_rank()
     elif t in ("capacity", "cap", "remaining"):
         reply = cmd_capacity()
+    elif t in ("roi", "return", "investment"):
+        reply = cmd_roi()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3712,7 +3744,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

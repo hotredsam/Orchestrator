@@ -1278,6 +1278,7 @@
             <div class="flex-between mb-8">
               <div class="card-title" style="display:flex;align-items:center;gap:4px;">${esc(r.name)} <button onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(r.name)}');haptic('light');showToast('Copied: ${esc(r.name)}','info');" style="background:none;border:none;cursor:pointer;font-size:11px;opacity:0.5;padding:0 2px;" title="Copy name">📋</button></div>
               <span class="badge ${badgeClass}">${badgeText}</span>
+              ${(stats.items_total || 0) > 0 ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;background:${Math.round((stats.items_done||0)/(stats.items_total||1)*100) >= 100 ? 'var(--green)' : Math.round((stats.items_done||0)/(stats.items_total||1)*100) >= 50 ? 'var(--orange)' : 'var(--red)'};color:#fff;">${Math.round((stats.items_done||0)/(stats.items_total||1)*100)}%</span>` : ''}
             </div>
             <div class="card-row">
               <span class="card-label">State</span>
