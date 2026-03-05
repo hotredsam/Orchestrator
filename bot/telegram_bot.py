@@ -1287,6 +1287,42 @@ def cmd_throughput(name: str = ""):
     return "\n".join(lines)
 
 
+def cmd_pending(name: str = ""):
+    """Show pending items ranked by estimated complexity (desc length + priority)."""
+    repos = _orch_get("/api/repos") or []
+    if name:
+        repos = [r for r in repos if r.get("name", "").lower() == name.lower()]
+    if not repos:
+        return f"Repo '{name}' not found." if name else "No repos."
+    pending = []
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        for it in items:
+            if it.get("status") == "pending":
+                it["_repo"] = r["name"]
+                prio_w = {"critical": 1.5, "high": 1.2, "medium": 1.0, "low": 0.7}.get(it.get("priority", "medium"), 1.0)
+                desc_len = len(it.get("description", ""))
+                it["_weight"] = round((len(it.get("title", "")) + desc_len) / 100 * prio_w, 2)
+                pending.append(it)
+    if not pending:
+        return "\u2705 No pending items found!"
+    pending.sort(key=lambda x: -x.get("_weight", 0))
+    prio_icons = {"critical": "\U0001F525", "high": "\u26A1", "medium": "\U0001F7E1", "low": "\U0001F7E2"}
+    lines = [f"\U0001F4CB *Pending Items* ({len(pending)} total):\n"]
+    for it in pending[:15]:
+        p = it.get("priority", "medium")
+        icon = prio_icons.get(p, "\u2022")
+        lines.append(f"  {icon} *{it['_repo']}*: {it.get('title', '?')[:40]} (w:{it['_weight']})")
+    if len(pending) > 15:
+        lines.append(f"\n  _...+{len(pending) - 15} more_")
+    by_repo = {}
+    for it in pending:
+        by_repo.setdefault(it["_repo"], []).append(it)
+    top_repo = max(by_repo.items(), key=lambda x: len(x[1]))
+    lines.append(f"\n\U0001F4CA Most pending: *{top_repo[0]}* ({len(top_repo[1])} items)")
+    return "\n".join(lines)
+
+
 def cmd_completions(name: str = ""):
     """Show recently completed items with timestamps."""
     repos = _orch_get("/api/repos") or []
@@ -2623,6 +2659,8 @@ def handle_message(msg):
         reply = cmd_completions(t[12:].strip() if t.startswith("completions ") else "")
     elif t == "throughput" or t.startswith("throughput "):
         reply = cmd_throughput(t[11:].strip() if t.startswith("throughput ") else "")
+    elif t == "pending" or t.startswith("pending "):
+        reply = cmd_pending(t[8:].strip() if t.startswith("pending ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2699,7 +2737,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
