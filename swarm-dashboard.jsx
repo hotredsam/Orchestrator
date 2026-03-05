@@ -1581,6 +1581,33 @@ function Dashboard() {
                       </div>
                     )}
 
+                    {/* Health sparkline */}
+                    {(() => {
+                      try {
+                        const k = `hs_${r.id}`;
+                        const h = JSON.parse(localStorage.getItem(k) || "[]");
+                        const done = s.items_done || 0;
+                        const total = s.items_total || 1;
+                        const errs = s.mistakes || 0;
+                        const score = Math.max(0, Math.min(100, Math.round((done / total) * 80 + (1 - errs / Math.max(1, total)) * 20)));
+                        const now = new Date().toISOString().slice(0, 13);
+                        if (!h.length || h[h.length - 1].t !== now) h.push({ t: now, v: score });
+                        else h[h.length - 1].v = score;
+                        if (h.length > 24) h.splice(0, h.length - 24);
+                        localStorage.setItem(k, JSON.stringify(h));
+                        if (h.length < 3) return null;
+                        const vals = h.map(x => x.v);
+                        const mn = Math.min(...vals);
+                        const mx = Math.max(...vals, mn + 1);
+                        const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * 60},${20 - ((v - mn) / (mx - mn)) * 18}`).join(" ");
+                        const lastC = score >= 70 ? C.green : score >= 40 ? C.orange : C.red;
+                        return <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <svg width={60} height={20} viewBox="0 0 60 20"><polyline points={pts} fill="none" stroke={lastC} strokeWidth="1.5" /></svg>
+                          <span style={{ fontSize: 9, color: lastC, fontWeight: 700 }}>{score}hp</span>
+                        </div>;
+                      } catch (e) { return null; }
+                    })()}
+
                     {/* Action buttons + state label */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {r.running

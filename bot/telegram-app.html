@@ -1603,15 +1603,35 @@
       loadItems();
     }
 
-    // Long-press context menu
+    // Long-press context menu + swipe status cycling
     let _longPressTimer = null;
+    let _itemSwipeX = 0, _itemSwipeY = 0, _itemSwipeData = null;
     function itemTouchStart(e, repoId, itemId, status, prio) {
+      _itemSwipeX = e.touches[0].clientX;
+      _itemSwipeY = e.touches[0].clientY;
+      _itemSwipeData = { repoId, itemId, status };
       _longPressTimer = setTimeout(() => {
+        _itemSwipeData = null;
         haptic('heavy');
         showItemMenu(e.touches[0].clientX, e.touches[0].clientY, repoId, itemId, status, prio);
       }, 500);
     }
-    function itemTouchEnd() { clearTimeout(_longPressTimer); }
+    function itemTouchEnd(e) {
+      clearTimeout(_longPressTimer);
+      if (!_itemSwipeData || !e.changedTouches.length) return;
+      const dx = e.changedTouches[0].clientX - _itemSwipeX;
+      const dy = Math.abs(e.changedTouches[0].clientY - _itemSwipeY);
+      if (Math.abs(dx) > 60 && dy < 40) {
+        const next = dx > 0
+          ? { pending: 'in_progress', in_progress: 'completed', completed: 'pending' }
+          : { completed: 'in_progress', in_progress: 'pending', pending: 'completed' };
+        const newStatus = next[_itemSwipeData.status] || 'pending';
+        haptic('medium');
+        changeItemStatus(_itemSwipeData.repoId, _itemSwipeData.itemId, newStatus);
+        showToast(`→ ${newStatus.replace('_', ' ')}`, 'info');
+      }
+      _itemSwipeData = null;
+    }
     function showItemMenu(x, y, repoId, itemId, status, prio) {
       closeItemMenu();
       const m = document.createElement('div');

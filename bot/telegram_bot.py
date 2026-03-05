@@ -2249,6 +2249,43 @@ def cmd_dedupe(name: str = ""):
     return f"\u2705 No duplicates found in *{repo['name']}* ({pending_after} pending items)"
 
 
+def cmd_dedupe_items():
+    """Find duplicate items across all repos using fuzzy title matching."""
+    import difflib
+    repos = _orch_get("/api/repos") or []
+    all_items = []
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        for it in items:
+            if it.get("status") != "completed":
+                all_items.append({"title": it.get("title", ""), "repo": r["name"], "id": it["id"], "rid": r["id"]})
+    if len(all_items) < 2:
+        return "Not enough items to compare."
+    dupes = []
+    seen = set()
+    for i, a in enumerate(all_items):
+        for b in all_items[i+1:]:
+            if a["repo"] == b["repo"]:
+                continue
+            key = tuple(sorted([f"{a['rid']}:{a['id']}", f"{b['rid']}:{b['id']}"]))
+            if key in seen:
+                continue
+            ratio = difflib.SequenceMatcher(None, a["title"].lower(), b["title"].lower()).ratio()
+            if ratio >= 0.80:
+                seen.add(key)
+                dupes.append((ratio, a, b))
+    if not dupes:
+        return f"✅ No cross-repo duplicates found across {len(repos)} repos ({len(all_items)} items checked)."
+    dupes.sort(key=lambda x: -x[0])
+    lines = [f"🔍 *Cross-Repo Duplicates* ({len(dupes)} found)\n"]
+    for ratio, a, b in dupes[:8]:
+        lines.append(f"  {int(ratio*100)}% *{a['repo']}*: _{a['title'][:30]}_")
+        lines.append(f"       ↔ *{b['repo']}*: _{b['title'][:30]}_")
+    if len(dupes) > 8:
+        lines.append(f"\n  ...and {len(dupes) - 8} more")
+    return "\n".join(lines)
+
+
 _remind_timer = None
 
 
@@ -2933,6 +2970,8 @@ def handle_message(msg):
         reply = cmd_threshold(t[10:].strip() if t.startswith("threshold ") else "")
     elif t == "sync" or t.startswith("sync "):
         reply = cmd_sync(t[5:].strip() if t.startswith("sync ") else "")
+    elif t in ("dedupe_items", "dedupe-items", "xdedupe"):
+        reply = cmd_dedupe_items()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3009,7 +3048,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
