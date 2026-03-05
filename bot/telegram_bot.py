@@ -1453,6 +1453,51 @@ def cmd_wait_time(name: str = ""):
     return "\n".join(lines)
 
 
+_watch_repos = {}  # name -> {"errors": int, "stale_min": int}
+
+def cmd_watch(arg: str = ""):
+    """Watch a repo for errors/stale items. Usage: /watch blog errors:5 or /watch off blog."""
+    parts = arg.strip().split()
+    if not parts:
+        if not _watch_repos:
+            return "👁️ *Watch:* Not watching any repos.\n\nUsage:\n  `/watch blog errors:5` — alert on 5+ errors\n  `/watch blog stale:60` — alert if stuck >60min\n  `/watch off blog` — stop watching"
+        lines = ["👁️ *Active Watches*\n"]
+        for name, cfg in _watch_repos.items():
+            bits = []
+            if cfg.get("errors"): bits.append(f"errors>{cfg['errors']}")
+            if cfg.get("stale_min"): bits.append(f"stale>{cfg['stale_min']}m")
+            lines.append(f"  *{name}*: {', '.join(bits) if bits else 'default'}")
+        return "\n".join(lines)
+    if parts[0] == "off":
+        name = parts[1] if len(parts) > 1 else ""
+        if name and name in _watch_repos:
+            del _watch_repos[name]
+            return f"👁️ Stopped watching *{name}*"
+        if not name:
+            _watch_repos.clear()
+            return "👁️ All watches cleared."
+        return f"Not watching '{name}'."
+    name = parts[0]
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    cfg = {}
+    for p in parts[1:]:
+        if p.startswith("errors:"):
+            try: cfg["errors"] = int(p.split(":")[1])
+            except ValueError: pass
+        elif p.startswith("stale:"):
+            try: cfg["stale_min"] = int(p.split(":")[1])
+            except ValueError: pass
+    if not cfg:
+        cfg = {"errors": 3, "stale_min": 120}
+    _watch_repos[repo["name"]] = cfg
+    bits = []
+    if cfg.get("errors"): bits.append(f"errors>{cfg['errors']}")
+    if cfg.get("stale_min"): bits.append(f"stale>{cfg['stale_min']}m")
+    return f"👁️ Now watching *{repo['name']}*: {', '.join(bits)}"
+
+
 def cmd_sync(name: str = ""):
     """Sync repo: refresh metadata and validate item counts."""
     if not name:
@@ -2972,6 +3017,8 @@ def handle_message(msg):
         reply = cmd_sync(t[5:].strip() if t.startswith("sync ") else "")
     elif t in ("dedupe_items", "dedupe-items", "xdedupe"):
         reply = cmd_dedupe_items()
+    elif t == "watch" or t.startswith("watch "):
+        reply = cmd_watch(t[6:].strip() if t.startswith("watch ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3048,7 +3095,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

@@ -1465,10 +1465,11 @@
       // Update status filter dropdown with counts
       const statusCounts = { pending: 0, in_progress: 0, completed: 0 };
       data.forEach(it => { const s = it.status || 'pending'; if (statusCounts[s] !== undefined) statusCounts[s]++; });
+      const blockedCount = data.filter(it => it.depends_on && it.status === 'pending' && !data.some(x => (x.title || '').toLowerCase() === it.depends_on.toLowerCase() && x.status === 'completed')).length;
       const statusSel = document.getElementById('itemsFilter');
       if (statusSel) {
         const prev = statusSel.value;
-        statusSel.innerHTML = `<option value="">All (${data.length})</option><option value="pending">Pending (${statusCounts.pending})</option><option value="in_progress">In Progress (${statusCounts.in_progress})</option><option value="completed">Completed (${statusCounts.completed})</option>`;
+        statusSel.innerHTML = `<option value="">All (${data.length})</option><option value="pending">Pending (${statusCounts.pending})</option><option value="in_progress">In Progress (${statusCounts.in_progress})</option><option value="completed">Completed (${statusCounts.completed})</option>${blockedCount > 0 ? `<option value="blocked">🔴 Blocked (${blockedCount})</option>` : ''}`;
         statusSel.value = prev;
       }
 
@@ -1483,7 +1484,8 @@
       });
 
       let items = data;
-      if (filter) items = items.filter(i => i.status === filter);
+      if (filter === 'blocked') items = items.filter(i => i.depends_on && i.status === 'pending' && !data.some(x => (x.title || '').toLowerCase() === i.depends_on.toLowerCase() && x.status === 'completed'));
+      else if (filter) items = items.filter(i => i.status === filter);
       if (_itemPrioFilter) items = items.filter(i => (i.priority || 'medium') === _itemPrioFilter);
       const itemSearch = (document.getElementById('itemsSearchInput')?.value || '').toLowerCase();
       if (itemSearch) items = items.filter(i => (i.title || '').toLowerCase().includes(itemSearch) || (i.description || '').toLowerCase().includes(itemSearch));

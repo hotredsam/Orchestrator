@@ -2058,6 +2058,38 @@ function Dashboard() {
                 </div>)}
               </Card>;
             })()}
+            {/* Top & Bottom Performers */}
+            {repos.length >= 4 && (() => {
+              const scored = repos.filter(r => (r.stats?.items_total || 0) > 0).map(r => {
+                const s = r.stats || {};
+                const rate = (s.items_done || 0) / Math.max(1, s.items_total || 1) * 100;
+                const errPenalty = (s.mistakes || 0) / Math.max(1, s.items_total) * 50;
+                return { name: r.name, score: Math.round(rate - errPenalty), done: s.items_done || 0, total: s.items_total || 0, running: r.running };
+              }).sort((a, b) => b.score - a.score);
+              if (scored.length < 2) return null;
+              const top = scored.slice(0, 3);
+              const bottom = scored.slice(-3).reverse();
+              return <Card bg={C.white} style={{ maxWidth: 700, margin: "12px auto 0", padding: 14 }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>{"\uD83C\uDFC5"} Performers</div>
+                <div style={{ display: "flex", gap: 16 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.green, marginBottom: 4 }}>Top</div>
+                    {top.map((r, i) => <div key={i} style={{ fontSize: 11, display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+                      <span style={{ fontWeight: 600 }}>{["🥇","🥈","🥉"][i]} {r.name}</span>
+                      <span style={{ color: C.green, fontWeight: 700 }}>{r.score}%</span>
+                    </div>)}
+                  </div>
+                  <div style={{ width: 1, background: `${C.darkBrown}22` }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.red, marginBottom: 4 }}>Needs Help</div>
+                    {bottom.map((r, i) => <div key={i} style={{ fontSize: 11, display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+                      <span style={{ fontWeight: 600 }}>{r.name}</span>
+                      <span style={{ color: C.red, fontWeight: 700 }}>{r.score}%</span>
+                    </div>)}
+                  </div>
+                </div>
+              </Card>;
+            })()}
             {/* Dependency Graph */}
             <details style={{ maxWidth: 700, margin: "20px auto 0" }}>
               <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1, textAlign: "center" }}>
