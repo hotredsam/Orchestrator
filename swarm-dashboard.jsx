@@ -2227,6 +2227,16 @@ function Dashboard() {
                 </span>
               </div>
             )}
+            {items.filter(i => i.depends_on).length > 0 && (() => {
+              const withDeps = items.filter(i => i.depends_on);
+              const blocked = withDeps.filter(d => !items.some(i => (i.title || "").toLowerCase() === (d.depends_on || "").toLowerCase() && i.status === "completed"));
+              const unblocked = withDeps.length - blocked.length;
+              return <div style={{ textAlign: "center", marginBottom: 8 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#E0F2F1", border: `1px solid ${C.teal}`, borderRadius: 10, padding: "3px 12px", fontSize: 10, fontWeight: 700, color: C.teal }}>
+                  {"\uD83D\uDD17"} {withDeps.length} dependencies: {blocked.length > 0 && <span style={{ color: C.red }}>{blocked.length} blocked</span>}{blocked.length > 0 && unblocked > 0 && " / "}{unblocked > 0 && <span style={{ color: C.green }}>{unblocked} clear</span>}
+                </span>
+              </div>;
+            })()}
             {(itemFilter !== "all" || sourceFilter !== "all" || priorityFilter !== "all") && (
               <div style={{ textAlign: "center", marginBottom: 8 }}>
                 <span onClick={() => { setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); }} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#E3F2FD", border: `1px solid ${C.teal}`, borderRadius: 10, padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.teal, cursor: "pointer" }}>

@@ -1653,6 +1653,47 @@ def cmd_queue():
     return "\n".join(lines)
 
 
+def cmd_backlog():
+    """Show pending items grouped by priority tier across all repos."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos found."
+    tiers = {"critical": [], "high": [], "medium": [], "low": []}
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        for it in items:
+            if it.get("status") == "pending":
+                it["_repo"] = r["name"]
+                prio = it.get("priority", "medium")
+                if prio in tiers:
+                    tiers[prio].append(it)
+                else:
+                    tiers["medium"].append(it)
+    total = sum(len(v) for v in tiers.values())
+    if total == 0:
+        return "\u2705 Backlog is empty! Nothing pending."
+    tier_icons = {"critical": "\U0001F525", "high": "\u26A1", "medium": "\U0001F7E1", "low": "\U0001F7E2"}
+    lines = [f"\U0001F4DA *Backlog — {total} pending items*\n"]
+    for tier in ["critical", "high", "medium", "low"]:
+        items_in_tier = tiers[tier]
+        if not items_in_tier:
+            continue
+        icon = tier_icons[tier]
+        lines.append(f"{icon} *{tier.upper()}* ({len(items_in_tier)}):")
+        for it in items_in_tier[:5]:
+            lines.append(f"  \u2022 {it['_repo']}: {it.get('title', '?')[:45]}")
+        if len(items_in_tier) > 5:
+            lines.append(f"  _...+{len(items_in_tier) - 5} more_")
+        lines.append("")
+    # Health indicator
+    crit_pct = len(tiers["critical"]) / max(1, total) * 100
+    if crit_pct > 20:
+        lines.append(f"\u26A0\uFE0F *Warning:* {crit_pct:.0f}% of backlog is critical!")
+    elif len(tiers["low"]) > total * 0.5:
+        lines.append(f"\U0001F44D Backlog health: mostly low-priority items")
+    return "\n".join(lines)
+
+
 def cmd_fastest():
     """Show fastest completed steps across all repos."""
     repos = _get("/api/repos") or []
@@ -2429,6 +2470,8 @@ def handle_message(msg):
         reply = cmd_emoji()
     elif t in ("retry_all", "retry-all", "retryall"):
         reply = cmd_retry_all()
+    elif t in ("backlog", "backlogs", "prio"):
+        reply = cmd_backlog()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2505,7 +2548,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
