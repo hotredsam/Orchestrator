@@ -2313,6 +2313,14 @@ function Dashboard() {
                   const rate = Math.round((done / items.length) * 100);
                   return <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontWeight: 700, background: rate >= 75 ? "#E8F5E9" : rate >= 40 ? C.lightOrange : "#FFEBEE", color: rate >= 75 ? C.green : rate >= 40 ? C.orange : C.red, border: `1px solid ${rate >= 75 ? C.green : rate >= 40 ? C.orange : C.red}44` }}>{rate}% complete</span>;
                 })()}
+                {items.filter(i => i.status === "pending" && i.created_at).length > 0 && (() => {
+                  const pendingWithAge = items.filter(i => i.status === "pending" && i.created_at);
+                  const now = Date.now();
+                  const ages = pendingWithAge.map(i => (now - new Date(i.created_at).getTime()) / 86400000);
+                  const avgAge = Math.round(ages.reduce((s, a) => s + a, 0) / ages.length);
+                  const oldPct = Math.round(ages.filter(a => a > 7).length / ages.length * 100);
+                  return <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontWeight: 700, background: avgAge > 14 ? "#FFEBEE" : avgAge > 7 ? C.lightOrange : "#E8F5E9", color: avgAge > 14 ? C.red : avgAge > 7 ? C.orange : C.green, border: `1px solid ${avgAge > 14 ? C.red : avgAge > 7 ? C.orange : C.green}44` }}>{"\u23F3"} Avg {avgAge}d{oldPct > 30 ? ` (${oldPct}% old)` : ""}</span>;
+                })()}
                 {(() => {
                   const doneI = items.filter(i => i.status === "completed" && i.completed_at);
                   const pendI = items.filter(i => i.status === "pending").length;

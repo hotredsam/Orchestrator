@@ -1182,6 +1182,41 @@ def cmd_stale():
     return "\n".join(lines)
 
 
+def cmd_oldest(days_str: str = "7"):
+    """Show pending items older than N days across all repos."""
+    try:
+        days = int(days_str) if days_str.strip() else 7
+    except ValueError:
+        days = 7
+    repos = _orch_get("/api/repos") or []
+    old_items = []
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        for it in items:
+            if it.get("status") == "pending" and it.get("created_at", "") and it["created_at"] < cutoff:
+                it["_repo"] = r["name"]
+                try:
+                    created = datetime.fromisoformat(it["created_at"].replace("Z", "+00:00"))
+                    it["_age"] = (datetime.now(timezone.utc) - created).days
+                except Exception:
+                    it["_age"] = days
+                old_items.append(it)
+    if not old_items:
+        return f"\u2705 No pending items older than {days} days!"
+    old_items.sort(key=lambda x: -x.get("_age", 0))
+    lines = [f"\U0001F4C5 *Oldest Pending Items* ({days}d+ old — {len(old_items)} found):\n"]
+    for it in old_items[:15]:
+        age = it.get("_age", 0)
+        icon = "\U0001F534" if age > 30 else "\U0001F7E0" if age > 14 else "\U0001F7E1"
+        lines.append(f"  {icon} *{it['_repo']}*: {it.get('title', '?')[:45]} ({age}d)")
+    if len(old_items) > 15:
+        lines.append(f"\n  _...+{len(old_items) - 15} more_")
+    avg = sum(it.get("_age", 0) for it in old_items) / len(old_items)
+    lines.append(f"\n\U0001F4CA Avg age: {avg:.0f}d | Oldest: {old_items[0].get('_age', 0)}d")
+    return "\n".join(lines)
+
+
 def cmd_alive():
     """Quick heartbeat check showing system liveness and last activity."""
     data = _orch_get("/api/status")
@@ -2472,6 +2507,8 @@ def handle_message(msg):
         reply = cmd_retry_all()
     elif t in ("backlog", "backlogs", "prio"):
         reply = cmd_backlog()
+    elif t == "oldest" or t.startswith("oldest "):
+        reply = cmd_oldest(t[7:].strip() if t.startswith("oldest ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2548,7 +2585,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
