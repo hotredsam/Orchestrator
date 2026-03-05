@@ -1928,6 +1928,58 @@ def cmd_cost_alert(arg: str = ""):
         return "Usage: `/cost_alert 5.00` or `/cost_alert off`"
 
 
+_digest_schedule_hour = -1  # -1 means disabled
+_digest_timer = None
+
+def cmd_schedule(arg: str = ""):
+    """Schedule daily digest at a specific hour."""
+    global _digest_schedule_hour, _digest_timer
+    if not arg:
+        if _digest_schedule_hour < 0:
+            return "\u23F0 *Digest Schedule:* OFF\n\nSet with `/schedule 9` to auto-send digest at 9:00 daily."
+        return f"\u23F0 *Digest Schedule:* Daily at {_digest_schedule_hour:02d}:00"
+    if arg.strip().lower() in ("off", "disable", "cancel"):
+        _digest_schedule_hour = -1
+        if _digest_timer:
+            _digest_timer.cancel()
+            _digest_timer = None
+        return "\u23F0 Digest schedule disabled."
+    try:
+        hour = int(arg.strip())
+        if hour < 0 or hour > 23:
+            return "Hour must be 0-23."
+        _digest_schedule_hour = hour
+        _start_digest_timer()
+        return f"\u23F0 Digest scheduled daily at *{hour:02d}:00*."
+    except ValueError:
+        return "Usage: `/schedule 9` (hour 0-23) or `/schedule off`"
+
+def _start_digest_timer():
+    global _digest_timer
+    if _digest_timer:
+        _digest_timer.cancel()
+    if _digest_schedule_hour < 0:
+        return
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    target = now.replace(hour=_digest_schedule_hour, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    delay = (target - now).total_seconds()
+    _digest_timer = threading.Timer(delay, _fire_scheduled_digest)
+    _digest_timer.daemon = True
+    _digest_timer.start()
+
+def _fire_scheduled_digest():
+    try:
+        text = cmd_digest()
+        if text:
+            send_message(f"\u23F0 *Scheduled Digest*\n\n{text}")
+    except Exception:
+        pass
+    _start_digest_timer()  # Reschedule for next day
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -2292,6 +2344,8 @@ def handle_message(msg):
         reply = cmd_hot()
     elif t == "cost_alert" or t.startswith("cost_alert "):
         reply = cmd_cost_alert(t[11:].strip() if t.startswith("cost_alert ") else "")
+    elif t == "schedule" or t.startswith("schedule "):
+        reply = cmd_schedule(t[9:].strip() if t.startswith("schedule ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2368,7 +2422,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

@@ -1278,6 +1278,17 @@
       const desc = document.getElementById('addDesc').value.trim();
       if (!title) { haptic('error'); return; }
 
+      // Check for duplicate titles
+      const existing = await api('/api/items?repo_id=' + repoId);
+      if (Array.isArray(existing)) {
+        const dupe = existing.find(i => i.status !== 'completed' && (i.title || '').toLowerCase() === title.toLowerCase());
+        if (dupe) {
+          haptic('warning');
+          showToast(`Similar item exists: "${dupe.title}" (${dupe.status})`, 'error');
+          return;
+        }
+      }
+
       const btn = document.getElementById('addSubmitBtn');
       btn.disabled = true;
       btn.innerHTML = '<div class="spinner"></div> Adding...';

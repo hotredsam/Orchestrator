@@ -215,6 +215,7 @@ function Dashboard() {
   const [compactMaster, setCompactMaster] = useState(() => localStorage.getItem("swarm-compact-master") === "1");
   const [groupByTag, setGroupByTag] = useState(false);
   const [compactItems, setCompactItems] = useState(false);
+  const [groupByType, setGroupByType] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
   const [staleItems, setStaleItems] = useState([]);
@@ -2285,6 +2286,7 @@ function Dashboard() {
                   showToast(`Exported ${items.length} items to CSV`, "success");
                 }} style={{ fontSize: 12, padding: "8px 14px" }}>{"\uD83D\uDCC8"} CSV</Btn>
                 <button onClick={() => setCompactItems(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactItems ? C.teal : C.cream, color: compactItems ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact view">{compactItems ? "\u2630 Compact" : "\u2637 Full"}</button>
+                <button onClick={() => setGroupByType(g => !g)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: groupByType ? "#7E57C2" : C.cream, color: groupByType ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Group by type">{groupByType ? "\uD83C\uDFF7 Grouped" : "\uD83C\uDFF7 Group"}</button>
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
                 </span>
@@ -2416,7 +2418,9 @@ function Dashboard() {
                 </Card>
               ) :
                 (() => { return filteredItems.length > 0 && <div style={{ textAlign: "center", marginBottom: 6 }}><button onClick={toggleSelectAll} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>{selectedItems.size === filteredItems.length ? "Deselect All" : `Select All (${filteredItems.length})`}</button></div>; })()}
-                {filteredItems.map((it, idx) => {
+                {(groupByType ? [...filteredItems].sort((a, b) => (a.type || "feature").localeCompare(b.type || "feature")) : filteredItems).map((it, idx, arr) => {
+                  const typeEmojis = { issue: "\uD83D\uDC1B", feature: "\u2728", bug: "\uD83D\uDC1B", task: "\uD83D\uDCCB", enhancement: "\uD83D\uDE80" };
+                  const groupHeader = groupByType && (idx === 0 || (arr[idx-1].type || "feature") !== (it.type || "feature")) ? <div key={`gh-${it.type}`} style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Bangers', cursive", letterSpacing: 1, color: C.brown, padding: "8px 0 4px", borderBottom: `2px solid ${C.darkBrown}22`, marginBottom: 4 }}>{typeEmojis[it.type] || "\uD83D\uDCCB"} {(it.type || "feature").toUpperCase()} ({arr.filter(x => (x.type||"feature") === (it.type||"feature")).length})</div> : null;
                   const prioConfig = {
                     critical: { bg: C.red, icon: "\uD83D\uDD34", label: "CRITICAL", size: 13 },
                     high: { bg: C.orange, icon: "\uD83D\uDFE0", label: "HIGH", size: 12 },
@@ -2424,7 +2428,7 @@ function Dashboard() {
                     low: { bg: "#A0ADB5", icon: "\u26AA", label: "LOW", size: 11 },
                   }[it.priority] || { bg: "#ccc", icon: "", label: it.priority, size: 11 };
                   if (compactItems) return (
-                    <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: it.status === "completed" ? C.lightTeal : C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, marginBottom: 3, fontSize: 11 }}>
+                    <React.Fragment key={it.id}>{groupHeader}<div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: it.status === "completed" ? C.lightTeal : C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, marginBottom: 3, fontSize: 11 }}>
                       <input type="checkbox" checked={selectedItems.has(it.id)} onChange={() => toggleSelectItem(it.id)} style={{ cursor: "pointer", accentColor: C.orange }} />
                       <span style={{ fontSize: 14 }}>{it.type === "issue" ? "\uD83D\uDC1B" : "\uD83C\uDF1F"}</span>
                       <span style={{ fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
@@ -2432,10 +2436,10 @@ function Dashboard() {
                       <span style={{ background: it.status === "completed" ? C.green : it.status === "in_progress" ? C.orange : "#ccc", color: C.white, borderRadius: 4, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{it.status}</span>
                       {it.status === "pending" && <button onClick={() => quickStatusChange(it.id, "completed")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: C.green, padding: 0 }}>{"\u2705"}</button>}
                       <button onClick={() => deleteItem(it.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: C.red, padding: 0 }}>{"\u2716"}</button>
-                    </div>
+                    </div></React.Fragment>
                   );
                   return (
-                    <div key={it.id} className="bounty-poster" style={{
+                    <React.Fragment key={it.id}>{groupHeader}<div className="bounty-poster" style={{
                       background: it.status === "completed"
                         ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)`
                         : `linear-gradient(135deg, #FFF8E7 0%, #F5E6C8 100%)`,
@@ -2508,7 +2512,7 @@ function Dashboard() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </div></React.Fragment>
                   );
                 })}
             </div>
