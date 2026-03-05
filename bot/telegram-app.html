@@ -1391,7 +1391,10 @@
             </div>
             ${hasDetails ? `<div class="item-details hidden" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;padding:6px 8px;background:var(--bg);border-radius:6px;">
               ${item.description && item.description !== item.title ? `<div style="margin-bottom:4px;">${esc(item.description)}</div>` : ''}
-              ${item.depends_on ? `<div style="font-size:10px;color:var(--teal);">🔗 Depends on: ${esc(item.depends_on)}</div>` : ''}
+              ${item.depends_on ? `<div style="font-size:10px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                <span style="padding:1px 6px;border-radius:4px;background:#E0F2F1;color:var(--teal);font-weight:700;">⛓️ ${esc(item.depends_on)}</span>
+                <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:${items.some(i => (i.title||'').toLowerCase()===item.depends_on.toLowerCase() && i.status==='completed') ? '#E8F5E9' : '#FFEBEE'};color:${items.some(i => (i.title||'').toLowerCase()===item.depends_on.toLowerCase() && i.status==='completed') ? 'var(--green)' : 'var(--red)'};font-weight:700;">${items.some(i => (i.title||'').toLowerCase()===item.depends_on.toLowerCase() && i.status==='completed') ? '✅ Resolved' : '🔴 Blocked'}</span>
+              </div>` : ''}
               ${item.created_at ? `<div style="font-size:10px;margin-top:2px;">Created: ${timeAgo(item.created_at)}</div>` : ''}
             </div>` : ''}
             <div class="flex-between" style="font-size:11px;color:var(--text-secondary);">

@@ -3048,6 +3048,7 @@ function Dashboard() {
                 visibleLogs.map((l, i) => (
                   <div key={l.id}>
                     <div onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)} style={{ display: "flex", gap: 8, padding: "5px 10px", background: i === 0 ? "#FFFDE7" : expandedLog === l.id ? `${C.lightTeal}66` : C.white, border: `2px solid ${i === 0 ? C.orange : expandedLog === l.id ? C.teal : C.darkBrown}`, borderRadius: expandedLog === l.id ? "8px 8px 0 0" : 8, marginBottom: expandedLog === l.id ? 0 : 3, fontSize: 11, boxShadow: i === 0 ? `0 0 8px ${C.orange}44` : "0 1px 3px rgba(0,0,0,.04)", cursor: "pointer", transition: "background .15s" }}>
+                      <span style={{ fontSize: 10, minWidth: 14, textAlign: "center" }}>{l.error ? "\uD83D\uDD34" : l.cost_usd > 0.5 ? "\uD83D\uDFE1" : l.state === "completed" ? "\uD83D\uDFE2" : "\u26AA"}</span>
                       <span style={{ color: C.brown, minWidth: 90, fontSize: 9 }}>{l.created_at}</span>
                       <span style={{ fontWeight: 700, color: STATES[l.state]?.color || C.brown, minWidth: 75 }}>{l.state}</span>
                       <span style={{ minWidth: 80, fontWeight: 500 }}>{l.action}</span>

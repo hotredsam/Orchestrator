@@ -50,13 +50,29 @@ _BUFFER_MAX = 100  # max messages before forced flush
 
 # ─── Notification Preferences ───────────────────────────────────────────────
 # Keys: state_changes, completions, errors, credits, digest
-_notify_prefs = {
-    "state_changes": True,
-    "completions": True,
-    "errors": True,
-    "credits": True,
-    "digest": True,
-}
+_PREFS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".notify_prefs.json")
+
+def _load_prefs():
+    defaults = {"state_changes": True, "completions": True, "errors": True, "credits": True, "digest": True}
+    try:
+        if os.path.isfile(_PREFS_FILE):
+            import json
+            with open(_PREFS_FILE, "r") as f:
+                saved = json.load(f)
+            defaults.update(saved)
+    except Exception:
+        pass
+    return defaults
+
+def _save_prefs():
+    try:
+        import json
+        with open(_PREFS_FILE, "w") as f:
+            json.dump(_notify_prefs, f)
+    except Exception:
+        pass
+
+_notify_prefs = _load_prefs()
 
 # Pinned repo — default repo for commands that require one
 _pinned_repo = ""
@@ -1870,14 +1886,17 @@ def cmd_notify(arg: str = ""):
     if key == "all_on":
         for c in categories:
             _notify_prefs[c] = True
+        _save_prefs()
         return "\U0001F514 All notifications enabled."
     if key == "all_off":
         for c in categories:
             _notify_prefs[c] = False
+        _save_prefs()
         return "\U0001F515 All notifications disabled."
     if key not in _notify_prefs:
         return f"Unknown category `{key}`. Options: {', '.join(categories)}, all_on, all_off"
     _notify_prefs[key] = not _notify_prefs[key]
+    _save_prefs()
     state = "\u2705 ON" if _notify_prefs[key] else "\u274C OFF"
     return f"\U0001F514 *{key.replace('_', ' ').title()}* → {state}"
 
