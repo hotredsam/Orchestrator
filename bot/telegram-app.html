@@ -1557,7 +1557,17 @@
       if (_logLevelFilter === 'error') logs = logs.filter(l => l.error || l.action === 'error');
       else if (_logLevelFilter) logs = logs.filter(l => l.action === _logLevelFilter);
       const errCount = data.filter(l => l.error || l.action === 'error').length;
-      el.innerHTML = `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${logs.length}${_logLevelFilter ? ' filtered' : ''} of ${data.length} entries${errCount > 0 ? ` (🔴 ${errCount} errors)` : ''}</div>` + logs.slice(0, 50).map(log => {
+      const stateCount = data.filter(l => l.action === 'state_change').length;
+      const execCount = data.filter(l => l.action === 'execute').length;
+      const pushCount = data.filter(l => l.action === 'git_push').length;
+      const levelBadges = `<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-bottom:8px;">
+        <span onclick="_logLevelFilter=(_logLevelFilter==='error'?'':'error');loadLogs();" style="cursor:pointer;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:${_logLevelFilter==='error'?'var(--red)':'#FFEBEE'};color:${_logLevelFilter==='error'?'#fff':'var(--red)'};">🔴 ${errCount}</span>
+        <span onclick="_logLevelFilter=(_logLevelFilter==='state_change'?'':'state_change');loadLogs();" style="cursor:pointer;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:${_logLevelFilter==='state_change'?'var(--teal)':'#E0F2F1'};color:${_logLevelFilter==='state_change'?'#fff':'var(--teal)'};">🔄 ${stateCount}</span>
+        <span onclick="_logLevelFilter=(_logLevelFilter==='execute'?'':'execute');loadLogs();" style="cursor:pointer;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:${_logLevelFilter==='execute'?'var(--orange)':'#FFF3E0'};color:${_logLevelFilter==='execute'?'#fff':'var(--orange)'};">⚡ ${execCount}</span>
+        <span onclick="_logLevelFilter=(_logLevelFilter==='git_push'?'':'git_push');loadLogs();" style="cursor:pointer;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:${_logLevelFilter==='git_push'?'var(--green)':'#E8F5E9'};color:${_logLevelFilter==='git_push'?'#fff':'var(--green)'};">🚀 ${pushCount}</span>
+        ${_logLevelFilter ? `<span onclick="_logLevelFilter='';loadLogs();" style="cursor:pointer;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:var(--card-bg);border:1px solid var(--text-secondary);color:var(--text-secondary);">✕ Clear</span>` : ''}
+      </div>`;
+      el.innerHTML = levelBadges + `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;text-align:center;">${logs.length}${_logLevelFilter ? ' filtered' : ''} of ${data.length} entries${errCount > 0 ? ` (🔴 ${errCount} errors)` : ''}</div>` + logs.slice(0, 50).map(log => {
         const ago = timeAgo(log.created_at);
         const actionColors = { state_change: 'var(--teal)', error: 'var(--red)', git_push: 'var(--green)', execute: 'var(--orange)' };
         const color = actionColors[log.action] || 'var(--text-secondary)';

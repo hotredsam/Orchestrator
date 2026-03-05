@@ -2010,6 +2010,31 @@ def cmd_export(name: str = ""):
     return "```\n" + "\n".join(lines) + "\n```"
 
 
+def cmd_retry_all():
+    """Retry completed items across ALL repos at once."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos found."
+    total_retried = 0
+    results = []
+    for r in repos:
+        items = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        completed = [i for i in items if i.get("status") == "completed"]
+        if not completed:
+            continue
+        result = _orch_post("/api/items/retry", {"repo_id": r["id"], "status": "completed"})
+        if result.get("ok"):
+            total_retried += len(completed)
+            results.append(f"  \u2705 *{r['name']}* — {len(completed)} items re-queued")
+        else:
+            results.append(f"  \u274C *{r['name']}* — failed")
+    if not results:
+        return "\U0001F4AD No completed items found in any repo."
+    lines = [f"\U0001F504 *Retry All — {total_retried} items re-queued*\n"]
+    lines.extend(results[:20])
+    return "\n".join(lines)
+
+
 def cmd_emoji():
     """One-line emoji summary of all repos."""
     repos = _orch_get("/api/repos") or []
@@ -2062,6 +2087,7 @@ def cmd_help():
 `costs` — Per-repo API costs
 `health` — Health scan all repos
 `retry [repo]` — Re-queue completed items
+`retry_all` — Re-queue completed items across ALL repos
 `budget` / `budget [amount]` — View/set budget
 `metrics` — API request/latency stats
 `trends [repo]` — 7-day performance trends
@@ -2401,6 +2427,8 @@ def handle_message(msg):
         reply = cmd_export(t[7:].strip() if t.startswith("export ") else "")
     elif t in ("emoji", "e", "quick"):
         reply = cmd_emoji()
+    elif t in ("retry_all", "retry-all", "retryall"):
+        reply = cmd_retry_all()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2477,7 +2505,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

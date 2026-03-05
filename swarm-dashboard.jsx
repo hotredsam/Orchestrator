@@ -3376,12 +3376,13 @@ function Dashboard() {
             {apiMetrics ? (
               <div style={{ maxWidth: 800, margin: "0 auto" }}>
                 {/* Summary cards */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
                   {[
                     { label: "Total Requests", val: apiMetrics.total_requests?.toLocaleString() || "0", icon: "\uD83D\uDCE8", bg: C.lightTeal },
                     { label: "Errors", val: apiMetrics.errors?.toLocaleString() || "0", icon: "\u274C", bg: "#FFEBEE" },
                     { label: "Rate Limited", val: apiMetrics.rate_limited?.toLocaleString() || "0", icon: "\uD83D\uDEA6", bg: C.lightOrange },
                     { label: "Endpoints", val: Object.keys(apiMetrics.top_endpoints || {}).length, icon: "\uD83D\uDD17", bg: C.cream },
+                    { label: "Error Rate", val: apiMetrics.total_requests > 0 ? `${((apiMetrics.errors || 0) / apiMetrics.total_requests * 100).toFixed(1)}%` : "0%", icon: "\uD83D\uDCC9", bg: (apiMetrics.errors || 0) / Math.max(1, apiMetrics.total_requests) > 0.05 ? "#FFEBEE" : "#E8F5E9" },
                     { label: "Active Agents", val: repos.reduce((s, r) => s + (r.stats?.agents || 0), 0), icon: "\uD83E\uDD20", bg: "#E8F5E9" },
                   ].map((s, i) => (
                     <Card key={i} bg={s.bg} style={{ padding: 16, textAlign: "center" }}>
