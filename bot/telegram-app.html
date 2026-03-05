@@ -608,6 +608,17 @@
     <div style="margin-top: 20px;"><div class="spinner" style="width:28px;height:28px;"></div></div>
   </div>
 
+  <!-- Quick Actions Sidebar (swipe from left edge) -->
+  <div id="quickActionsPanel" style="position:fixed;left:0;top:0;width:72px;height:100vh;background:var(--card-bg);border-right:2px solid var(--border);z-index:200;transform:translateX(-100%);transition:transform 0.25s ease;overflow-y:auto;padding:60px 8px 16px;display:flex;flex-direction:column;gap:10px;align-items:center;box-shadow:4px 0 20px rgba(0,0,0,0.15);">
+    <button onclick="quickAction('start-all')" style="width:48px;height:48px;border-radius:12px;border:2px solid var(--border);background:var(--bg);font-size:20px;cursor:pointer;" title="Start All">▶️</button>
+    <button onclick="quickAction('stop-all')" style="width:48px;height:48px;border-radius:12px;border:2px solid var(--border);background:var(--bg);font-size:20px;cursor:pointer;" title="Stop All">⏹️</button>
+    <button onclick="quickAction('refresh')" style="width:48px;height:48px;border-radius:12px;border:2px solid var(--border);background:var(--bg);font-size:20px;cursor:pointer;" title="Refresh">🔄</button>
+    <button onclick="quickAction('health')" style="width:48px;height:48px;border-radius:12px;border:2px solid var(--border);background:var(--bg);font-size:20px;cursor:pointer;" title="Health Scan">🔍</button>
+    <button onclick="quickAction('chat')" style="width:48px;height:48px;border-radius:12px;border:2px solid var(--border);background:var(--bg);font-size:20px;cursor:pointer;" title="Chat">💬</button>
+    <button onclick="quickAction('dark')" style="width:48px;height:48px;border-radius:12px;border:2px solid var(--border);background:var(--bg);font-size:20px;cursor:pointer;" title="Toggle Dark">🌙</button>
+  </div>
+  <div id="quickActionsOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:199;background:rgba(0,0,0,0.3);" onclick="closeQuickActions()"></div>
+
   <div id="app">
     <!-- Header -->
     <div class="header">
@@ -2220,6 +2231,41 @@
       { label: 'Backlog', fn: () => sendChat('backlog') },
       { label: 'Overview', fn: () => sendChat('overview') },
     ];
+    // Swipe-from-left quick actions
+    let _swipeStartX = 0, _swipeStartY = 0, _swipeActive = false;
+    document.addEventListener('touchstart', function(e) {
+      _swipeStartX = e.touches[0].clientX;
+      _swipeStartY = e.touches[0].clientY;
+      _swipeActive = _swipeStartX < 25;
+    }, { passive: true });
+    document.addEventListener('touchmove', function(e) {
+      if (!_swipeActive) return;
+      const dx = e.touches[0].clientX - _swipeStartX;
+      const dy = Math.abs(e.touches[0].clientY - _swipeStartY);
+      if (dx > 50 && dy < 40) { openQuickActions(); _swipeActive = false; }
+    }, { passive: true });
+    function openQuickActions() {
+      document.getElementById('quickActionsPanel').style.transform = 'translateX(0)';
+      document.getElementById('quickActionsOverlay').style.display = 'block';
+      haptic('light');
+    }
+    function closeQuickActions() {
+      document.getElementById('quickActionsPanel').style.transform = 'translateX(-100%)';
+      document.getElementById('quickActionsOverlay').style.display = 'none';
+    }
+    function quickAction(action) {
+      closeQuickActions();
+      haptic('medium');
+      switch(action) {
+        case 'start-all': sendChat('start all'); break;
+        case 'stop-all': sendChat('stop all'); break;
+        case 'refresh': loadRepos(); break;
+        case 'health': sendChat('health'); break;
+        case 'chat': switchTab('chat'); break;
+        case 'dark': toggleDarkMode(); break;
+      }
+    }
+
     function openCmdPalette() {
       let ov = document.getElementById('cmdPalette');
       if (!ov) {

@@ -817,6 +817,30 @@ def cmd_add_repo(text):
     return f"Failed: {result.get('error', 'unknown error')}"
 
 
+def cmd_clone(text):
+    """Clone a GitHub repo and auto-register it.
+    Usage: /clone https://github.com/user/repo [as custom-name]
+    """
+    parts = text.strip().split()
+    if not parts or not parts[0].startswith("http"):
+        return "Usage: `/clone https://github.com/user/repo [as custom-name]`"
+    url = parts[0]
+    # Extract name from URL or custom alias
+    name = None
+    if len(parts) >= 3 and parts[1].lower() == "as":
+        name = parts[2]
+    if not name:
+        name = url.rstrip("/").split("/")[-1].replace(".git", "")
+    if not name:
+        return "Could not determine repo name from URL."
+    result = _orch_post("/api/repos/clone", {"url": url, "name": name})
+    if isinstance(result, dict) and result.get("ok"):
+        path = result.get("path", "?")
+        return f"✅ Cloned and registered *{name}*\n📁 `{path}`"
+    err = result.get("error", "unknown error") if isinstance(result, dict) else "API error"
+    return f"❌ Clone failed: {err}"
+
+
 def cmd_remove_repo(name):
     """Remove a repo from the orchestrator (files kept on disk)."""
     repo = _find_repo(name)
@@ -2833,6 +2857,8 @@ def handle_message(msg):
         reply = cmd_overview()
     elif t == "quiet" or t.startswith("quiet "):
         reply = cmd_quiet(t[6:].strip() if t.startswith("quiet ") else "")
+    elif t.startswith("clone "):
+        reply = cmd_clone(t[6:].strip())
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2909,7 +2935,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

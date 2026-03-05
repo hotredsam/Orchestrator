@@ -1964,6 +1964,44 @@ function Dashboard() {
                 </div>)}
               </Card>;
             })()}
+            {/* Anomaly Detection */}
+            {(() => {
+              const anomalies = [];
+              repos.forEach(r => {
+                const s = r.stats || {};
+                const done = s.items_done || 0;
+                const total = s.items_total || 0;
+                const errs = s.mistakes || 0;
+                const cost = costs[r.id] || 0;
+                try {
+                  const k = `anom_${r.id}`;
+                  const hist = JSON.parse(localStorage.getItem(k) || "[]");
+                  const now = Date.now();
+                  const h = hist.filter(e => now - e.t < 7 * 86400000);
+                  h.push({ t: now, d: done, e: errs, c: cost });
+                  if (h.length > 168) h.splice(0, h.length - 168);
+                  localStorage.setItem(k, JSON.stringify(h));
+                  if (h.length >= 6) {
+                    const base = h.slice(0, -3);
+                    const avgC = base.reduce((s, x) => s + x.c, 0) / base.length;
+                    const avgE = base.reduce((s, x) => s + x.e, 0) / base.length;
+                    if (avgC > 0 && cost > avgC * 2) anomalies.push({ repo: r.name, msg: `Cost spike $${cost.toFixed(2)} (2x avg $${avgC.toFixed(2)})`, lvl: "red" });
+                    if (avgE > 0 && errs > avgE * 1.8) anomalies.push({ repo: r.name, msg: `Error spike ${errs} (baseline ~${Math.round(avgE)})`, lvl: "orange" });
+                  }
+                } catch (e) {}
+              });
+              const dismissed = JSON.parse(localStorage.getItem("anom_dismiss") || "{}");
+              const filtered = anomalies.filter(a => !dismissed[a.repo + a.msg]);
+              if (filtered.length === 0) return null;
+              return <Card bg={C.white} style={{ maxWidth: 700, margin: "12px auto 0", padding: 14, borderLeft: `4px solid ${C.orange}` }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>{"\u26A0\uFE0F"} Anomalies ({filtered.length})</div>
+                {filtered.slice(0, 5).map((a, i) => <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12 }}>
+                  <span style={{ color: a.lvl === "red" ? C.red : C.orange, fontWeight: 700 }}>{a.repo}:</span>
+                  <span style={{ flex: 1, color: C.brown }}>{a.msg}</span>
+                  <button onClick={() => { const d = JSON.parse(localStorage.getItem("anom_dismiss") || "{}"); d[a.repo + a.msg] = Date.now(); localStorage.setItem("anom_dismiss", JSON.stringify(d)); load(); }} style={{ background: "none", border: "none", fontSize: 10, cursor: "pointer", color: C.brown }}>dismiss</button>
+                </div>)}
+              </Card>;
+            })()}
             {/* Dependency Graph */}
             <details style={{ maxWidth: 700, margin: "20px auto 0" }}>
               <summary style={{ fontSize: 13, fontWeight: 700, color: C.brown, cursor: "pointer", fontFamily: "'Bangers', cursive", letterSpacing: 1, textAlign: "center" }}>
