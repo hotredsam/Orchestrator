@@ -230,6 +230,7 @@ function Dashboard() {
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const [expandedLog, setExpandedLog] = useState(null); // log id
   const [histFilter, setHistFilter] = useState("all"); // history action filter
+  const [showQuickAdd, setShowQuickAdd] = useState(false); // quick add item modal
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -489,6 +490,7 @@ function Dashboard() {
       if (e.key === "?") setShowHelp(prev => !prev);
       if (e.key === "f" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTimeout(() => { const el = document.querySelector("input[placeholder*='Search'],input[placeholder*='search'],input[placeholder*='Filter']"); if (el) el.focus(); }, 50); }
       if (e.key === "n" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTab("items"); setTimeout(() => { const el = document.querySelector("input[placeholder*='Bounty title']"); if (el) el.focus(); }, 100); }
+      if (e.key === "i" && e.altKey) { e.preventDefault(); setShowQuickAdd(true); }
       if (e.key === "c" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); setLogSearch(""); setMemSearch(""); setRepoFilter("all"); setSelectedItems(new Set()); }
       if (e.key === "[") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci > 0) setTab(TABS_LIST[ci - 1]); }
       if (e.key === "]") { e.preventDefault(); const ci = TABS_LIST.indexOf(tab); if (ci < TABS_LIST.length - 1) setTab(TABS_LIST[ci + 1]); }
@@ -2986,8 +2988,20 @@ function Dashboard() {
               ))}
               <Btn onClick={exportLogs} bg={C.teal} style={{ fontSize: 11, padding: "8px 14px" }}>{"\u2B07"} Export</Btn>
             </div>
-            {(dLogSearch || logLevelFilter !== "all" || filteredLogs.length < logs.length) && (
-              <div style={{ textAlign: "center", fontSize: 11, color: C.brown, marginBottom: 6 }}>Showing {Math.min(visibleLogs.length, filteredLogs.length)} of {filteredLogs.length} matched ({logs.length} total)</div>
+            {logs.length > 0 && (
+              <div style={{ textAlign: "center", fontSize: 11, color: C.brown, marginBottom: 6 }}>
+                {(dLogSearch || logLevelFilter !== "all") ? `Showing ${Math.min(visibleLogs.length, filteredLogs.length)} of ${filteredLogs.length} matched (${logs.length} total)` : `${logs.length} entries`}
+                {(() => {
+                  const recent = logs.filter(l => l.created_at).slice(0, 20);
+                  if (recent.length < 2) return null;
+                  const ts = recent.map(l => new Date(l.created_at).getTime()).filter(t => !isNaN(t));
+                  if (ts.length < 2) return null;
+                  const spanMin = (ts[0] - ts[ts.length-1]) / 60000;
+                  if (spanMin <= 0) return null;
+                  const rate = (ts.length / spanMin).toFixed(1);
+                  return <span style={{ marginLeft: 8, background: parseFloat(rate) > 5 ? C.lightTeal : C.lightOrange, color: parseFloat(rate) > 5 ? C.teal : C.orange, padding: "1px 8px", borderRadius: 8, fontWeight: 700, fontSize: 10 }}>{"\u26A1"} {rate}/min</span>;
+                })()}
+              </div>
             )}
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               {logs.length===0 ? (
@@ -4159,6 +4173,31 @@ function Dashboard() {
               {["home","items","plan","logs","health","settings","start","stop","pause","start all","stop all","dark","refresh","export items","export logs","help"].map(cmd => (
                 <span key={cmd} onClick={() => { setCmdQuery(cmd); }} style={{ padding: "3px 10px", borderRadius: 8, background: dark ? "#444" : C.cream, cursor: "pointer", border: `1px solid ${C.darkBrown}33` }}>{cmd}</span>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Item Modal (Alt+I) */}
+      {showQuickAdd && (
+        <div onClick={() => setShowQuickAdd(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.cream, border: `4px solid ${C.darkBrown}`, borderRadius: 16, padding: 24, maxWidth: 380, width: "90%", boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}>
+            <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, marginBottom: 12, letterSpacing: 1.5 }}>{"\u26A1"} Quick Add Item</div>
+            <Inp id="quick-add-title" placeholder="Item title..." style={{ marginBottom: 8, fontSize: 14 }} onKeyDown={async e => {
+              if (e.key === "Enter" && sr) {
+                const title = e.target.value.trim();
+                if (!title) return;
+                const prio = document.getElementById("quick-add-prio")?.value || "medium";
+                await f("/api/items", { method: "POST", body: JSON.stringify({ repo_id: sr, title, type: "feature", priority: prio }) });
+                showToast(`Added: ${title}`, "success"); setShowQuickAdd(false); load();
+              }
+              if (e.key === "Escape") setShowQuickAdd(false);
+            }} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <select id="quick-add-prio" defaultValue="medium" style={{ padding: "8px 12px", background: C.cream, border: `3px solid ${C.darkBrown}`, borderRadius: 10, fontSize: 12, fontFamily: "'Fredoka',sans-serif", fontWeight: 600 }}>
+                {["low","medium","high","critical"].map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <span style={{ fontSize: 11, color: C.brown }}>Press Enter to add{!sr && " (select a repo first)"}</span>
             </div>
           </div>
         </div>
