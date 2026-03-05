@@ -1461,6 +1461,7 @@ function Dashboard() {
                 <option value="activity">Sort: Activity</option>
               </select>
               <button onClick={() => setCompactRepos(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactRepos ? C.teal : C.cream, color: compactRepos ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact repo cards">{compactRepos ? "\u2630 Compact" : "\u2637 Full"}</button>
+              {expandedCards.size > 0 && <button onClick={() => setExpandedCards(new Set())} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Collapse all expanded cards">{"\u2716"} Collapse {expandedCards.size}</button>}
             </div>
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: compactRepos ? "repeat(auto-fill, minmax(180px, 1fr))" : "repeat(auto-fill, minmax(280px, 1fr))", gap: compactRepos ? 8 : 16 }}>
               {repos.filter(r => {

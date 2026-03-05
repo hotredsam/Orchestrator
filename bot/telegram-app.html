@@ -2621,6 +2621,22 @@
     }
 
     // Keyboard shortcuts (desktop)
+    // Double-tap header to scroll to top
+    (function() {
+      const header = document.querySelector('.header');
+      if (!header) return;
+      let lastTap = 0;
+      header.addEventListener('click', function() {
+        const now = Date.now();
+        if (now - lastTap < 350) {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          haptic('light');
+          showToast('Scrolled to top', 'info');
+        }
+        lastTap = now;
+      });
+    })();
+
     document.addEventListener('keydown', function(e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); return; }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
