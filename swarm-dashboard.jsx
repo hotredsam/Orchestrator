@@ -1446,11 +1446,11 @@ function Dashboard() {
             {(() => { const running = repos.filter(r => r.running && !r.paused).length; const idle = repos.filter(r => !r.running).length; const paused = repos.filter(r => r.paused).length; const errored = repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length; const totalErr = repos.reduce((s,r) => s + (r.stats?.mistakes||0), 0); const totalCost = Object.values(costs).reduce((a,b) => a+b, 0); return <p style={{ textAlign: "center", fontSize: 12, color: C.cream, marginBottom: 10, fontWeight: 600, letterSpacing: 1 }}>{repos.length} total{running > 0 ? ` · ${running} running` : ""}{idle > 0 ? ` · ${idle} idle` : ""}{paused > 0 ? ` · ${paused} paused` : ""}{errored > 0 ? ` · ${errored} error` : ""}{totalErr > 0 ? ` · ${totalErr} mistakes` : ""}{totalCost > 0 ? ` · $${totalCost.toFixed(2)}` : ""}</p>; })()}
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16, flexWrap: "wrap" }}>
               <select value={repoFilter} onChange={e => setRepoFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
-                <option value="all">All</option>
-                <option value="running">Running</option>
-                <option value="idle">Idle</option>
-                <option value="paused">Paused</option>
-                <option value="error">Error</option>
+                <option value="all">All ({repos.length})</option>
+                <option value="running">Running ({repos.filter(r => r.running && !r.paused).length})</option>
+                <option value="idle">Idle ({repos.filter(r => !r.running).length})</option>
+                <option value="paused">Paused ({repos.filter(r => r.paused).length})</option>
+                <option value="error">Error ({repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length})</option>
               </select>
               <select value={repoSort} onChange={e => setRepoSort(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
                 <option value="name">Sort: Name</option>

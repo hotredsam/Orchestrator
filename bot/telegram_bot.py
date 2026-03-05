@@ -2968,6 +2968,37 @@ def cmd_resume_all():
     return f"▶️ *Resumed {resumed}/{len(paused_repos)} repos*"
 
 
+def cmd_daily():
+    """Show today's activity summary: items completed, errors, cost."""
+    repos = _orch_get("/api/repos") or []
+    costs_data = _orch_get("/api/costs") or {}
+    if not repos:
+        return "No repos registered."
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total_done_today = 0
+    total_errors_today = 0
+    active_repos = []
+    for r in repos:
+        items_data = _orch_get(f"/api/items?repo_id={r['id']}") or []
+        done_today = sum(1 for it in items_data if it.get("status") == "completed" and (it.get("completed_at") or "").startswith(today))
+        if done_today > 0:
+            total_done_today += done_today
+            active_repos.append((r["name"], done_today))
+    total_cost = costs_data.get("total", 0)
+    total_errors = sum(r.get("stats", {}).get("mistakes", 0) for r in repos)
+    running = len([r for r in repos if r.get("running")])
+    lines = [f"📅 *Daily Summary — {today}*\n"]
+    lines.append(f"  ✅ Items completed today: *{total_done_today}*")
+    lines.append(f"  🔴 Total errors: *{total_errors}*")
+    lines.append(f"  💰 Total cost: *${total_cost:.4f}*")
+    lines.append(f"  ▶️ Running: *{running}/{len(repos)}*")
+    if active_repos:
+        lines.append(f"\n🏆 *Most Active Today*")
+        for name, count in sorted(active_repos, key=lambda x: x[1], reverse=True)[:5]:
+            lines.append(f"  {name}: {count} items")
+    return "\n".join(lines)
+
+
 def cmd_zero():
     """Show repos that have zero items — need work seeded."""
     repos = _orch_get("/api/repos") or []
@@ -3724,6 +3755,8 @@ def handle_message(msg):
         reply = cmd_uptime_rank()
     elif t in ("zero", "empty", "unseeded"):
         reply = cmd_zero()
+    elif t in ("daily", "today", "day"):
+        reply = cmd_daily()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3800,7 +3833,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

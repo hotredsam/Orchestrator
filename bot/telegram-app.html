@@ -1260,7 +1260,18 @@
         ${errorRepos.length > 3 ? `<div style="font-size:9px;color:var(--text-secondary);margin-top:2px;">+${errorRepos.length - 3} more</div>` : ''}
       </div>` : '';
 
-      el.innerHTML = sysHeader + recsHtml + recentHtml + errorSummaryHtml + repos.map(r => {
+      // Sort pinned repos first
+      const pins = JSON.parse(localStorage.getItem('swarm-pinned-repos') || '[]');
+      const sortedRepos = [...repos].sort((a, b) => {
+        const ap = pins.includes(String(a.id)) ? 0 : 1;
+        const bp = pins.includes(String(b.id)) ? 0 : 1;
+        return ap - bp;
+      });
+      const pinnedCount = sortedRepos.filter(r => pins.includes(String(r.id))).length;
+      const pinnedSep = pinnedCount > 0 && pinnedCount < sortedRepos.length ? `<div style="text-align:center;font-size:10px;font-weight:700;color:var(--text-secondary);padding:4px 0;margin:4px 0;border-top:1px dashed var(--border);">📌 ${pinnedCount} pinned above</div>` : '';
+
+      el.innerHTML = sysHeader + recsHtml + recentHtml + errorSummaryHtml + sortedRepos.map((r, idx) => {
+        const sepHtml = (idx === pinnedCount && pinnedCount > 0) ? pinnedSep : '';
         const st = r.state || 'idle';
         const running = r.running;
         const paused = r.paused;
@@ -1273,7 +1284,7 @@
                           paused ? 'Paused' :
                           running ? 'Running' : 'Idle';
         const stats = r.stats || {};
-        return `
+        return `${sepHtml}
           <div class="card" data-repo-state="${running ? 'running' : st}" data-repo-id="${r.id}" data-repo-name="${esc(r.name)}">
             <div class="flex-between mb-8">
               <div class="card-title" style="display:flex;align-items:center;gap:4px;">${esc(r.name)} <button onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(r.name)}');haptic('light');showToast('Copied: ${esc(r.name)}','info');" style="background:none;border:none;cursor:pointer;font-size:11px;opacity:0.5;padding:0 2px;" title="Copy name">📋</button></div>
