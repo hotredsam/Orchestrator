@@ -1895,6 +1895,18 @@ function Dashboard() {
                     await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: running.map(r => r.id), action: "stop" }) });
                     showToast(`Stopping ${running.length} repos`, "info"); load();
                   }} style={{ background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u23F9"} Stop All</button>
+                  <button onClick={async () => {
+                    const running = repos.filter(r => r.running && !r.paused);
+                    if (running.length === 0) { showToast("No running repos to pause", "info"); return; }
+                    for (const r of running) await f("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: r.id }) });
+                    showToast(`Paused ${running.length} repos`, "info"); load();
+                  }} style={{ background: C.orange, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u23F8"} Pause All</button>
+                  <button onClick={async () => {
+                    const paused = repos.filter(r => r.running && r.paused);
+                    if (paused.length === 0) { showToast("No paused repos to resume", "info"); return; }
+                    for (const r of paused) await f("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: r.id }) });
+                    showToast(`Resumed ${paused.length} repos`, "success"); load();
+                  }} style={{ background: C.teal, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u25B6"} Resume All</button>
                 </div>
               </div>
             </Card>
@@ -2211,6 +2223,13 @@ function Dashboard() {
               <div style={{ textAlign: "center", marginBottom: 12 }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#FFF3E0", border: `2px solid ${C.orange}`, borderRadius: 12, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: C.orange }}>
                   {"\u26A0\uFE0F"} {staleItems.length} stale item{staleItems.length !== 1 ? "s" : ""} stuck in progress
+                </span>
+              </div>
+            )}
+            {(itemFilter !== "all" || sourceFilter !== "all" || priorityFilter !== "all") && (
+              <div style={{ textAlign: "center", marginBottom: 8 }}>
+                <span onClick={() => { setSourceFilter("all"); setPriorityFilter("all"); setItemFilter("all"); }} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#E3F2FD", border: `1px solid ${C.teal}`, borderRadius: 10, padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.teal, cursor: "pointer" }}>
+                  {"\uD83D\uDD0D"} Filters active — click or press C to clear
                 </span>
               </div>
             )}

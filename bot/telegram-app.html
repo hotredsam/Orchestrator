@@ -901,8 +901,8 @@
       <button class="tab-btn" data-tab="add" onclick="switchTab('add')" role="tab" aria-selected="false" aria-label="Add item">
         <span>➕</span><span class="tab-label">Add</span>
       </button>
-      <button class="tab-btn" data-tab="items" onclick="switchTab('items')" role="tab" aria-selected="false" aria-label="Items list">
-        <span>📦</span><span class="tab-label">Items</span>
+      <button class="tab-btn" data-tab="items" onclick="switchTab('items')" role="tab" aria-selected="false" aria-label="Items list" style="position:relative;">
+        <span>📦</span><span class="tab-label">Items</span><span class="tab-badge" style="position:absolute;top:-2px;right:-2px;font-size:8px;min-width:14px;height:14px;line-height:14px;text-align:center;border-radius:7px;background:var(--red);color:#fff;font-weight:700;"></span>
       </button>
       <button class="tab-btn" data-tab="flow" onclick="switchTab('flow')" role="tab" aria-selected="false" aria-label="Flow map">
         <span>🗺️</span><span class="tab-label">Flow</span>
@@ -916,8 +916,8 @@
       <button class="tab-btn" data-tab="memory" onclick="switchTab('memory')" role="tab" aria-selected="false" aria-label="Memory">
         <span>🧠</span><span class="tab-label">Memory</span>
       </button>
-      <button class="tab-btn" data-tab="mistakes" onclick="switchTab('mistakes')" role="tab" aria-selected="false" aria-label="Errors">
-        <span>💀</span><span class="tab-label">Errors</span>
+      <button class="tab-btn" data-tab="mistakes" onclick="switchTab('mistakes')" role="tab" aria-selected="false" aria-label="Errors" style="position:relative;">
+        <span>💀</span><span class="tab-label">Errors</span><span class="tab-badge" style="position:absolute;top:-2px;right:-2px;font-size:8px;min-width:14px;height:14px;line-height:14px;text-align:center;border-radius:7px;background:var(--orange);color:#fff;font-weight:700;"></span>
       </button>
       <button class="tab-btn" data-tab="health" onclick="switchTab('health')" role="tab" aria-selected="false" aria-label="Health scan">
         <span>🔍</span><span class="tab-label">Health</span>
@@ -1062,6 +1062,14 @@
       if (!data) return;
       repos = data;
       updateLastFetch();
+
+      // Update tab badges
+      const totalPending = data.reduce((s, r) => s + ((r.stats?.items_total || 0) - (r.stats?.items_done || 0)), 0);
+      const totalErrors = data.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
+      const itemsBadge = document.querySelector('[data-tab="items"] .tab-badge');
+      const errorBadge = document.querySelector('[data-tab="mistakes"] .tab-badge');
+      if (itemsBadge) itemsBadge.textContent = totalPending > 0 ? totalPending : '';
+      if (errorBadge) errorBadge.textContent = totalErrors > 0 ? totalErrors : '';
 
       // Sort repos
       const sortBy = document.getElementById('homeSortSelect')?.value || 'name';
