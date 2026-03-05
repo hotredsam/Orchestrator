@@ -971,6 +971,13 @@ def cmd_metrics():
             slow = len([d for d in all_durs if d > 120])
             if slow > 0:
                 lines.append(f"\u26A0\uFE0F {slow} steps >2min ({slow*100//len(all_durs)}%)")
+            if len(all_durs) >= 5:
+                std_dev = (sum((d - avg_d) ** 2 for d in all_durs) / len(all_durs)) ** 0.5
+                outliers = [d for d in all_durs if abs(d - avg_d) > 2 * std_dev]
+                if outliers and std_dev > 1:
+                    lines.append(f"\U0001F4CA Variance: \u00B1{std_dev:.1f}s | {len(outliers)} outlier{'s' if len(outliers) != 1 else ''}")
+                    slowest = max(outliers)
+                    lines.append(f"  \U0001F422 Worst: {slowest:.0f}s ({slowest/max(0.1, avg_d):.1f}x avg)")
         return "\n".join(lines)
     return "Could not fetch metrics."
 

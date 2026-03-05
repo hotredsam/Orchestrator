@@ -1532,6 +1532,11 @@ function Dashboard() {
                       {s.steps_total > 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>{pctSteps}%</div>}
                     </div>
 
+                    {/* Completion momentum */}
+                    {(s.items_done || 0) > 0 && (() => {
+                      try { const k=`mom_${r.id}`; const h=JSON.parse(localStorage.getItem(k)||"[]"); const d=s.items_done||0; const now=new Date().toISOString().slice(0,13); if(!h.length||h[h.length-1].t!==now) h.push({t:now,v:d}); else h[h.length-1].v=d; if(h.length>8) h.splice(0,h.length-8); localStorage.setItem(k,JSON.stringify(h)); if(h.length>=3){const r1=h[h.length-1].v-h[h.length-2].v; const r2=h[h.length-2].v-h[h.length-3].v; const accel=r1-r2; if(accel>0) return <span style={{fontSize:9,color:C.green,fontWeight:700}}>{"\uD83D\uDE80"} Accelerating</span>; if(accel<0) return <span style={{fontSize:9,color:C.orange,fontWeight:700}}>{"\uD83D\uDCC9"} Decelerating</span>; return <span style={{fontSize:9,color:C.brown,fontWeight:700,opacity:0.5}}>{"\u2192"} Steady</span>; } } catch(e){} return null;
+                    })()}
+
                     {/* Last error hint */}
                     {(r.state === "error" || r.state === "credits_exhausted") && r.last_error && (
                       <div style={{ fontSize: 10, color: C.red, padding: "4px 8px", background: `${C.red}11`, borderRadius: 6, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.last_error}>
