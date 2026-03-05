@@ -2633,6 +2633,32 @@ def cmd_emoji():
     return " ".join(parts) + f"\n\n{running}/{len(repos)} running"
 
 
+def cmd_focus():
+    """Identify repos needing the most attention based on errors, staleness, and pending items."""
+    repos = _orch_get("/api/repos") or []
+    if not repos:
+        return "No repos registered."
+    scored = []
+    for r in repos:
+        s = r.get("stats", {})
+        errs = s.get("mistakes", 0)
+        pending = (s.get("items_total", 0) - s.get("items_done", 0))
+        running = 1 if r.get("running") else 0
+        # Score: higher = needs more attention
+        score = errs * 5 + pending * 2 + (10 if r.get("state") == "error" else 0) + (5 if not running and pending > 0 else 0)
+        if score > 0:
+            scored.append((score, r["name"], errs, pending, r.get("state", "idle")))
+    if not scored:
+        return "✅ All repos look healthy — nothing needs focus."
+    scored.sort(key=lambda x: -x[0])
+    lines = ["🎯 *Focus Priority*\n"]
+    for i, (score, name, errs, pending, state) in enumerate(scored[:7]):
+        icon = "🔴" if score > 30 else "🟡" if score > 10 else "🟢"
+        lines.append(f"  {icon} *{name}* — score {score} ({errs} errs, {pending} pending, {state})")
+    lines.append(f"\n💡 Highest priority: *{scored[0][1]}*")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -3036,6 +3062,8 @@ def handle_message(msg):
         reply = cmd_watch(t[6:].strip() if t.startswith("watch ") else "")
     elif t.startswith("rename "):
         reply = cmd_rename(t[7:].strip())
+    elif t in ("focus", "attention", "priority"):
+        reply = cmd_focus()
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3112,7 +3140,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

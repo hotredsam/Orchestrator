@@ -1746,6 +1746,24 @@ function Dashboard() {
                   <div style={{ width: `${sysScore}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.5s" }} />
                 </div>
                 <span style={{ fontSize: 9, color: C.brown }}>{running}/{repos.length} active</span>
+                {(() => {
+                  try {
+                    const totalCost = repos.reduce((s, r) => s + (costs[r.id] || 0), 0);
+                    const k = "sys_cost_trend";
+                    const h = JSON.parse(localStorage.getItem(k) || "[]");
+                    const now = new Date().toISOString().slice(0, 13);
+                    if (!h.length || h[h.length-1].t !== now) h.push({ t: now, v: totalCost });
+                    else h[h.length-1].v = totalCost;
+                    if (h.length > 12) h.splice(0, h.length - 12);
+                    localStorage.setItem(k, JSON.stringify(h));
+                    if (h.length >= 2) {
+                      const d = h[h.length-1].v - h[h.length-2].v;
+                      const arrow = d > 0.01 ? "\u2197" : d < -0.01 ? "\u2198" : "";
+                      return <span style={{ fontSize: 9, color: d > 0 ? C.red : C.green, fontWeight: 700 }}>${totalCost.toFixed(2)}{arrow}</span>;
+                    }
+                    return <span style={{ fontSize: 9, color: C.brown }}>${totalCost.toFixed(2)}</span>;
+                  } catch (e) { return null; }
+                })()}
               </div>;
             })()}
             {/* Filter bar */}

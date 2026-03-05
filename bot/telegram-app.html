@@ -1539,7 +1539,7 @@
             <div class="flex-between mb-8" onclick="this.parentElement.querySelector('.item-details')?.classList.toggle('hidden')" style="cursor:pointer;">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span>${typeEmoji}</span>
-                <span style="font-weight:600;font-size:14px;">${esc(item.title)}</span>
+                <span style="font-weight:600;font-size:14px;">${itemSearch ? highlight(item.title, itemSearch) : esc(item.title)}</span>
               </div>
               <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:${statusColors[item.status] || 'var(--orange)'};color:#fff;">${item.status}</span>
             </div>
@@ -2143,6 +2143,13 @@
       const d = document.createElement('div');
       d.textContent = s || '';
       return d.innerHTML;
+    }
+    function highlight(text, query) {
+      if (!query) return esc(text);
+      const safe = esc(text);
+      const q = esc(query);
+      const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+      return safe.replace(re, '<mark style="background:var(--orange);color:#fff;padding:0 2px;border-radius:3px;">$1</mark>');
     }
 
     function timeAgo(dateStr) {
