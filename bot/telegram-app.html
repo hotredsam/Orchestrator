@@ -628,6 +628,7 @@
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h1>🌵 Swarm Town</h1>
         <div style="display:flex; align-items:center; gap:8px;">
+          <span id="connQuality" style="display:none; padding:1px 6px; border-radius:8px; font-size:9px; font-weight:600; background:var(--bg); color:var(--text-secondary);"></span>
           <span id="costBadge" style="display:none; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; background:rgba(46,204,113,0.15); color:var(--green); border:2px solid var(--green);"></span>
           <button onclick="toggleDarkMode()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px;" id="darkToggle" aria-label="Toggle dark mode">🌙</button>
           <button onclick="document.getElementById('shortcutHelp').style.display=document.getElementById('shortcutHelp').style.display==='none'?'flex':'none'" style="background:none; border:none; font-size:16px; cursor:pointer; padding:4px;" aria-label="Help">❓</button>
@@ -1017,12 +1018,18 @@
     const API_BASE = params.get('api') || window.location.origin || 'http://localhost:6969';
     let __apiToken = window.__SWARM_API_TOKEN__ || '';
 
+    let _apiLatencies = [];
     async function api(path, opts, { silent = false, retries = 1 } = {}) {
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
+          const t0 = Date.now();
           const headers = { 'Content-Type': 'application/json' };
           if (__apiToken) headers['Authorization'] = 'Bearer ' + __apiToken;
           const res = await fetch(API_BASE + path, { headers, ...opts });
+          const lat = Date.now() - t0;
+          _apiLatencies.push(lat);
+          if (_apiLatencies.length > 20) _apiLatencies.shift();
+          updateConnQuality();
           if (!res.ok && !silent) {
             const errData = await res.json().catch(() => ({}));
             showToast(errData.error || `API error ${res.status}`, 'error');
@@ -1036,6 +1043,14 @@
           return null;
         }
       }
+    }
+    function updateConnQuality() {
+      const badge = document.getElementById('connQuality');
+      if (!badge || _apiLatencies.length < 2) return;
+      const avg = _apiLatencies.reduce((s, v) => s + v, 0) / _apiLatencies.length;
+      const icon = avg < 200 ? '🟢' : avg < 500 ? '🟡' : '🔴';
+      badge.textContent = icon + ' ' + Math.round(avg) + 'ms';
+      badge.style.display = 'inline';
     }
 
     // Fetch token if not injected (fallback for local dev)

@@ -244,6 +244,7 @@ function Dashboard() {
   const [tabPulse, setTabPulse] = useState({});
   const prevBadges = useRef({});
   const [showToastHistory, setShowToastHistory] = useState(false);
+  const [expandedCards, setExpandedCards] = useState(new Set());
   const showToast = useCallback((message, type = "info") => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev.slice(-4), { id, message, type }]);
@@ -1484,7 +1485,8 @@ function Dashboard() {
                         ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)`
                         : `linear-gradient(135deg, #FFFFFF 0%, #FDFAF2 100%)`,
                     }}
-                    onClick={() => { setSR(r.id); setTab("flow"); }}>
+                    onClick={() => { setSR(r.id); setTab("flow"); }}
+                    onDoubleClick={(e) => { e.stopPropagation(); setExpandedCards(prev => { const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n; }); }}>
                     {/* Subtle card texture */}
                     <div style={{ position: "absolute", inset: 0, opacity: 0.025, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v20h2V0h2v20h2V0h2v20h2V0h2v20h2V0h2v20.5' fill='%233D2B1F' fill-opacity='.4' fill-rule='evenodd'/%3E%3C/svg%3E\")", pointerEvents: "none" }} />
 
@@ -1607,6 +1609,19 @@ function Dashboard() {
                         </div>;
                       } catch (e) { return null; }
                     })()}
+
+                    {/* Expanded details (double-click) */}
+                    {expandedCards.has(r.id) && <div style={{ padding: "8px 0", borderTop: `1px dashed ${C.darkBrown}22`, marginTop: 4, fontSize: 11, color: C.brown }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                        <span>Branch: <strong>{r.branch || "main"}</strong></span>
+                        <span>ID: <strong>#{r.id}</strong></span>
+                        <span>Path: <code style={{ fontSize: 9 }}>{r.path?.slice(-30) || "?"}</code></span>
+                        <span>Tags: {r.tags || "none"}</span>
+                        <span>Steps: {s.steps_done || 0}/{s.steps_total || 0}</span>
+                        <span>Cycles: {s.cycles || 0}</span>
+                      </div>
+                      <div style={{ fontSize: 9, color: C.brown, opacity: 0.6, marginTop: 4 }}>Double-click to collapse</div>
+                    </div>}
 
                     {/* Action buttons + state label */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

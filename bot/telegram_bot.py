@@ -2659,6 +2659,22 @@ def cmd_focus():
     return "\n".join(lines)
 
 
+def cmd_diff(name: str = ""):
+    """Show recent git changes (last commit diff summary) for a repo."""
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("diff") if not name else f"Repo '{name}' not found."
+    result = _orch_get(f"/api/repos/diff?repo_id={repo['id']}")
+    if isinstance(result, dict) and result.get("diff"):
+        diff = result["diff"]
+        if len(diff) > 2000:
+            diff = diff[:2000] + "\n... (truncated)"
+        return f"📝 *Diff: {repo['name']}*\n```\n{diff}\n```"
+    if isinstance(result, dict) and result.get("summary"):
+        return f"📝 *{repo['name']}*: {result['summary']}"
+    return f"📝 *{repo['name']}*: No recent changes or diff unavailable."
+
+
 def cmd_progress():
     """Compact progress overview with visual bars for every repo."""
     repos = _orch_get("/api/repos") or []
@@ -3115,6 +3131,8 @@ def handle_message(msg):
         reply = cmd_wave()
     elif t in ("progress", "prog", "bars"):
         reply = cmd_progress()
+    elif t == "diff" or t.startswith("diff "):
+        reply = cmd_diff(t[5:].strip() if t.startswith("diff ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3191,7 +3209,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
