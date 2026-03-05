@@ -1532,6 +1532,28 @@ function Dashboard() {
                       {s.steps_total > 0 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: C.darkBrown, fontFamily: "'Bangers', cursive", letterSpacing: 1 }}>{pctSteps}%</div>}
                     </div>
 
+                    {/* Activity dots (24h) */}
+                    {(() => {
+                      try {
+                        const k = `act_${r.id}`;
+                        const now = Date.now();
+                        const h = JSON.parse(localStorage.getItem(k) || "[]").filter(e => now - e.t < 86400000);
+                        h.push({ t: now, d: s.items_done || 0, e: s.mistakes || 0, run: r.running ? 1 : 0 });
+                        if (h.length > 48) h.splice(0, h.length - 48);
+                        localStorage.setItem(k, JSON.stringify(h));
+                        if (h.length < 4) return null;
+                        const maxD = Math.max(1, ...h.map((x,i) => i > 0 ? Math.abs(x.d - h[i-1].d) + Math.abs(x.e - h[i-1].e) : 0));
+                        return <div style={{ display: "flex", gap: 1, alignItems: "end", height: 10, marginBottom: 6 }}>
+                          {h.slice(-24).map((x, i, a) => {
+                            const delta = i > 0 ? Math.abs(x.d - a[i-1].d) + Math.abs(x.e - a[i-1].e) : 0;
+                            const intensity = Math.min(1, delta / maxD);
+                            const c = x.run ? C.green : C.brown;
+                            return <div key={i} style={{ width: 3, height: Math.max(2, intensity * 10), borderRadius: 1, background: c, opacity: 0.3 + intensity * 0.7 }} />;
+                          })}
+                        </div>;
+                      } catch (e) { return null; }
+                    })()}
+
                     {/* Completion momentum */}
                     {(s.items_done || 0) > 0 && (() => {
                       try { const k=`mom_${r.id}`; const h=JSON.parse(localStorage.getItem(k)||"[]"); const d=s.items_done||0; const now=new Date().toISOString().slice(0,13); if(!h.length||h[h.length-1].t!==now) h.push({t:now,v:d}); else h[h.length-1].v=d; if(h.length>8) h.splice(0,h.length-8); localStorage.setItem(k,JSON.stringify(h)); if(h.length>=3){const r1=h[h.length-1].v-h[h.length-2].v; const r2=h[h.length-2].v-h[h.length-3].v; const accel=r1-r2; if(accel>0) return <span style={{fontSize:9,color:C.green,fontWeight:700}}>{"\uD83D\uDE80"} Accelerating</span>; if(accel<0) return <span style={{fontSize:9,color:C.orange,fontWeight:700}}>{"\uD83D\uDCC9"} Decelerating</span>; return <span style={{fontSize:9,color:C.brown,fontWeight:700,opacity:0.5}}>{"\u2192"} Steady</span>; } } catch(e){} return null;

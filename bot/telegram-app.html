@@ -1498,7 +1498,7 @@
         const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢', critical: '⛔' };
         const hasDetails = (item.description && item.description !== item.title) || item.depends_on || item.created_at;
         return `
-          <div class="card" style="margin-bottom:8px; padding:10px 12px;border-left:3px solid ${statusColors[item.status] || 'var(--orange)'};">
+          <div class="card" style="margin-bottom:8px; padding:10px 12px;border-left:3px solid ${statusColors[item.status] || 'var(--orange)'};" ontouchstart="itemTouchStart(event,${repoId},${item.id},'${item.status}','${item.priority||'medium'}')" ontouchend="itemTouchEnd()" oncontextmenu="event.preventDefault();showItemMenu(event.clientX,event.clientY,${repoId},${item.id},'${item.status}','${item.priority||'medium'}')">
             <div class="flex-between mb-8" onclick="this.parentElement.querySelector('.item-details')?.classList.toggle('hidden')" style="cursor:pointer;">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span>${typeEmoji}</span>
@@ -1546,6 +1546,33 @@
       showToast(`Completed ${done} items`, 'success');
       loadItems();
     }
+
+    // Long-press context menu
+    let _longPressTimer = null;
+    function itemTouchStart(e, repoId, itemId, status, prio) {
+      _longPressTimer = setTimeout(() => {
+        haptic('heavy');
+        showItemMenu(e.touches[0].clientX, e.touches[0].clientY, repoId, itemId, status, prio);
+      }, 500);
+    }
+    function itemTouchEnd() { clearTimeout(_longPressTimer); }
+    function showItemMenu(x, y, repoId, itemId, status, prio) {
+      closeItemMenu();
+      const m = document.createElement('div');
+      m.id = 'itemCtxMenu';
+      const top = Math.min(y, window.innerHeight - 200);
+      const left = Math.min(x, window.innerWidth - 170);
+      m.style.cssText = 'position:fixed;top:'+top+'px;left:'+left+'px;background:var(--card-bg);border:2px solid var(--border);border-radius:12px;box-shadow:0 8px 24px var(--shadow);z-index:250;min-width:160px;overflow:hidden;';
+      const actions = [];
+      if (status === 'pending') actions.push({l:'✅ Mark Done',fn:'changeItemStatus('+repoId+','+itemId+',\\'completed\\')'});
+      if (status === 'completed') actions.push({l:'🔄 Re-open',fn:'changeItemStatus('+repoId+','+itemId+',\\'pending\\')'});
+      actions.push({l:'⬆️ Cycle Priority',fn:'cyclePriority('+repoId+','+itemId+',\\''+prio+'\\')'});
+      actions.push({l:'🗑️ Delete',fn:'deleteItem('+repoId+','+itemId+')'});
+      m.innerHTML = actions.map(a => '<button onclick="closeItemMenu();'+a.fn+'" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:13px;color:var(--text);border-bottom:1px solid var(--border);">'+a.l+'</button>').join('');
+      document.body.appendChild(m);
+      setTimeout(() => { document.addEventListener('click', closeItemMenu, { once: true }); }, 50);
+    }
+    function closeItemMenu() { const m = document.getElementById('itemCtxMenu'); if (m) m.remove(); }
 
     async function cyclePriority(repoId, itemId, currentPrio) {
       const cycle = { low: 'medium', medium: 'high', high: 'critical', critical: 'low' };

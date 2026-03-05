@@ -2315,6 +2315,54 @@ def cmd_notify(arg: str = ""):
     return f"\U0001F514 *{key.replace('_', ' ').title()}* → {state}"
 
 
+_repo_thresholds = {}  # name -> {cost: float, errors: int}
+
+def cmd_threshold(arg: str = ""):
+    """Set or view per-repo alert thresholds.
+    Usage: /threshold blog cost 2.00
+           /threshold blog errors 5
+           /threshold blog  (view)
+           /threshold       (view all)
+    """
+    parts = arg.strip().split()
+    if not parts:
+        if not _repo_thresholds:
+            return "📏 *Thresholds:* None set\n\nUsage: `/threshold repo_name cost 2.00`\nor `/threshold repo_name errors 5`"
+        lines = ["📏 *Repo Thresholds*\n"]
+        for name, th in sorted(_repo_thresholds.items()):
+            bits = []
+            if "cost" in th: bits.append(f"💰 ${th['cost']:.2f}")
+            if "errors" in th: bits.append(f"🐛 {th['errors']} errors")
+            lines.append(f"  *{name}*: {' | '.join(bits)}")
+        return "\n".join(lines)
+    name = parts[0].lower()
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    if len(parts) == 1:
+        th = _repo_thresholds.get(repo["name"], {})
+        if not th:
+            return f"📏 No thresholds set for *{repo['name']}*"
+        bits = []
+        if "cost" in th: bits.append(f"💰 Cost: ${th['cost']:.2f}")
+        if "errors" in th: bits.append(f"🐛 Errors: {th['errors']}")
+        return f"📏 *{repo['name']}* thresholds:\n  " + "\n  ".join(bits)
+    if len(parts) >= 3:
+        metric = parts[1].lower()
+        try:
+            val = float(parts[2].replace("$", ""))
+        except ValueError:
+            return "Value must be a number."
+        th = _repo_thresholds.setdefault(repo["name"], {})
+        if metric == "cost":
+            th["cost"] = val
+            return f"📏 *{repo['name']}* cost threshold set to *${val:.2f}*"
+        elif metric in ("errors", "error"):
+            th["errors"] = int(val)
+            return f"📏 *{repo['name']}* error threshold set to *{int(val)}*"
+    return "Usage: `/threshold repo_name cost 2.00` or `/threshold repo_name errors 5`"
+
+
 def cmd_cost_alert(arg: str = ""):
     """Set or view daily cost alert threshold."""
     global _cost_alert_threshold, _cost_alert_fired_today
@@ -2859,6 +2907,8 @@ def handle_message(msg):
         reply = cmd_quiet(t[6:].strip() if t.startswith("quiet ") else "")
     elif t.startswith("clone "):
         reply = cmd_clone(t[6:].strip())
+    elif t == "threshold" or t.startswith("threshold "):
+        reply = cmd_threshold(t[10:].strip() if t.startswith("threshold ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2935,7 +2985,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
