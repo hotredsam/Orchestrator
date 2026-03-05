@@ -1645,6 +1645,35 @@ def cmd_fastest():
     return "\n".join(lines)
 
 
+def cmd_pick(name: str = ""):
+    """Pick a random pending item from a repo."""
+    import random
+    repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
+    if not repo:
+        return _repo_hint("pick") if not name else f"Repo '{name}' not found."
+    rid = repo["id"]
+    items = _orch_get(f"/api/items?repo_id={rid}") or []
+    pending = [i for i in items if i.get("status") == "pending"]
+    if not pending:
+        done = len([i for i in items if i.get("status") == "completed"])
+        return f"\u2705 *{repo['name']}* has no pending items! ({done} completed)"
+    pick = random.choice(pending)
+    prio = pick.get("priority", "medium")
+    prio_icon = {
+        "critical": "\U0001F525", "high": "\u26A1", "medium": "\u25CF", "low": "\u25CB"
+    }.get(prio, "\u25CF")
+    lines = [
+        f"\U0001F3B2 *Random Pick — {repo['name']}*\n",
+        f"  {prio_icon} *{pick.get('title', 'Untitled')}*",
+        f"  Type: `{pick.get('type', 'feature')}`  Priority: `{prio}`",
+    ]
+    if pick.get("description"):
+        desc = pick["description"][:100]
+        lines.append(f"  {desc}{'...' if len(pick['description']) > 100 else ''}")
+    lines.append(f"\n\U0001F4CB {len(pending)} pending | {len(items) - len(pending)} done")
+    return "\n".join(lines)
+
+
 def cmd_agents(name: str = ""):
     """Show agent activity for a repo."""
     repo = _find_repo(name) if name else (_find_repo(_pinned_repo) if _pinned_repo else None)
@@ -2150,6 +2179,8 @@ def handle_message(msg):
         reply = cmd_slowest()
     elif t == "agents" or t.startswith("agents "):
         reply = cmd_agents(t[7:].strip() if t.startswith("agents ") else "")
+    elif t == "pick" or t.startswith("pick "):
+        reply = cmd_pick(t[5:].strip() if t.startswith("pick ") else "")
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -2226,7 +2257,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:

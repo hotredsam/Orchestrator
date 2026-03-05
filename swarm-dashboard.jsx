@@ -2268,6 +2268,11 @@ function Dashboard() {
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
                   {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
                 </span>
+                {items.length > 0 && (() => {
+                  const done = items.filter(i => i.status === "completed").length;
+                  const rate = Math.round((done / items.length) * 100);
+                  return <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontWeight: 700, background: rate >= 75 ? "#E8F5E9" : rate >= 40 ? C.lightOrange : "#FFEBEE", color: rate >= 75 ? C.green : rate >= 40 ? C.orange : C.red, border: `1px solid ${rate >= 75 ? C.green : rate >= 40 ? C.orange : C.red}44` }}>{rate}% complete</span>;
+                })()}
                 {(() => {
                   const doneI = items.filter(i => i.status === "completed" && i.completed_at);
                   const pendI = items.filter(i => i.status === "pending").length;
