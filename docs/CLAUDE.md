@@ -306,6 +306,15 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Mini App timer fix** — adaptive polling uses startPolling() instead of nested setInterval (prevents timer stacking)
 - **Event delegation** — stat number tap-to-copy uses single delegated listener instead of per-element binding
 - **Tab abort** — recent items API loop aborts when user leaves Home tab
+- **_safe_int everywhere** — all POST body repo_id/item_id and GET query params (limit, offset, days, hours) use _safe_int() for crash-proof input handling
+- **executemany save_plan** — plan saving uses batch INSERT instead of N individual queries (1 lock acquisition instead of N)
+- **Stale closure fix** — keyboard shortcut useEffect deps now include showCommandPalette, tab, repoFilter, masterFocus
+- **Memoized C colors** — dark/light color theme object wrapped in useMemo(darkMode) to prevent unnecessary re-renders
+- **itemStats memo** — pending/done/total/completePct computed once and shared across items tab (replaces 6+ inline filters)
+- **planStats memo** — done/inProgress/total/pct computed once for plan tab and tabBadges
+- **Merged repo queries** — plan_steps + mistakes + memory + audio counts in single subselect (3 queries to 2 per repo)
+- **Wave 250 milestone** — purple gradient banner, completion rate stat card in home tab
+- **Better exceptions** — specific sqlite3.OperationalError handling, generic exceptions include type name and context
 
 ## Commands
 ```bash
@@ -523,3 +532,11 @@ PUBLIC_URL=             # ngrok or tunnel URL for Telegram Mini App
 TELEGRAM_BOT_TOKEN=     # From BotFather
 TELEGRAM_CHAT_ID=       # Your chat ID
 ```
+
+## Ruflo Config Architecture
+- `.claude/settings.json` is Claude Code-only: valid hook events, statusLine, and permissions.
+- `.claude-flow/config.json` is the runtime config consumed by repo-local helper scripts.
+- `claude-flow.config.json`, `.claude-flow/config.yaml`, and stale `.claude/settings.json` `claudeFlow` blocks are legacy input for migration only.
+- `python ruflo_config.py normalize --project . --profile minimal|full [--agent-teams]` writes the supported format.
+- `python ruflo_config.py doctor --project .` validates hook keys, helper references, timeout units, and runtime-config presence.
+- `Runner.ruflo_init()` and `Runner.ruflo_setup()` run config repair automatically after Ruflo init/setup.
