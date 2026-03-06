@@ -1261,6 +1261,7 @@
       try {
         const allRecent = [];
         for (const r of repos) {
+          if (currentTab !== 'home') break;  // abort if user left tab
           const its = await api('/api/items?repo_id=' + r.id, undefined, { silent: true });
           if (its) its.filter(i => i.status === 'completed' && i.completed_at && (Date.now() - new Date(i.completed_at).getTime()) < 3600000).forEach(i => allRecent.push({ title: i.title, repo: r.name, t: i.completed_at }));
         }
@@ -1813,13 +1814,14 @@
       if (pf) filtered = filtered.filter(i => (i.priority || 'medium') === pf);
       if (!filtered.length) { showToast('No items match', 'info'); return; }
       haptic('heavy');
-      let count = 0;
+      let count = 0, failed = 0;
       for (const it of filtered) {
-        if (action === 'delete') await api('/api/items/delete', { method: 'POST', body: JSON.stringify({ repo_id: parseInt(repoId), item_id: it.id }) });
-        else await api('/api/items/update', { method: 'POST', body: JSON.stringify({ repo_id: parseInt(repoId), item_id: it.id, status: action }) });
-        count++;
+        const result = action === 'delete'
+          ? await api('/api/items/delete', { method: 'POST', body: JSON.stringify({ repo_id: parseInt(repoId), item_id: it.id }) })
+          : await api('/api/items/update', { method: 'POST', body: JSON.stringify({ repo_id: parseInt(repoId), item_id: it.id, status: action }) });
+        if (result) count++; else failed++;
       }
-      showToast(`${action === 'delete' ? 'Deleted' : 'Updated'} ${count} items`, 'success');
+      showToast(`${action === 'delete' ? 'Deleted' : 'Updated'} ${count} items${failed ? ` (${failed} failed)` : ''}`, failed ? 'warning' : 'success');
       toggleBatchPanel();
       loadItems();
     }
@@ -2307,17 +2309,15 @@
           if (costEl) costEl.innerHTML = '$' + totalCost.toFixed(2) + ` <span style="display:inline-flex;align-items:flex-end;gap:1px;vertical-align:middle;margin-left:3px;">${spark}</span> <span style="font-size:9px;">${trendIcon}</span>`;
         }
       }
-      // Make stat numbers tap-to-copy
-      document.querySelectorAll('.stat-number').forEach(el => {
-        if (!el._copyBound) {
-          el._copyBound = true;
-          el.style.cursor = 'pointer';
-          el.addEventListener('click', () => {
-            const val = el.textContent.trim();
-            navigator.clipboard.writeText(val).then(() => { haptic('light'); showToast('Copied: ' + val, 'info'); });
-          });
-        }
-      });
+      // Stat numbers tap-to-copy via event delegation (set once, not per refresh)
+      if (!document.getElementById('statsBreakdown')._copyDelegated) {
+        document.getElementById('statsBreakdown')._copyDelegated = true;
+        document.getElementById('statsBreakdown').addEventListener('click', (e) => {
+          const el = e.target.closest('.stat-number');
+          if (el) { const val = el.textContent.trim(); navigator.clipboard.writeText(val).then(() => { haptic('light'); showToast('Copied: ' + val, 'info'); }); }
+        });
+      }
+      document.querySelectorAll('.stat-number').forEach(el => el.style.cursor = 'pointer');
       document.getElementById('statsBreakdown').innerHTML = breakdowns.join('') || '<div class="empty-state"><p>No repos yet</p></div>';
       // Cost efficiency ranking
       const ranked = data.filter(r => (r.stats?.items_done || 0) > 0 && ((repoCosts[r.name] || r.stats?.cost || 0) > 0)).map(r => {
@@ -2609,8 +2609,7 @@
         const newInterval = running > 0 ? 5000 : 15000;
         if (newInterval !== _pollInterval) {
           _pollInterval = newInterval;
-          clearInterval(pollTimer);
-          pollTimer = setInterval(arguments.callee, _pollInterval);
+          startPolling();  // clears old timer, creates new one at correct interval
         }
       }, _pollInterval);
     }
