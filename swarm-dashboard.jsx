@@ -324,6 +324,7 @@ function Dashboard() {
     const totalDone = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
     const totalItems = repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0);
     const totalAgents = repos.reduce((s, r) => s + (r.stats?.agents || 0), 0);
+    const totalErrors = repos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
     const overallPct = totalItems > 0 ? Math.round(totalDone / totalItems * 100) : 0;
     return {
       total: repos.length,
@@ -331,7 +332,7 @@ function Dashboard() {
       paused: repos.filter(r => r.paused).length,
       idle: repos.filter(r => !r.running).length,
       totalCost: Object.values(costs).reduce((a, b) => a + (b || 0), 0),
-      totalDone, totalItems, totalAgents, overallPct,
+      totalDone, totalItems, totalAgents, totalErrors, overallPct,
     };
   }, [repos, costs]);
   const runningRepos = useMemo(() => repos.filter(r => r.running), [repos]);
@@ -1181,10 +1182,10 @@ function Dashboard() {
           {/* START ALL banner */}
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F5E6C8 100%)`}>
             <div style={{ textAlign: "center", marginBottom: 20, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-              <Btn onClick={startAll} bg={C.green} aria-label="Start all repo orchestrators" style={{ fontSize: 24, padding: "16px 48px", animation: repos.some(r=>r.running) ? "none" : "wiggle 2s infinite" }}>
+              <Btn onClick={startAll} bg={C.green} aria-label="Start all repo orchestrators" style={{ fontSize: 24, padding: "16px 48px", animation: repoStats.running > 0 ? "none" : "wiggle 2s infinite" }}>
                 {"\uD83D\uDE80"} START ALL
               </Btn>
-              {repos.some(r => r.running) && (
+              {repoStats.running > 0 && (
                 <Btn onClick={stopAll} bg={C.red} aria-label="Stop all repo orchestrators" style={{ fontSize: 24, padding: "16px 48px" }}>
                   {"\u23F9\uFE0F"} STOP ALL
                 </Btn>
@@ -1475,9 +1476,9 @@ function Dashboard() {
           <SectionBg bg={`linear-gradient(180deg, ${C.teal} 0%, #009BB8 100%)`} style={{ borderTop: `3px solid ${C.darkBrown}` }}>
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", color: C.white, textShadow: `2px 2px 0 ${C.darkBrown}`, marginBottom: 12, letterSpacing: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
               YOUR REPOS
-              {repos.reduce((s,r) => s + (r.stats?.mistakes||0), 0) > 0 && <span style={{ fontSize: 14, background: C.red, color: C.white, padding: "2px 10px", borderRadius: 12, border: `2px solid ${C.darkBrown}`, fontFamily: "'Fredoka', sans-serif", verticalAlign: "middle" }}>{repos.reduce((s,r) => s + (r.stats?.mistakes||0), 0)} errors</span>}
+              {repoStats.totalErrors > 0 && <span style={{ fontSize: 14, background: C.red, color: C.white, padding: "2px 10px", borderRadius: 12, border: `2px solid ${C.darkBrown}`, fontFamily: "'Fredoka', sans-serif", verticalAlign: "middle" }}>{repoStats.totalErrors} errors</span>}
             </h2>
-            {(() => { const running = repos.filter(r => r.running && !r.paused).length; const idle = repos.filter(r => !r.running).length; const paused = repos.filter(r => r.paused).length; const errored = repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length; const totalErr = repos.reduce((s,r) => s + (r.stats?.mistakes||0), 0); const totalCost = Object.values(costs).reduce((a,b) => a+b, 0); return <p style={{ textAlign: "center", fontSize: 12, color: C.cream, marginBottom: 10, fontWeight: 600, letterSpacing: 1 }}>{repos.length} total{running > 0 ? ` · ${running} running` : ""}{idle > 0 ? ` · ${idle} idle` : ""}{paused > 0 ? ` · ${paused} paused` : ""}{errored > 0 ? ` · ${errored} error` : ""}{totalErr > 0 ? ` · ${totalErr} mistakes` : ""}{totalCost > 0 ? ` · $${totalCost.toFixed(2)}` : ""}</p>; })()}
+            {(() => { const errored = repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length; return <p style={{ textAlign: "center", fontSize: 12, color: C.cream, marginBottom: 10, fontWeight: 600, letterSpacing: 1 }}>{repos.length} total{repoStats.running > 0 ? ` \u00B7 ${repoStats.running} running` : ""}{repoStats.idle > 0 ? ` \u00B7 ${repoStats.idle} idle` : ""}{repoStats.paused > 0 ? ` \u00B7 ${repoStats.paused} paused` : ""}{errored > 0 ? ` \u00B7 ${errored} error` : ""}{repoStats.totalErrors > 0 ? ` \u00B7 ${repoStats.totalErrors} mistakes` : ""}{totalCost > 0 ? ` \u00B7 $${totalCost.toFixed(2)}` : ""}</p>; })()}
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16, flexWrap: "wrap" }}>
               <select value={repoFilter} onChange={e => setRepoFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
                 <option value="all">All ({repos.length})</option>
@@ -1831,9 +1832,8 @@ function Dashboard() {
             </Card>}
             {/* System Health Bar */}
             {repos.length > 0 && (() => {
-              const totalErrs = repos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
               const completionRate = repoStats.overallPct;
-              const errRate = Math.round(totalErrs / Math.max(1, repoStats.totalItems || 1) * 100);
+              const errRate = Math.round(repoStats.totalErrors / Math.max(1, repoStats.totalItems || 1) * 100);
               const sysScore = Math.max(0, Math.min(100, completionRate - errRate + (repoStats.running > 0 ? 10 : 0)));
               const color = sysScore >= 70 ? C.green : sysScore >= 40 ? C.orange : C.red;
               return <div style={{ maxWidth: 600, margin: "0 auto 12px", display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: `${color}11`, borderRadius: 10, border: `1px solid ${color}33` }}>
@@ -2097,7 +2097,7 @@ function Dashboard() {
                   {[
                     { l: "Running", v: repoStats.running, c: C.green },
                     { l: "Idle", v: repoStats.idle, c: C.brown },
-                    { l: "Total Items", v: repos.reduce((a, r) => a + (r.stats?.items_total || 0), 0), c: C.teal },
+                    { l: "Total Items", v: repoStats.totalItems, c: C.teal },
                     { l: "Total Cost", v: "$" + repoStats.totalCost.toFixed(2), c: C.orange },
                   ].map((s, i) => (
                     <span key={i}><span style={{ fontWeight: 700, color: s.c }}>{s.v}</span> <span style={{ color: C.brown, fontSize: 10 }}>{s.l}</span></span>
@@ -2153,9 +2153,8 @@ function Dashboard() {
                 if (done > 0 && errs / done > 0.5) alerts.push({ icon: "\uD83D\uDED1", msg: `${r.name}: ${Math.round(errs/done*100)}% error rate`, lvl: "red" });
               });
               if (budgetLimit > 0) {
-                const tc = repos.reduce((s, r) => s + (r.stats?.cost || 0), 0);
-                const pct = tc / budgetLimit * 100;
-                if (pct > 85) alerts.push({ icon: "\uD83D\uDCB8", msg: `Budget ${pct.toFixed(0)}% consumed ($${tc.toFixed(2)}/$${budgetLimit.toFixed(2)})`, lvl: pct > 95 ? "red" : "orange" });
+                const pct = totalCost / budgetLimit * 100;
+                if (pct > 85) alerts.push({ icon: "\uD83D\uDCB8", msg: `Budget ${pct.toFixed(0)}% consumed ($${totalCost.toFixed(2)}/$${budgetLimit.toFixed(2)})`, lvl: pct > 95 ? "red" : "orange" });
               }
               const staleRepos = repos.filter(r => r.running && r.stats?.items_done === 0 && (r.stats?.items_total || 0) > 0);
               staleRepos.forEach(r => alerts.push({ icon: "\u23F3", msg: `${r.name}: running but 0 completions`, lvl: "orange" }));
@@ -3795,7 +3794,7 @@ function Dashboard() {
                     { label: "Rate Limited", val: apiMetrics.rate_limited?.toLocaleString() || "0", icon: "\uD83D\uDEA6", bg: C.lightOrange },
                     { label: "Endpoints", val: Object.keys(apiMetrics.top_endpoints || {}).length, icon: "\uD83D\uDD17", bg: C.cream },
                     { label: "Error Rate", val: apiMetrics.total_requests > 0 ? `${((apiMetrics.errors || 0) / apiMetrics.total_requests * 100).toFixed(1)}%` : "0%", icon: "\uD83D\uDCC9", bg: (apiMetrics.errors || 0) / Math.max(1, apiMetrics.total_requests) > 0.05 ? "#FFEBEE" : "#E8F5E9" },
-                    { label: "Active Agents", val: repos.reduce((s, r) => s + (r.stats?.agents || 0), 0), icon: "\uD83E\uDD20", bg: "#E8F5E9" },
+                    { label: "Active Agents", val: repoStats.totalAgents, icon: "\uD83E\uDD20", bg: "#E8F5E9" },
                   ].map((s, i) => (
                     <Card key={i} bg={s.bg} style={{ padding: 16, textAlign: "center" }}>
                       <div style={{ fontSize: 24, marginBottom: 4 }}>{s.icon}</div>
