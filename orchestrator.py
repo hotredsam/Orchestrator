@@ -4004,7 +4004,7 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)[:200]}, 500)
 
         if path == "/api/start":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             tag = b.get("tag")
             if rid == "all":
                 return self._json(manager.start_all())
@@ -4024,7 +4024,7 @@ class API(BaseHTTPRequestHandler):
             return self._json(manager.start_repo(rid_int))
 
         if path == "/api/stop":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             tag = b.get("tag")
             if rid == "all":
                 manager.stop_all()
@@ -4070,7 +4070,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True}, 201)
 
         if path == "/api/items/bulk":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             items = b.get("items", [])
@@ -4090,10 +4090,10 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "added": added, "skipped": skipped}, 201)
 
         if path == "/api/items/update":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
-            item_id = b.get("item_id")
+            item_id = _safe_int(b.get("item_id"))
             if not item_id: return self._json({"error": "item_id required"}, 400)
             if "status" in b and b["status"] not in ("pending", "in_progress", "completed", "failed", "archived"):
                 return self._json({"error": f"Invalid status '{b['status']}'"}, 400)
@@ -4113,17 +4113,17 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if path == "/api/items/delete":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
-            item_id = b.get("item_id")
+            item_id = _safe_int(b.get("item_id"))
             if not item_id: return self._json({"error": "item_id required"}, 400)
             db.ex("DELETE FROM items WHERE id=?", (item_id,))
             db.commit()
             return self._json({"ok": True})
 
         if path == "/api/items/clear":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             status = b.get("status")
@@ -4135,7 +4135,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if path == "/api/items/dedupe":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             items_list = db.fetchall("SELECT * FROM items WHERE status='pending' ORDER BY created_at ASC")
@@ -4152,7 +4152,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "duplicates_removed": dupes_removed, "remaining": len(seen_titles)})
 
         if path == "/api/items/archive":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             days = int(b.get("days", 7))
@@ -4166,10 +4166,10 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "archived": len(archived)})
 
         if path == "/api/items/retry":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
-            item_id = b.get("item_id")
+            item_id = _safe_int(b.get("item_id"))
             # Retry single item or all failed/completed items
             if item_id:
                 db.ex("UPDATE items SET status='pending' WHERE id=?", (item_id,))
@@ -4180,7 +4180,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if path == "/api/items/bulk-update":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             item_ids = b.get("item_ids", [])
@@ -4207,7 +4207,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "updated": updated})
 
         if path == "/api/items/reorder":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             order = b.get("order", [])  # list of item IDs in desired order
@@ -4221,7 +4221,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "reordered": len(order)})
 
         if path == "/api/audio":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             fname = b.get("filename", f"review_{int(time.time())}.webm")
@@ -4240,7 +4240,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "filename": fname}, 201)
 
         if path == "/api/plan/reorder":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             step_id = b.get("step_id")
@@ -4259,7 +4259,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if path == "/api/plan/reset-step":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             step_id = b.get("step_id")
@@ -4271,7 +4271,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if path == "/api/notes":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             action = b.get("action", "add")
@@ -4290,7 +4290,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"error": "Invalid action"}, 400)
 
         if path == "/api/items/import":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             import_items = b.get("items", [])
@@ -4308,7 +4308,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "added": added, "skipped": len(import_items) - added})
 
         if path == "/api/push":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             repos = manager.master.get_repos()
             repo = next((r for r in repos if r["id"] == rid), None)
             if not repo: return self._json({"error": "Not found"}, 404)
@@ -4330,7 +4330,7 @@ class API(BaseHTTPRequestHandler):
                                "total_attempted": len(all_results)})
 
         if path == "/api/fix":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             repos = manager.master.get_repos()
             repo = next((r for r in repos if r["id"] == rid), None)
             if not repo:
@@ -4341,7 +4341,7 @@ class API(BaseHTTPRequestHandler):
             return self._json(result)
 
         if path == "/api/rollback":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             commit_hash = b.get("commit_hash", "").strip()
             if not rid or not commit_hash:
                 return self._json({"error": "repo_id and commit_hash required"}, 400)
@@ -4386,7 +4386,7 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": f"Rollback failed: {str(e)}"}, 500)
 
         if path == "/api/memory/seed":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
             repo = next((r for r in manager.master.get_repos() if r["id"] == rid), None)
@@ -4436,7 +4436,7 @@ class API(BaseHTTPRequestHandler):
             return self._json(response)
 
         if path == "/api/ruflo-config":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db:
                 return self._json({"error": "No repo"}, 400)
@@ -4446,7 +4446,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if path == "/api/ruflo-optimize":
-            rid = b.get("repo_id")
+            rid = _safe_int(b.get("repo_id"))
             optimize_all = b.get("all", False)
             item_ids = b.get("item_ids")  # selective item optimization
             results = []
