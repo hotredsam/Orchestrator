@@ -632,6 +632,16 @@ class RepoDB:
         except Exception as e:
             log.warning("Error closing DB %s: %s", self.path, e)
 
+    def get_item_counts(self):
+        """Single query returning all item counts (total, done, pending, in_progress)."""
+        r = self.fetchone(
+            "SELECT COUNT(*) t, "
+            "SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done, "
+            "SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pend, "
+            "SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) prog "
+            "FROM items")
+        return {"total": r["t"], "done": r["done"] or 0, "pending": r["pend"] or 0, "in_progress": r["prog"] or 0}
+
     def __enter__(self):
         return self
 
@@ -1657,8 +1667,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         log.info(f"🎉 [{self.repo['name']}] Cycle {self.state.cycle_count} done!")
 
         # Gather cycle metrics
-        items_done = self.db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"]
-        items_total = self.db.fetchone("SELECT COUNT(*) c FROM items")["c"]
+        ic = self.db.get_item_counts()
+        items_done, items_total = ic["done"], ic["total"]
         tests_passed = sum(s.get("tests_passed", 0) for s in self.db.all_steps())
         mistakes = len(self.db.get_mistakes(100))
         repo_cost = get_costs().get(self.repo["id"], 0)
@@ -1740,10 +1750,8 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                 notify_credits_restored(self.repo["name"], new_val)
             elif new_val == "idle" and old_val == "scan_repo":
                 # Cycle complete
-                items_done = self.db.fetchone(
-                    "SELECT COUNT(*) c FROM items WHERE status='completed'")
                 notify_cycle_complete(self.repo["name"], self.state.cycle_count,
-                                      items_done["c"] if items_done else 0)
+                                      self.db.get_item_counts()["done"])
             else:
                 notify_state_change(self.repo["name"], old_val, new_val)
         except Exception as e:
@@ -3699,8 +3707,8 @@ class API(BaseHTTPRequestHandler):
                     db = manager.get_repo_db(r["id"])
                     if not db:
                         continue
-                    items_done = db.fetchone("SELECT COUNT(*) c FROM items WHERE status='completed'")["c"]
-                    items_total = db.fetchone("SELECT COUNT(*) c FROM items")["c"]
+                    ic = db.get_item_counts()
+                    items_done, items_total = ic["done"], ic["total"]
                     errors_row = db.fetchone("SELECT COUNT(*) c FROM mistakes")
                     error_count = errors_row["c"] if errors_row else 0
                     log_row = db.fetchone("SELECT COUNT(*) c FROM execution_log")
