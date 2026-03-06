@@ -1122,7 +1122,7 @@ def cmd_activity():
         return "Could not fetch repos."
     lines = ["*Recent Activity*", ""]
     total_errors = 0
-    for repo in repos[:10]:
+    for repo in repos[:5]:
         rid = repo.get("id")
         logs_data = _orch_get(f"/api/logs?repo_id={rid}&limit=5")
         if isinstance(logs_data, list) and logs_data:

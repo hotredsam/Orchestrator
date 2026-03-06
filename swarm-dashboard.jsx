@@ -332,6 +332,7 @@ function Dashboard() {
       paused: repos.filter(r => r.paused).length,
       idle: repos.filter(r => !r.running).length,
       totalCost: Object.values(costs).reduce((a, b) => a + (b || 0), 0),
+      errorState: repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length,
       totalDone, totalItems, totalAgents, totalErrors, overallPct,
     };
   }, [repos, costs]);
@@ -1416,10 +1417,10 @@ function Dashboard() {
               </Card>
             )}
             {/* Circuit Breaker Alert */}
-            {circuitBreakers.filter(cb => cb.state !== "closed").length > 0 && (
+            {(() => { const tripped = circuitBreakers.filter(cb => cb.state !== "closed"); return tripped.length > 0 && (
               <Card bg="#FFEBEE" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.red}` }}>
-                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1, marginBottom: 6, color: C.red }}>{"\u26A1"} {circuitBreakers.filter(cb => cb.state !== "closed").length} Circuit Breaker{circuitBreakers.filter(cb => cb.state !== "closed").length > 1 ? "s" : ""} Tripped</div>
-                {circuitBreakers.filter(cb => cb.state !== "closed").map((cb, i) => (
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 15, letterSpacing: 1, marginBottom: 6, color: C.red }}>{"\u26A1"} {tripped.length} Circuit Breaker{tripped.length > 1 ? "s" : ""} Tripped</div>
+                {tripped.map((cb, i) => (
                   <div key={i} style={{ fontSize: 11, padding: "2px 0", display: "flex", gap: 8 }}>
                     <span style={{ fontWeight: 600, color: cb.state === "open" ? C.red : C.orange, minWidth: 80 }}>{cb.repo_name}</span>
                     <span>{cb.state.toUpperCase()} ({cb.failures}/{cb.threshold})</span>
@@ -1427,7 +1428,7 @@ function Dashboard() {
                   </div>
                 ))}
               </Card>
-            )}
+            ); })()}
             {/* Recent Errors */}
             {recentErrors.length > 0 && (
               <Card bg="#FFF3E0" style={{ maxWidth: 620, margin: "0 auto 12px", padding: 12, border: `2px solid ${C.orange}` }}>
@@ -1486,7 +1487,7 @@ function Dashboard() {
                 <option value="running">Running ({repoStats.running - repoStats.paused})</option>
                 <option value="idle">Idle ({repoStats.idle})</option>
                 <option value="paused">Paused ({repoStats.paused})</option>
-                <option value="error">Error ({repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length})</option>
+                <option value="error">Error ({repoStats.errorState})</option>
               </select>
               <select value={repoSort} onChange={e => setRepoSort(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
                 <option value="name">Sort: Name</option>
