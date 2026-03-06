@@ -301,12 +301,15 @@ function Dashboard() {
 
   // Memoized repo stats for master view
   const repoStats = useMemo(() => {
+    const totalDone = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
+    const totalItems = repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0);
     return {
       total: repos.length,
       running: repos.filter(r => r.running).length,
       paused: repos.filter(r => r.paused).length,
       idle: repos.filter(r => !r.running).length,
       totalCost: Object.values(costs).reduce((a, b) => a + (b || 0), 0),
+      totalDone, totalItems,
     };
   }, [repos, costs]);
 
@@ -1014,20 +1017,19 @@ function Dashboard() {
           {uptime && (
             <div title={`PID: ${sysInfo.pid || "?"} | Threads: ${sysInfo.threads || "?"} | RAM: ${sysInfo.mem || "?"}MB`} style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: C.darkBrown, cursor: "help" }}>{"\u23F1\uFE0F"} {uptime}{sysInfo.mem ? ` | ${sysInfo.mem}MB` : ""}</div>
           )}
-          {repos.length > 0 && (() => { const td = repos.reduce((s,r) => s + (r.stats?.items_done||0), 0); const tt = repos.reduce((s,r) => s + (r.stats?.items_total||0), 0); return tt > 0 ? <div style={{ background: "#E3F2FD", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#1565C0" }}>{td}/{tt} items</div> : null; })()}
+          {repoStats.totalItems > 0 && <div style={{ background: "#E3F2FD", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#1565C0" }}>{repoStats.totalDone}/{repoStats.totalItems} items</div>}
           {totalCost > 0 && (
             <div style={{ background: "#E8F5E9", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#2E7D32" }}>
               ${totalCost.toFixed(2)}
             </div>
           )}
-          {logs.length > 0 && (() => {
-            const errCount = logs.filter(l => l.error).length;
-            const errRate = Math.round(errCount / logs.length * 100);
-            return errRate > 0 ? (
-              <div title={`${errCount} errors in ${logs.length} logs`} style={{ background: errRate > 10 ? "#FFEBEE" : "#FFF3E0", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: errRate > 10 ? C.red : C.orange }}>
+          {logs.length > 0 && tabBadges.logs > 0 && (() => {
+            const errRate = Math.round(tabBadges.logs / logs.length * 100);
+            return (
+              <div title={`${tabBadges.logs} errors in ${logs.length} logs`} style={{ background: errRate > 10 ? "#FFEBEE" : "#FFF3E0", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: errRate > 10 ? C.red : C.orange }}>
                 {errRate}% err
               </div>
-            ) : null;
+            );
           })()}
           <div title={sseConnected ? "Live updates connected" : "Live updates disconnected — reconnecting..."} style={{ width: 10, height: 10, borderRadius: "50%", background: sseConnected ? "#4CAF50" : "#F44336", border: `2px solid ${C.darkBrown}`, animation: sseConnected ? "none" : "pulse 1.5s infinite" }} />
           <button onClick={() => setShowToastHistory(prev => !prev)} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1, position: "relative" }} title="Notification history">
@@ -4654,9 +4656,9 @@ function Dashboard() {
       {/* Status Footer */}
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: darkMode ? "#1E1E2E" : C.darkBrown, color: C.white, display: "flex", justifyContent: "center", gap: 16, padding: "3px 12px", fontSize: 9, fontFamily: "'Fredoka', sans-serif", zIndex: 50, opacity: 0.9 }}>
         <span>{repos.length} repos</span>
-        <span>{repos.filter(r => r.running).length > 0 ? <>{repos.filter(r => r.running).length} running <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: C.green, animation: "pulse 1.5s infinite", verticalAlign: "middle" }} /></> : "0 running"}</span>
-        <span>{repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0)}/{repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0)} items</span>
-        <span style={{ color: (() => { const t = repos.reduce((s, r) => s + (costs[r.id] || 0), 0); return t > 5 ? "#FF6B6B" : t > 1 ? "#FFD93D" : "#6BCB77"; })(), fontWeight: 700 }}>${repos.reduce((s, r) => s + (costs[r.id] || 0), 0).toFixed(2)}</span>
+        <span>{repoStats.running > 0 ? <>{repoStats.running} running <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: C.green, animation: "pulse 1.5s infinite", verticalAlign: "middle" }} /></> : "0 running"}</span>
+        <span>{repoStats.totalDone}/{repoStats.totalItems} items</span>
+        <span style={{ color: totalCost > 5 ? "#FF6B6B" : totalCost > 1 ? "#FFD93D" : "#6BCB77", fontWeight: 700 }}>${totalCost.toFixed(2)}</span>
         <span style={{ opacity: 0.6, display: "flex", alignItems: "center", gap: 4 }}>{lastRefresh ? `${Math.floor((Date.now() - lastRefresh) / 1000)}s` : ""}<span style={{ display: "inline-block", width: 24, height: 3, borderRadius: 2, background: `${C.white}33`, overflow: "hidden" }}><span style={{ display: "block", height: "100%", borderRadius: 2, background: C.green, width: `${Math.min(100, Math.max(0, lastRefresh ? ((Date.now() - lastRefresh) / refreshInterval * 100) : 0))}%`, transition: "width 1s linear" }} /></span></span>
       </div>
 
