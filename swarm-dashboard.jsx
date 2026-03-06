@@ -357,11 +357,18 @@ function Dashboard() {
     items: itemStats.pending,
     mistakes: mistakes.length,
     logs: logs.filter(l => l.error).length,
-    plan: plan.filter(s => s.status === "in_progress").length,
-  }), [repoStats.running, itemStats.pending, mistakes, logs, plan]);
+    plan: planStats.inProgress,
+  }), [repoStats.running, itemStats.pending, planStats.inProgress, mistakes, logs]);
 
   // Memoized total cost
   const totalCost = useMemo(() => Object.values(costs).reduce((a, b) => a + (b || 0), 0), [costs]);
+
+  // Memoized plan step counts
+  const planStats = useMemo(() => {
+    const done = plan.filter(s => s.status === "completed").length;
+    const inProg = plan.filter(s => s.status === "in_progress").length;
+    return { done, inProgress: inProg, total: plan.length, pct: plan.length > 0 ? Math.round(done / plan.length * 100) : 0 };
+  }, [plan]);
 
   const notify = useCallback((title, body) => {
     if (!browserNotifs) return;
@@ -2955,7 +2962,7 @@ function Dashboard() {
             <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: 36, textAlign: "center", marginBottom: 6, letterSpacing: 3, textShadow: "2px 2px 0 rgba(61,43,31,0.1)" }}>Build Plan</h2>
             <p style={{ textAlign: "center", fontSize: 13, color: C.brown, marginBottom: 16 }}>The step-by-step blueprint your swarm is following</p>
             {plan.length > 0 && (() => {
-              const done = plan.filter(s => s.status === "completed").length;
+              const done = planStats.done;
               const totalCost = plan.reduce((s, p) => s + (p.cost_usd || 0), 0);
               const totalDur = plan.reduce((s, p) => s + (p.duration_sec || 0), 0);
               const remaining = plan.length - done;
@@ -2975,7 +2982,7 @@ function Dashboard() {
                 </div>
               );
             })()}
-            {plan.filter(s => s.status === "in_progress" && s.started_at).length > 0 && (() => {
+            {planStats.inProgress > 0 && (() => {
               const stale = plan.filter(s => s.status === "in_progress" && s.started_at && (Date.now() - new Date(s.started_at).getTime()) > 3600000);
               if (stale.length === 0) return null;
               return <div style={{ textAlign: "center", marginBottom: 10 }}>
