@@ -1027,7 +1027,7 @@ function Dashboard() {
 
       {/* Toast History Dropdown */}
       {showToastHistory && (
-        <div style={{ position: "fixed", top: 60, right: 16, width: 340, maxHeight: 400, overflowY: "auto", zIndex: 200, background: dark ? "#2D2D2D" : C.white, border: `3px solid ${C.darkBrown}`, borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", padding: 12 }}>
+        <div style={{ position: "fixed", top: 60, right: 16, width: 340, maxHeight: 400, overflowY: "auto", zIndex: 200, background: darkMode ? "#2D2D2D" : C.white, border: `3px solid ${C.darkBrown}`, borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", padding: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1 }}>Notifications</span>
             <button onClick={() => { setToastHistory([]); setShowToastHistory(false); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.brown, textDecoration: "underline" }}>Clear All</button>
@@ -1037,7 +1037,7 @@ function Dashboard() {
           ) : [...toastHistory].reverse().map((t, i) => (
             <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 8px", borderBottom: `1px solid ${C.darkBrown}11`, fontSize: 11 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: t.type === "error" ? C.red : t.type === "warning" ? C.orange : t.type === "success" ? C.green : C.teal }} />
-              <span style={{ flex: 1, color: dark ? "#E0E0E0" : C.darkBrown }}>{t.message}</span>
+              <span style={{ flex: 1, color: darkMode ? "#E0E0E0" : C.darkBrown }}>{t.message}</span>
               <span style={{ fontSize: 9, color: C.brown, minWidth: 55 }}>{t.time}</span>
             </div>
           ))}
@@ -1077,7 +1077,7 @@ function Dashboard() {
           })}
         </div>
         {scrolledPast && repos.length > 0 && (
-          <div style={{ background: dark ? "#1E1E2E" : C.cream, borderBottom: `3px solid ${C.darkBrown}`, padding: "4px 16px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, fontFamily: "'Fredoka', sans-serif" }}>
+          <div style={{ background: darkMode ? "#1E1E2E" : C.cream, borderBottom: `3px solid ${C.darkBrown}`, padding: "4px 16px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, fontFamily: "'Fredoka', sans-serif" }}>
             <select value={sr||""} onChange={e => setSR(Number(e.target.value))}
               style={{ padding: "3px 8px", background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 8, fontSize: 11, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 160 }}>
               {[...repos].sort((a, b) => { const pa = pinnedRepos.includes(a.id) ? 0 : 1; const pb = pinnedRepos.includes(b.id) ? 0 : 1; return pa - pb || a.name.localeCompare(b.name); }).map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name}</option>)}
@@ -2246,7 +2246,7 @@ function Dashboard() {
             </details>
             {/* Fixed-bottom batch actions toolbar */}
             {batchSelected.size > 0 && (
-              <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1000, background: darkMode ? `linear-gradient(180deg, ${C.card} 0%, #1a1a2e 100%)` : `linear-gradient(180deg, ${C.darkBrown} 0%, #1E120A 100%)`, borderTop: `3px solid ${C.orange}`, padding: "10px 20px", display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap", animation: "slideUp 0.25s ease-out", boxShadow: "0 -4px 20px rgba(0,0,0,0.3)" }}>
+              <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1000, background: darkMode ? `linear-gradient(180deg, #2D2D3D 0%, #1a1a2e 100%)` : `linear-gradient(180deg, ${C.darkBrown} 0%, #1E120A 100%)`, borderTop: `3px solid ${C.orange}`, padding: "10px 20px", display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap", animation: "slideUp 0.25s ease-out", boxShadow: "0 -4px 20px rgba(0,0,0,0.3)" }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: C.white, fontFamily: "'Bangers', cursive", letterSpacing: 1.5 }}>{"\u2611\uFE0F"} {batchSelected.size} repos selected</span>
                 <Btn bg={C.green} style={{ fontSize: 12, padding: "6px 16px" }} onClick={async () => {
                   await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: [...batchSelected], action: "start" }) });
@@ -4442,7 +4442,7 @@ function Dashboard() {
                 <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Export or import your personal dashboard settings (dark mode, pinned repos, filters, notifications).</p>
                 <div style={{ display: "flex", gap: 10 }}>
                   <Btn bg={C.teal} style={{ fontSize: 13, padding: "8px 16px" }} onClick={() => {
-                    const prefs = { dark, pinnedRepos, itemFilter, repoSort, repoFilter, refreshInterval, browserNotifs, notifPrefs, compactItems };
+                    const prefs = { darkMode, pinnedRepos, itemFilter, repoSort, repoFilter, refreshInterval, browserNotifs, notifPrefs, compactItems };
                     const blob = new Blob([JSON.stringify(prefs, null, 2)], { type: "application/json" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a"); a.href = url; a.download = "swarm-dashboard-prefs.json"; a.click();
@@ -4454,7 +4454,7 @@ function Dashboard() {
                       try {
                         const text = await ev.target.files[0].text();
                         const p = JSON.parse(text);
-                        if (p.dark !== undefined) { setDark(p.dark); localStorage.setItem("swarm-dark", p.dark ? "1" : "0"); }
+                        if (p.darkMode !== undefined) { setDarkMode(p.darkMode); localStorage.setItem("swarm-dark", p.darkMode ? "1" : "0"); }
                         if (p.pinnedRepos) { setPinnedRepos(p.pinnedRepos); localStorage.setItem("swarm-pinned", JSON.stringify(p.pinnedRepos)); }
                         if (p.itemFilter) { setItemFilter(p.itemFilter); localStorage.setItem("swarm-item-filter", p.itemFilter); }
                         if (p.repoSort) { setRepoSort(p.repoSort); localStorage.setItem("swarm-repo-sort", p.repoSort); }
@@ -4605,7 +4605,7 @@ function Dashboard() {
       {/* Command Palette (Ctrl+K) */}
       {showCommandPalette && (
         <div onClick={() => setShowCommandPalette(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "15vh" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: dark ? "#2D2D2D" : C.white, border: `3px solid ${C.darkBrown}`, borderRadius: 16, padding: 16, width: "90%", maxWidth: 500, boxShadow: "0 16px 48px rgba(0,0,0,0.3)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: darkMode ? "#2D2D2D" : C.white, border: `3px solid ${C.darkBrown}`, borderRadius: 16, padding: 16, width: "90%", maxWidth: 500, boxShadow: "0 16px 48px rgba(0,0,0,0.3)" }}>
             <input autoFocus placeholder="Type a command... (go items, start, stop, dark, refresh)" value={cmdQuery}
               onChange={e => setCmdQuery(e.target.value)}
               onKeyDown={e => {
@@ -4632,10 +4632,10 @@ function Dashboard() {
                 if (q.startsWith("search ")) { setTab("master"); setGlobalSearch(q.slice(7)); searchGlobal(q.slice(7)); }
                 setShowCommandPalette(false);
               }}
-              style={{ width: "100%", padding: "12px 16px", fontSize: 16, border: `2px solid ${C.darkBrown}`, borderRadius: 12, outline: "none", fontFamily: "'Fredoka', sans-serif", background: dark ? "#3D3D3D" : C.cream, color: dark ? "#E0E0E0" : C.darkBrown }} />
+              style={{ width: "100%", padding: "12px 16px", fontSize: 16, border: `2px solid ${C.darkBrown}`, borderRadius: 12, outline: "none", fontFamily: "'Fredoka', sans-serif", background: darkMode ? "#3D3D3D" : C.cream, color: darkMode ? "#E0E0E0" : C.darkBrown }} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10, fontSize: 11, color: C.brown }}>
               {["home","items","plan","logs","health","settings","start","stop","pause","start all","stop all","dark","refresh","export items","export logs","help"].map(cmd => (
-                <span key={cmd} onClick={() => { setCmdQuery(cmd); }} style={{ padding: "3px 10px", borderRadius: 8, background: dark ? "#444" : C.cream, cursor: "pointer", border: `1px solid ${C.darkBrown}33` }}>{cmd}</span>
+                <span key={cmd} onClick={() => { setCmdQuery(cmd); }} style={{ padding: "3px 10px", borderRadius: 8, background: darkMode ? "#444" : C.cream, cursor: "pointer", border: `1px solid ${C.darkBrown}33` }}>{cmd}</span>
               ))}
             </div>
           </div>
@@ -4669,7 +4669,7 @@ function Dashboard() {
 
       {/* Keyboard Shortcuts Help Overlay */}
       {/* Status Footer */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: dark ? "#1E1E2E" : C.darkBrown, color: C.white, display: "flex", justifyContent: "center", gap: 16, padding: "3px 12px", fontSize: 9, fontFamily: "'Fredoka', sans-serif", zIndex: 50, opacity: 0.9 }}>
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: darkMode ? "#1E1E2E" : C.darkBrown, color: C.white, display: "flex", justifyContent: "center", gap: 16, padding: "3px 12px", fontSize: 9, fontFamily: "'Fredoka', sans-serif", zIndex: 50, opacity: 0.9 }}>
         <span>{repos.length} repos</span>
         <span>{repos.filter(r => r.running).length > 0 ? <>{repos.filter(r => r.running).length} running <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: C.green, animation: "pulse 1.5s infinite", verticalAlign: "middle" }} /></> : "0 running"}</span>
         <span>{repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0)}/{repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0)} items</span>
