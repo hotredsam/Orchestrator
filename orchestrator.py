@@ -2863,10 +2863,14 @@ class API(BaseHTTPRequestHandler):
                     ruflo_rows = db.fetchall("SELECT key, value FROM memory WHERE namespace='ruflo_config'")
                     stats["ruflo_config"] = {row["key"]: row["value"] for row in ruflo_rows}
                     r["stats"] = stats
-                except Exception as e:
-                    log.debug(f"Stats fetch failed for repo {r.get('name', '?')}: {e}")
+                except sqlite3.OperationalError as e:
+                    log.warning(f"DB error for repo {r.get('name', '?')}: {e}")
                     r["state"] = "idle"
-                    r["stats"] = {}
+                    r["stats"] = {"error": "database_locked"}
+                except Exception as e:
+                    log.warning(f"Stats fetch failed for repo {r.get('name', '?')}: {type(e).__name__}: {e}")
+                    r["state"] = "idle"
+                    r["stats"] = {"error": type(e).__name__}
             _cache_set(cache_key, repos)
             return self._json(repos)
 
@@ -3967,7 +3971,8 @@ class API(BaseHTTPRequestHandler):
                         r = {"ok": False, "error": "unknown"}
                     results[rid] = r
                 except Exception as e:
-                    results[rid] = {"ok": False, "error": str(e)[:100]}
+                    log.warning(f"Batch action '{action}' failed for repo {rid}: {type(e).__name__}: {e}")
+                    results[rid] = {"ok": False, "error": f"{type(e).__name__}: {str(e)[:80]}"}
             _response_cache.clear()
             return self._json({"ok": True, "results": results})
 
