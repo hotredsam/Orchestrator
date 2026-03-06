@@ -722,10 +722,12 @@ class RepoDB:
         return self.fetchall("SELECT * FROM plan_steps ORDER BY step_order")
 
     def save_plan(self, steps):
-        for i, s in enumerate(steps):
-            self.ex("INSERT INTO plan_steps (item_id,step_order,description,agent_type) VALUES (?,?,?,?)",
-                    (s.get("item_id"), i, s["description"], s.get("agent_type", "coder")))
-        self.commit()
+        params = [(s.get("item_id"), i, s["description"], s.get("agent_type", "coder"))
+                  for i, s in enumerate(steps)]
+        with self.lock:
+            self.conn.executemany(
+                "INSERT INTO plan_steps (item_id,step_order,description,agent_type) VALUES (?,?,?,?)", params)
+            self.conn.commit()
 
     def complete_step(self, sid, tw, tp, cost=0, duration=0, model=""):
         self.ex("UPDATE plan_steps SET status='completed',tests_written=?,tests_passed=?,"
@@ -1524,8 +1526,9 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         if TELEGRAM_ENABLED:
             try:
                 from telegram_bot import send_message as tg_msg
-                total_steps = len(self.db.all_steps())
-                done_steps = len([s for s in self.db.all_steps() if s["status"] == "completed"])
+                all_s = self.db.all_steps()
+                total_steps = len(all_s)
+                done_steps = sum(1 for s in all_s if s["status"] == "completed")
                 tg_msg(f"✅ *{self.repo['name']}* Step {done_steps+1}/{total_steps}: {step['description'][:60]}")
             except Exception as e:
                 log.debug(f"Telegram notify failed: {e}")
@@ -4155,7 +4158,7 @@ class API(BaseHTTPRequestHandler):
             rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
-            days = int(b.get("days", 7))
+            days = _safe_int(b.get("days")) or 7
             archived = db.fetchall(
                 "SELECT id FROM items WHERE status='completed' AND completed_at <= datetime('now', ?)",
                 (f"-{days} days",))
@@ -4536,10 +4539,10 @@ class API(BaseHTTPRequestHandler):
             return self._json({"ok": True, "webhook": {"id": wh["id"], "url": wh["url"], "events": wh["events"]}})
 
         if path == "/api/webhooks/delete":
-            wh_id = b.get("id")
-            if not wh_id:
-                return self._json({"error": "id required"}, 400)
-            removed = webhook_remove(int(wh_id))
+            wh_id = _safe_int(b.get("id"))
+            if wh_id is None:
+                return self._json({"error": "id required (integer)"}, 400)
+            removed = webhook_remove(wh_id)
             return self._json({"ok": True, "removed": removed})
 
         # ─── Budget ────────────────────────────────────────────────────────────
