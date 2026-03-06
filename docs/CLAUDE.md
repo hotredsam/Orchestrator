@@ -469,10 +469,22 @@ docs            — List all API endpoints
 batch [action] [target] — Batch start/stop/push by tag or names
 app             — Open Mini App link
 help            — Show all commands
+
+# Claude Code Integration
+start-claude:<prompt> — Launch Claude Code session with prompt
+claude-status    — Show active Claude Code sessions
+claude-stop [pid|all] — Stop Claude session(s)
+schedule_claude [cron] [prompt] — Add/list/remove scheduled Claude tasks
+
+# Operations
+git_status [repo] — Show git working tree changes
+drain [on|off]   — Toggle drain mode (blocks new cycles)
+compare_costs    — Side-by-side repo cost comparison
+stalled          — Find repos stuck in same state
 ```
 
-## Telegram Mini App (11 tabs)
-- **Home** — Repo cards with Start/Stop/Pause/Resume/Push/Remove, Start All/Stop All, pull-to-refresh
+## Telegram Mini App (12 tabs)
+- **Home** — Repo cards with Start/Stop/Pause/Resume/Push/Remove, Start All/Stop All, pull-to-refresh, drain mode toggle, system flags
 - **Add** — Add feature/issue form + collapsible "Register New Repo" form
 - **Items** — Items list with status filter and delete
 - **Flow** — State machine flow map with current position
@@ -483,6 +495,7 @@ help            — Show all commands
 - **Health** — Health scanner with auto-fix
 - **Chat** — Natural language command interface
 - **Stats** — Dashboard stats with per-repo breakdown and costs
+- **Claude** — Active Claude Code sessions with status, prompt preview, and stop controls
 
 Features: Dark mode (localStorage), SSE real-time updates, toast notifications, haptic feedback, scrollable tab bar
 

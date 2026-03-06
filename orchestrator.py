@@ -936,6 +936,27 @@ class MasterDB:
             (cutoff,)).fetchall()
         return [dict(r) for r in rows]
 
+    def get_scheduled_tasks(self):
+        """Return all scheduled tasks."""
+        rows = self.ex("SELECT * FROM scheduled_tasks ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def add_scheduled_task(self, prompt, cron_expr, enabled=True):
+        """Create a new scheduled task. Returns the created row as dict."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.ex(
+            "INSERT INTO scheduled_tasks (prompt, cron_expr, enabled, created) VALUES (?, ?, ?, ?)",
+            (prompt, cron_expr, 1 if enabled else 0, now))
+        self.commit()
+        row = self.ex("SELECT * FROM scheduled_tasks WHERE id = last_insert_rowid()").fetchone()
+        return dict(row) if row else None
+
+    def delete_scheduled_task(self, task_id):
+        """Delete a scheduled task by id. Returns True if a row was deleted."""
+        cur = self.ex("DELETE FROM scheduled_tasks WHERE id=?", (task_id,))
+        self.commit()
+        return cur.rowcount > 0
+
 
 # ─── Claude Runner ────────────────────────────────────────────────────────────
 
@@ -2535,8 +2556,6 @@ _cache_lock = threading.Lock()
 CACHE_TTL = 3  # default seconds
 _draining = False  # drain mode: when True, no new cycles start
 _claude_procs = {}  # pid -> {prompt, started, proc}
-_scheduled_tasks = []  # scheduled task definitions (CRUD only, no execution yet)
-_scheduled_next_id = 1  # auto-increment ID for scheduled tasks
 
 
 def _claude_watcher(proc):
@@ -3776,7 +3795,7 @@ class API(BaseHTTPRequestHandler):
             })
 
         if path == "/api/scheduled-tasks":
-            return self._json({"tasks": _scheduled_tasks})
+            return self._json({"tasks": manager.master.get_scheduled_tasks()})
 
         self._json({"error": "Not found"}, 404)
 
@@ -4587,22 +4606,16 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "pid": pid})
 
         if path == "/api/scheduled-tasks":
-            global _scheduled_next_id
             prompt = b.get("prompt", "").strip()[:2000]
             cron_expr = b.get("cron_expr", "").strip()[:100]
             if not prompt:
                 return self._json({"error": "prompt required"}, 400)
             if not cron_expr:
                 return self._json({"error": "cron_expr required"}, 400)
-            task = {
-                "id": _scheduled_next_id,
-                "prompt": prompt,
-                "cron_expr": cron_expr,
-                "enabled": bool(b.get("enabled", True)),
-                "created": datetime.now(timezone.utc).isoformat(),
-            }
-            _scheduled_next_id += 1
-            _scheduled_tasks.append(task)
+            enabled = bool(b.get("enabled", True))
+            task = manager.master.add_scheduled_task(prompt, cron_expr, enabled)
+            if not task:
+                return self._json({"error": "failed to create task"}, 500)
             log.info("Scheduled task created: id=%d cron=%s", task["id"], cron_expr)
             return self._json({"ok": True, "task": task})
 
@@ -4627,9 +4640,7 @@ class API(BaseHTTPRequestHandler):
             tid = self._safe_int(q.get("id", [None])[0])
             if tid is None:
                 return self._json({"error": "id query param required"}, 400)
-            before = len(_scheduled_tasks)
-            _scheduled_tasks[:] = [t for t in _scheduled_tasks if t["id"] != tid]
-            if len(_scheduled_tasks) == before:
+            if not manager.master.delete_scheduled_task(tid):
                 return self._json({"error": "not found"}, 404)
             log.info("Scheduled task deleted: id=%d", tid)
             return self._json({"ok": True, "deleted_id": tid})

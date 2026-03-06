@@ -3855,7 +3855,7 @@ def handle_message(msg):
                 log.warning("web_app_data: data is not a dict")
                 return
             action = data.get("action", "")
-            VALID_ACTIONS = {"start_repo", "stop_repo", "start_all", "stop_all", "add_item", "start_claude", "stop_claude"}
+            VALID_ACTIONS = {"start_repo", "stop_repo", "start_all", "stop_all", "add_item", "start_claude", "stop_claude", "toggle_drain"}
             if action == "start_repo":
                 repo = str(data.get("repo", "")).strip()
                 reply = cmd_start_repo(repo) if repo else "Missing repo name"
@@ -3878,6 +3878,10 @@ def handle_message(msg):
             elif action == "stop_claude":
                 pid_val = str(data.get("pid", "all")).strip()
                 reply = cmd_claude_stop(pid_val)
+            elif action == "toggle_drain":
+                enabled = data.get("enabled")
+                mode = "on" if enabled else "off"
+                reply = cmd_drain(mode)
             elif action:
                 log.warning(f"web_app_data: unknown action '{action}'")
                 reply = f"Unknown action: {action}"
