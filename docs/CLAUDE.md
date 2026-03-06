@@ -5,9 +5,9 @@ Autonomous multi-repo coding orchestrator. Combines Ruflo swarm intelligence (10
 
 ## Architecture
 ```
-  Dashboard (localhost:6969)        Telegram Mini App (11 tabs)
+  Dashboard (localhost:6969)        Telegram Mini App (12 tabs)
        ↓ REST API + SSE + gzip            ↓
-  Master DB (repo registry)         Telegram Bot (50+ commands)
+  Master DB (repo registry)         Telegram Bot (55+ commands)
        ↓                                   ↓
   Per-Repo DB (.swarm-agent.db in each repo)
        ↓
@@ -282,6 +282,18 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Error recovery suggestions** — contextual tips based on error patterns (credits, timeout, rate limit)
 - **Expandable step descriptions** — long plan step descriptions collapse with click-to-expand
 - **Sticky header extras** — cost display and SSE status badge in sticky repo bar
+- **Claude Code launcher** — Telegram `start-claude:<prompt>` launches Claude Code sessions, `claude-status` checks active, `claude-stop [pid|all]` terminates
+- **Claude sessions API** — GET /api/claude-sessions lists active sessions, POST /api/claude-launch starts, POST /api/claude-stop terminates
+- **Git status API** — GET /api/git-status?repo_id=N returns working tree changes for a repo
+- **Drain mode** — POST /api/drain toggles drain mode (prevents new cycles), GET /api/drain checks state. Integrated into state machine
+- **Keyboard shortcuts overlay** — press ? in dashboard to see full shortcut reference
+- **Claude sessions badge** — header shows green badge with active Claude session count
+- **Bulk repo selection** — master view checkboxes + fixed-bottom batch actions toolbar (start/stop/pause/resume selected repos)
+- **System flags API** — GET /api/system-flags returns drain mode, Claude session count, scheduled task count
+- **Scheduled tasks** — CRUD via GET/POST/DELETE /api/scheduled-tasks for cron-style Claude task scheduling
+- **Mini App Claude Sessions tab** — 12th tab showing active Claude Code sessions with status and stop controls
+- **Mini App drain toggle** — drain mode on/off switch + system flags display in Mini App
+- **Stalled repo detection** — Telegram `stalled` command finds repos stuck in same state for extended periods
 
 ## Commands
 ```bash
@@ -386,6 +398,16 @@ GET  /api/cost-forecast            — 7-day cost prediction with linear regress
 POST /api/fix-all                  — Auto-fix all detected health issues
 POST /api/fix                      — Fix specific issue {repo_id, issue_title, ...}
 POST /api/rollback                 — Git rollback {repo_id, commit_hash}
+GET  /api/claude-sessions          — Active Claude Code sessions
+POST /api/claude-launch            — Start Claude session {repo_id?, prompt}
+POST /api/claude-stop              — Stop Claude session {pid} or {pid: "all"}
+GET  /api/git-status?repo_id=N     — Git working tree status for a repo
+GET  /api/drain                    — Drain mode status
+POST /api/drain                    — Toggle drain mode {enabled: bool}
+GET  /api/system-flags             — System flags (drain, claude sessions, scheduled tasks)
+GET  /api/scheduled-tasks          — List scheduled Claude tasks
+POST /api/scheduled-tasks          — Add scheduled task {cron, prompt}
+DELETE /api/scheduled-tasks        — Remove scheduled task {id}
 
 # Webhooks
 GET  /api/webhooks                 — List registered webhooks
