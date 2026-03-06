@@ -360,8 +360,8 @@ function Dashboard() {
     plan: planStats.inProgress,
   }), [repoStats.running, itemStats.pending, planStats.inProgress, mistakes, logs]);
 
-  // Memoized total cost
-  const totalCost = useMemo(() => Object.values(costs).reduce((a, b) => a + (b || 0), 0), [costs]);
+  // Alias for backward compat — repoStats.totalCost already has this
+  const totalCost = repoStats.totalCost;
 
   // Memoized plan step counts
   const planStats = useMemo(() => {
@@ -3921,7 +3921,7 @@ function Dashboard() {
                   <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 16px", padding: 14 }}>
                     <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, marginBottom: 10 }}>Cost by Repo</div>
                     {(() => {
-                      const totalCost = Object.values(costs).reduce((a, b) => a + b, 0) || 1;
+                      const totalCost = repoStats.totalCost || 1;
                       const sorted = Object.entries(costs).sort((a, b) => b[1] - a[1]).filter(([, v]) => v > 0);
                       const barColors = [C.teal, C.orange, C.green, "#7E57C2", C.red, "#795548", "#607D8B", C.yellow];
                       return sorted.map(([rid, cost], i) => {
@@ -4397,7 +4397,7 @@ function Dashboard() {
                     })}
                   </div>
                   <div style={{ textAlign: "right", marginTop: 8, fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1 }}>
-                    Total: ${Object.values(costs).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0).toFixed(2)}
+                    Total: ${repoStats.totalCost.toFixed(2)}
                   </div>
                 </Card>
               )}
