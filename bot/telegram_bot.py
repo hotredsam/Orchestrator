@@ -3392,12 +3392,163 @@ def cmd_help():
 `app` — Open Mini App
 `help` — This message
 
+*Claude Code:*
+`start-claude:<prompt>` — Launch Claude Code session
+`claude-status` — Show active sessions
+`claude-stop [pid|all]` — Stop session(s)
+
 Send a voice message to queue audio for transcription."""
 
 
-# ─── Chat Bridge (Telegram → inbox.jsonl → Claude Code) ──────────────────────
+# ─── Chat Bridge + Claude Code Launcher ──────────────────────────────────────
 
 _bridge_lock = threading.Lock()
+_claude_sessions = {}  # pid -> {proc, prompt, started, chat_id, thread}
+_claude_sessions_lock = threading.Lock()
+
+
+def cmd_start_claude(prompt: str, chat_id: str = ""):
+    """Launch a Claude Code session with the given prompt.
+
+    Spawns `npx claude` in a subprocess, streams output to bridge/outbox.jsonl,
+    and sends a completion summary back to Telegram when done.
+    """
+    if not prompt.strip():
+        return "Usage: `start-claude:<prompt>`\nExample: `start-claude:fix the login bug`"
+
+    # Limit concurrent sessions
+    with _claude_sessions_lock:
+        active = {pid: s for pid, s in _claude_sessions.items() if s["proc"].poll() is None}
+        _claude_sessions.clear()
+        _claude_sessions.update(active)
+        if len(active) >= 3:
+            return "\u26A0\uFE0F Max 3 concurrent Claude sessions. Use `claude-status` to check active ones."
+
+    prompt = prompt.strip()[:2000]  # limit prompt length
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _run_claude():
+        import subprocess as sp
+        try:
+            proc = sp.Popen(
+                ["npx", "claude", "--dangerously-skip-permissions", "-p", prompt],
+                stdout=sp.PIPE,
+                stderr=sp.STDOUT,
+                cwd=project_root,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            )
+            with _claude_sessions_lock:
+                _claude_sessions[proc.pid] = {
+                    "proc": proc,
+                    "prompt": prompt[:100],
+                    "started": datetime.now(timezone.utc).isoformat(),
+                    "chat_id": chat_id or CHAT_ID,
+                    "thread": threading.current_thread(),
+                }
+
+            # Collect output in chunks
+            output_lines = []
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                if line:
+                    output_lines.append(line)
+
+            proc.wait(timeout=600)  # 10 min max
+
+            # Write final output to bridge outbox
+            full_output = "\n".join(output_lines[-50:])  # last 50 lines
+            if full_output:
+                _bridge_outbox_write(f"\U0001F916 Claude finished:\n```\n{full_output[:3000]}\n```")
+
+            exit_code = proc.returncode
+            status_icon = "\u2705" if exit_code == 0 else "\u274C"
+            target = chat_id or CHAT_ID
+            send_message(
+                f"{status_icon} *Claude session complete*\n"
+                f"Prompt: _{prompt[:80]}_\n"
+                f"Exit code: `{exit_code}`",
+                chat_id=target,
+            )
+        except sp.TimeoutExpired:
+            proc.kill()
+            send_message(
+                "\u23F0 Claude session timed out (10 min limit).",
+                chat_id=chat_id or CHAT_ID,
+            )
+        except Exception as e:
+            log.error("Claude session error: %s", e)
+            send_message(
+                f"\u274C Claude session failed: {e}",
+                chat_id=chat_id or CHAT_ID,
+            )
+        finally:
+            with _claude_sessions_lock:
+                _claude_sessions.pop(proc.pid, None)
+
+    t = threading.Thread(target=_run_claude, name=f"claude-session", daemon=True)
+    t.start()
+    return f"\U0001F680 *Claude Code launched!*\nPrompt: _{prompt[:80]}_\nUse `claude-status` to check progress."
+
+
+def _bridge_outbox_write(text: str):
+    """Write a message to bridge/outbox.jsonl for delivery to Telegram."""
+    entry = {
+        "text": text,
+        "source": "claude-code",
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    with _bridge_lock:
+        os.makedirs(BRIDGE_DIR, exist_ok=True)
+        with open(BRIDGE_OUTBOX, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+
+def cmd_claude_status():
+    """Show active Claude Code sessions."""
+    with _claude_sessions_lock:
+        active = {pid: s for pid, s in _claude_sessions.items() if s["proc"].poll() is None}
+    if not active:
+        return "\U0001F4A4 No active Claude Code sessions."
+    lines = [f"\U0001F916 *Active Claude Sessions ({len(active)}):*\n"]
+    for pid, s in active.items():
+        elapsed = ""
+        try:
+            started = datetime.fromisoformat(s["started"])
+            delta = datetime.now(timezone.utc) - started
+            mins = int(delta.total_seconds() // 60)
+            secs = int(delta.total_seconds() % 60)
+            elapsed = f" ({mins}m {secs}s)"
+        except Exception:
+            pass
+        lines.append(f"  \u25B6\uFE0F PID `{pid}`{elapsed}\n    _{s['prompt']}_")
+    return "\n".join(lines)
+
+
+def cmd_claude_stop(pid_str: str = ""):
+    """Stop a running Claude Code session by PID, or stop all."""
+    if pid_str.strip().lower() in ("all", ""):
+        with _claude_sessions_lock:
+            killed = 0
+            for pid, s in list(_claude_sessions.items()):
+                if s["proc"].poll() is None:
+                    s["proc"].kill()
+                    killed += 1
+            _claude_sessions.clear()
+        return f"\u23F9\uFE0F Stopped {killed} Claude session(s)." if killed else "\U0001F4A4 No active sessions."
+    try:
+        pid = int(pid_str.strip())
+    except ValueError:
+        return "Usage: `claude-stop <pid>` or `claude-stop all`"
+    with _claude_sessions_lock:
+        session = _claude_sessions.get(pid)
+        if not session or session["proc"].poll() is not None:
+            return f"No active session with PID `{pid}`."
+        session["proc"].kill()
+        _claude_sessions.pop(pid, None)
+    return f"\u23F9\uFE0F Stopped Claude session `{pid}`."
 
 
 def bridge_append_inbox(text: str):
@@ -3779,6 +3930,16 @@ def handle_message(msg):
         reply = cmd_daily()
     elif t in ("hall_of_fame", "hall of fame", "hof", "fame"):
         reply = cmd_hall_of_fame()
+    elif t.startswith("start-claude:") or t.startswith("start_claude:") or t.startswith("start claude:"):
+        prompt = text.split(":", 1)[1].strip() if ":" in text else ""
+        reply = cmd_start_claude(prompt, chat_id=chat_id)
+    elif t in ("claude-status", "claude_status", "claude status", "cs"):
+        reply = cmd_claude_status()
+    elif t in ("claude-stop", "claude_stop", "claude stop"):
+        reply = cmd_claude_stop("all")
+    elif t.startswith("claude-stop ") or t.startswith("claude_stop ") or t.startswith("claude stop "):
+        arg = t.split()[-1].strip()
+        reply = cmd_claude_stop(arg)
     elif t == "dedupe" or t.startswith("dedupe "):
         reply = cmd_dedupe(t[7:].strip() if t.startswith("dedupe ") else "")
     elif t == "remind" or t.startswith("remind "):
@@ -3855,7 +4016,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily", "hall_of_fame"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily", "hall_of_fame", "start-claude", "claude-status", "claude-stop"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
