@@ -7,7 +7,7 @@ Autonomous multi-repo coding orchestrator. Combines Ruflo swarm intelligence (10
 ```
   Dashboard (localhost:6969)        Telegram Mini App (12 tabs)
        ↓ REST API + SSE + gzip            ↓
-  Master DB (repo registry)         Telegram Bot (55+ commands)
+  Master DB (repo registry)         Telegram Bot (100+ commands)
        ↓                                   ↓
   Per-Repo DB (.swarm-agent.db in each repo)
        ↓
@@ -181,7 +181,7 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Item quick actions** — one-click complete button on pending items, reordered action buttons (complete/retry/delete)
 - **Git rollback item reset** — rollback now resets completed/in_progress items to pending
 - **Tag count limits** — repo tags capped at 20 tags max (previously unlimited, only had 200 char limit)
-- **DB indexes** — SQLite indexes on items(status), items(created_at), plan_steps(status), execution_log(created_at), memory(namespace)
+- **DB indexes** — 14 SQLite indexes covering items, plan_steps, execution_log, memory, mistakes, agents, history tables
 - **Circuit breaker home alert** — Town Square shows alert card when any breakers are tripped
 - **Detailed health scores** — `/api/health/detailed` computes 0-100 score per repo with A-F letter grades
 - **Health scores overview** — Health tab shows all repo grades with color-coded badges and average score
@@ -294,6 +294,18 @@ Each repo gets `.swarm-agent.db` inside its folder. Tables:
 - **Mini App Claude Sessions tab** — 12th tab showing active Claude Code sessions with status and stop controls
 - **Mini App drain toggle** — drain mode on/off switch + system flags display in Mini App
 - **Stalled repo detection** — Telegram `stalled` command finds repos stuck in same state for extended periods
+- **Error Boundary** — React ErrorBoundary wraps entire dashboard; shows friendly recovery UI instead of white screen on render crashes
+- **Deep memoization** — repoStats useMemo includes totalDone, totalItems, totalAgents, totalErrors, overallPct; runningRepos and tabBadges also memoized
+- **SQLite indexes expanded** — 14 indexes total (added source, priority, type, plan_steps.item_id, execution_log.state, memory.key, mistakes.error_type, agents.status, history.action)
+- **deque ring buffers** — chat_history(50), _request_log(200), and per-endpoint latencies(100) use collections.deque instead of manual list trimming
+- **get_item_counts() helper** — single-query item count method (total/done/pending/in_progress) replaces 6 separate queries across 3 locations
+- **Combined status queries** — /api/repos uses subselect to batch mistakes+memory+audio counts into 1 query (was 3)
+- **File count cache** — git ls-files results cached 60s per repo path to avoid subprocess spam on every poll
+- **ARIA accessibility** — role="tablist"/role="tab" on nav, aria-labels on all header buttons, aria-live on connection status
+- **100 Telegram commands** — setup-miniapp.py registers 100 commands with BotFather (was 20), organized by category
+- **Mini App timer fix** — adaptive polling uses startPolling() instead of nested setInterval (prevents timer stacking)
+- **Event delegation** — stat number tap-to-copy uses single delegated listener instead of per-element binding
+- **Tab abort** — recent items API loop aborts when user leaves Home tab
 
 ## Commands
 ```bash
