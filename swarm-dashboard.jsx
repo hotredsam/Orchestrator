@@ -344,14 +344,21 @@ function Dashboard() {
     [repos, pinnedRepos]
   );
 
+  // Memoized item counts
+  const itemStats = useMemo(() => {
+    const pending = items.filter(i => i.status === "pending");
+    const done = items.filter(i => i.status === "completed");
+    return { pending: pending.length, done: done.length, total: items.length, completePct: items.length > 0 ? Math.round(done.length / items.length * 100) : 0 };
+  }, [items]);
+
   // Memoized tab badge counts
   const tabBadges = useMemo(() => ({
-    home: repos.filter(r => r.running).length,
-    items: items.filter(i => i.status === "pending").length,
+    home: repoStats.running,
+    items: itemStats.pending,
     mistakes: mistakes.length,
     logs: logs.filter(l => l.error).length,
     plan: plan.filter(s => s.status === "in_progress").length,
-  }), [repos, items, mistakes, logs, plan]);
+  }), [repoStats.running, itemStats.pending, mistakes, logs, plan]);
 
   // Memoized total cost
   const totalCost = useMemo(() => Object.values(costs).reduce((a, b) => a + (b || 0), 0), [costs]);
@@ -2646,7 +2653,7 @@ function Dashboard() {
                 <button onClick={() => setCompactItems(c => !c)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: compactItems ? C.teal : C.cream, color: compactItems ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Toggle compact view">{compactItems ? "\u2630 Compact" : "\u2637 Full"}</button>
                 <button onClick={() => setGroupByType(g => !g)} style={{ padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'Fredoka', sans-serif", cursor: "pointer", background: groupByType ? "#7E57C2" : C.cream, color: groupByType ? C.white : C.brown, border: `2px solid ${C.darkBrown}`, transition: "all 0.15s" }} title="Group by type">{groupByType ? "\uD83C\uDFF7 Grouped" : "\uD83C\uDFF7 Group"}</button>
                 <span style={{ fontSize: 12, color: C.brown, alignSelf: "center", fontWeight: 600 }}>
-                  {items.filter(i=>i.status==="pending").length} pending / {items.filter(i=>i.status==="completed").length} done / {items.length} total
+                  {itemStats.pending} pending / {itemStats.done} done / {itemStats.total} total
                 </span>
                 {items.filter(i => i.status === "pending" && i.created_at).length > 0 && (() => {
                   const pending = items.filter(i => i.status === "pending" && i.created_at);
@@ -2656,9 +2663,8 @@ function Dashboard() {
                   const stale = pending.filter(i => (now - new Date(i.created_at).getTime()) > 7 * 86400000).length;
                   return <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontWeight: 600, background: C.cream, color: C.brown, border: `1px solid ${C.darkBrown}22` }}>{"\uD83D\uDCC5"} {fresh > 0 ? `${fresh} new` : ""}{fresh > 0 && (mid > 0 || stale > 0) ? " · " : ""}{mid > 0 ? `${mid} this week` : ""}{mid > 0 && stale > 0 ? " · " : ""}{stale > 0 ? <span style={{ color: C.red }}>{stale} stale</span> : ""}</span>;
                 })()}
-                {items.length > 0 && (() => {
-                  const done = items.filter(i => i.status === "completed").length;
-                  const rate = Math.round((done / items.length) * 100);
+                {itemStats.total > 0 && (() => {
+                  const rate = itemStats.completePct;
                   return <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontWeight: 700, background: rate >= 75 ? "#E8F5E9" : rate >= 40 ? C.lightOrange : "#FFEBEE", color: rate >= 75 ? C.green : rate >= 40 ? C.orange : C.red, border: `1px solid ${rate >= 75 ? C.green : rate >= 40 ? C.orange : C.red}44` }}>{rate}% complete</span>;
                 })()}
                 {items.filter(i => i.status === "pending" && i.created_at).length > 0 && (() => {
@@ -2671,8 +2677,8 @@ function Dashboard() {
                 })()}
                 {(() => {
                   const doneI = items.filter(i => i.status === "completed" && i.completed_at);
-                  const pendI = items.filter(i => i.status === "pending").length;
-                  if (doneI.length < 2 || pendI === 0) return null;
+                  if (doneI.length < 2 || itemStats.pending === 0) return null;
+                  const pendI = itemStats.pending;
                   const dts = doneI.map(i => new Date(i.completed_at).getTime()).sort();
                   const vel = doneI.length / Math.max(1, (dts[dts.length-1] - dts[0]) / 86400000);
                   const eta = Math.ceil(pendI / vel);
@@ -2719,7 +2725,7 @@ function Dashboard() {
               const dates = doneItems.map(i => new Date(i.completed_at).getTime()).sort();
               const spanDays = Math.max(1, (dates[dates.length - 1] - dates[0]) / 86400000);
               const velocity = (doneItems.length / spanDays).toFixed(1);
-              const pendCount = items.filter(i => i.status === "pending").length;
+              const pendCount = itemStats.pending;
               const etaDays = velocity > 0 && pendCount > 0 ? Math.ceil(pendCount / velocity) : 0;
               return (
                 <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 8px", padding: "6px 14px", background: `linear-gradient(135deg, #E0F7FA 0%, #B2EBF2 100%)` }}>
@@ -2769,7 +2775,7 @@ function Dashboard() {
             })()}
             {sr && items.length > 0 && (() => {
               const key = `item_trend_${sr}`;
-              const done = items.filter(i => i.status === "completed").length;
+              const done = itemStats.done;
               try {
                 const hist = JSON.parse(localStorage.getItem(key) || "[]");
                 const today = new Date().toISOString().slice(0, 10);
