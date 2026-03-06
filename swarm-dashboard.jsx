@@ -2132,16 +2132,16 @@ function Dashboard() {
                 const errs = r.stats?.mistakes || 0;
                 if (done > 0 && errs / done > 0.5) alerts.push({ icon: "\uD83D\uDED1", msg: `${r.name}: ${Math.round(errs/done*100)}% error rate`, lvl: "red" });
               });
-              if (budget > 0) {
+              if (budgetLimit > 0) {
                 const tc = repos.reduce((s, r) => s + (r.stats?.cost || 0), 0);
-                const pct = tc / budget * 100;
-                if (pct > 85) alerts.push({ icon: "\uD83D\uDCB8", msg: `Budget ${pct.toFixed(0)}% consumed ($${tc.toFixed(2)}/$${budget.toFixed(2)})`, lvl: pct > 95 ? "red" : "orange" });
+                const pct = tc / budgetLimit * 100;
+                if (pct > 85) alerts.push({ icon: "\uD83D\uDCB8", msg: `Budget ${pct.toFixed(0)}% consumed ($${tc.toFixed(2)}/$${budgetLimit.toFixed(2)})`, lvl: pct > 95 ? "red" : "orange" });
               }
               const staleRepos = repos.filter(r => r.running && r.stats?.items_done === 0 && (r.stats?.items_total || 0) > 0);
               staleRepos.forEach(r => alerts.push({ icon: "\u23F3", msg: `${r.name}: running but 0 completions`, lvl: "orange" }));
               if (alerts.length === 0) return null;
               return <Card bg={C.white} style={{ maxWidth: 700, margin: "16px auto 0", padding: 14, borderLeft: `4px solid ${C.red}` }}>
-                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>{"\U0001F6A8"} Risk Alerts ({alerts.length})</div>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1.5, marginBottom: 8, textAlign: "center" }}>{"\uD83D\uDEA8"} Risk Alerts ({alerts.length})</div>
                 {alerts.slice(0, 6).map((a, i) => <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12, color: a.lvl === "red" ? C.red : C.orange }}>
                   <span>{a.icon}</span><span style={{ fontWeight: 600 }}>{a.msg}</span>
                 </div>)}
@@ -2736,7 +2736,7 @@ function Dashboard() {
               });
               const mx = Math.max(...counts, 1);
               return <Card bg={C.white} style={{ maxWidth: 620, margin: "0 auto 8px", padding: "8px 14px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.brown, marginBottom: 6 }}>{"\U0001F4CA"} Pending Age Distribution</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.brown, marginBottom: 6 }}>{"\uD83D\uDCCA"} Pending Age Distribution</div>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 40 }}>
                   {buckets.map((b, i) => <div key={b.l} style={{ flex: 1, textAlign: "center" }}>
                     <div style={{ background: b.c, height: Math.max(4, Math.round(counts[i] / mx * 32)), borderRadius: "4px 4px 0 0", margin: "0 auto", width: "80%", transition: "height 0.3s" }} />

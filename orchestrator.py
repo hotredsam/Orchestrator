@@ -2802,9 +2802,10 @@ class API(BaseHTTPRequestHandler):
                     r["state"] = st.current_state.value
                     r["cycle_count"] = st.cycle_count
                     r["active_agents"] = st.active_agents
-                    r["running"] = st.running or r.get("running", 0)
-                    # Check if paused
+                    # Check actual thread state, not stale DB value
                     orch = manager.orchestrators.get(r["id"])
+                    thread_alive = r["id"] in manager.threads and manager.threads[r["id"]].is_alive()
+                    r["running"] = thread_alive and st.running
                     r["paused"] = orch.is_paused if orch else False
                     r["last_activity"] = orch.state.last_activity if orch else 0
                     # Single query for all item counts
