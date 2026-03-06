@@ -2756,7 +2756,7 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/costs/history":
             days = min(int(q.get("days", [30])[0]), 365)
-            history = master.get_cost_history(days)
+            history = manager.master.get_cost_history(days)
             return self._json({"history": history, "days": days})
 
         # Telegram Mini App — serve the self-contained HTML file with token injected
@@ -2955,7 +2955,7 @@ class API(BaseHTTPRequestHandler):
                 if real:
                     return self._json(real)
                 # Generate virtual agents from orchestrator state
-                repo = master.get_repo(rid)
+                repo = manager.master.get_repo(rid)
                 if repo:
                     st = db.load_state()
                     n = st.active_agents or 0

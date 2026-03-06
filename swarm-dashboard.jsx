@@ -512,7 +512,7 @@ function Dashboard() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [sr, repo]);
+  }, [sr, repos]);
 
   const repo = repos.find(r => r.id === sr);
   const cs = repo?.state || "idle";

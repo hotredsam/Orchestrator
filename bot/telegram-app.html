@@ -1737,7 +1737,7 @@
         const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢', critical: '⛔' };
         const hasDetails = (item.description && item.description !== item.title) || item.depends_on || item.created_at;
         return `
-          <div class="card" style="margin-bottom:8px; padding:10px 12px;border-left:3px solid ${statusColors[item.status] || 'var(--orange)'};" ontouchstart="itemTouchStart(event,${repoId},${item.id},'${item.status}','${item.priority||'medium'}')" ontouchend="itemTouchEnd()" oncontextmenu="event.preventDefault();showItemMenu(event.clientX,event.clientY,${repoId},${item.id},'${item.status}','${item.priority||'medium'}')">
+          <div class="card" style="margin-bottom:8px; padding:10px 12px;border-left:3px solid ${statusColors[item.status] || 'var(--orange)'};" ontouchstart="itemTouchStart(event,${repoId},${item.id},'${item.status}','${item.priority||'medium'}')" ontouchend="itemTouchEnd(event)" oncontextmenu="event.preventDefault();showItemMenu(event.clientX,event.clientY,${repoId},${item.id},'${item.status}','${item.priority||'medium'}')">
             <div class="flex-between mb-8" onclick="this.parentElement.querySelector('.item-details')?.classList.toggle('hidden')" style="cursor:pointer;">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span>${typeEmoji}</span>
