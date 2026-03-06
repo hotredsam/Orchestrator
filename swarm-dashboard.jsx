@@ -234,6 +234,7 @@ function Dashboard() {
   const [expandedLog, setExpandedLog] = useState(null); // log id
   const [histFilter, setHistFilter] = useState("all"); // history action filter
   const [showQuickAdd, setShowQuickAdd] = useState(false); // quick add item modal
+  const [claudeSessions, setClaudeSessions] = useState([]);
   const mRec = useRef(null);
   const chnk = useRef([]);
   const tmr = useRef(null);
@@ -425,8 +426,9 @@ function Dashboard() {
       for (let i = 0; i < keys.length; i++) {
         if (results[i].ok) { const d = await results[i].json(); setters[keys[i]](d); }
       }
-      // Fetch costs + webhooks + budget
+      // Fetch costs + webhooks + budget + claude sessions
       try { const cr = await f("/api/costs"); if(cr.ok) { const cd = await cr.json(); if(cd.costs) setCosts(cd.costs); } } catch {}
+      try { const cs2 = await f("/api/claude-sessions"); if(cs2.ok) { const cd2 = await cs2.json(); setClaudeSessions(cd2.sessions || []); } } catch {}
       if (full || t === "settings") {
         try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
         try { const br = await f("/api/budget"); if(br.ok) { const bd = await br.json(); setBudgetLimit(bd.budget_limit || 0); } } catch {}
@@ -970,8 +972,14 @@ function Dashboard() {
 
         {/* Title */}
         <div style={{ position: "relative", zIndex: 2 }}>
-          <h1 style={{ fontFamily: "'Bangers', cursive", fontSize: 48, letterSpacing: 5, color: C.white, textShadow: `3px 3px 0 ${C.darkBrown}, -1px -1px 0 ${C.darkBrown}, 1px -1px 0 ${C.darkBrown}, -1px 1px 0 ${C.darkBrown}`, margin: 0 }}>
+          <h1 style={{ fontFamily: "'Bangers', cursive", fontSize: 48, letterSpacing: 5, color: C.white, textShadow: `3px 3px 0 ${C.darkBrown}, -1px -1px 0 ${C.darkBrown}, 1px -1px 0 ${C.darkBrown}, -1px 1px 0 ${C.darkBrown}`, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
             SWARM TOWN
+            {claudeSessions.length > 0 && (
+              <span title={`${claudeSessions.length} active Claude session${claudeSessions.length > 1 ? "s" : ""}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(46,204,113,0.2)", border: "2px solid #2ECC71", borderRadius: 20, padding: "2px 10px", fontSize: 14, fontFamily: "'Fredoka', sans-serif", letterSpacing: 0, color: "#2ECC71", verticalAlign: "middle" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2ECC71", display: "inline-block", animation: "pulse 1.5s infinite" }} />
+                {claudeSessions.length}
+              </span>
+            )}
           </h1>
           <p style={{ fontFamily: "'Bangers', cursive", fontSize: 16, color: C.cream, letterSpacing: 3, textShadow: `1px 1px 0 ${C.darkBrown}`, marginTop: 2 }}>
             AUTONOMOUS MULTI-AGENT ORCHESTRATOR
@@ -4632,34 +4640,49 @@ function Dashboard() {
 
       {showHelp && (
         <div onClick={() => setShowHelp(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.cream, border: `4px solid ${C.darkBrown}`, borderRadius: 16, padding: 28, maxWidth: 420, width: "90%", boxShadow: "0 8px 32px rgba(0,0,0,0.3), 6px 6px 0 #3D2B1F" }}>
-            <h3 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, letterSpacing: 2, marginBottom: 16, textAlign: "center", color: C.darkBrown }}>Keyboard Shortcuts</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 16px", fontSize: 14 }}>
-              {[
+          <div onClick={e => e.stopPropagation()} style={{ background: C.cream, border: `4px solid ${C.darkBrown}`, borderRadius: 16, padding: 28, maxWidth: 480, width: "90%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.3), 6px 6px 0 #3D2B1F" }}>
+            <h3 style={{ fontFamily: "'Bangers', cursive", fontSize: 28, letterSpacing: 2, marginBottom: 16, textAlign: "center", color: C.darkBrown }}>{"\u2328\uFE0F"} Keyboard Shortcuts</h3>
+            {[
+              { title: "\uD83E\uDDED Navigation", shortcuts: [
                 ["1-9", "Switch to tab 1-9"],
                 ["0", "Logs tab"],
-                ["S", "Start/Stop selected repo"],
-                ["P", "Pause/Resume selected repo"],
+                ["[ / ]", "Previous / Next tab"],
+                ["J / K", "Navigate repos (Master view)"],
+                ["Enter", "Open focused repo (Master view)"],
+              ]},
+              { title: "\u26A1 Actions", shortcuts: [
                 ["R", "Refresh all data"],
+                ["S", "Start / Stop selected repo"],
+                ["P", "Pause / Resume selected repo"],
                 ["D", "Toggle dark mode"],
+                ["N", "New bounty (focus item title)"],
+                ["Alt+I", "Quick-add item modal"],
                 ["/", "Focus command center"],
                 ["Ctrl+K", "Command palette"],
-                ["N", "New bounty (focus item title)"],
-                ["F", "Focus search/filter input"],
-                ["C", "Clear all filters"],
-                ["[ / ]", "Previous / Next tab"],
-                ["J / K", "Navigate repos in Master view"],
-                ["Enter", "Open focused repo (Master view)"],
+              ]},
+              { title: "\uD83D\uDD0D Filters", shortcuts: [
+                ["F", "Focus search / filter input"],
+                ["Shift+F", "Cycle repo filter (all/running/idle/paused/error)"],
+                ["C", "Clear all filters & selections"],
+              ]},
+              { title: "\uD83D\uDCA1 General", shortcuts: [
                 ["?", "Toggle this help"],
                 ["Esc", "Close overlays / deselect"],
-              ].map(([key, desc]) => (
-                <React.Fragment key={key}>
-                  <kbd style={{ background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "3px 10px", fontFamily: "'Bangers', cursive", fontSize: 16, textAlign: "center", boxShadow: "2px 2px 0 #3D2B1F" }}>{key}</kbd>
-                  <span style={{ display: "flex", alignItems: "center" }}>{desc}</span>
-                </React.Fragment>
-              ))}
-            </div>
-            <p style={{ textAlign: "center", marginTop: 16, fontSize: 12, color: C.brown }}>Press ? or Esc to close</p>
+              ]},
+            ].map(section => (
+              <div key={section.title} style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 16, letterSpacing: 1, color: C.brown, marginBottom: 6, borderBottom: `2px solid ${C.darkBrown}22`, paddingBottom: 4 }}>{section.title}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 14px", fontSize: 13 }}>
+                  {section.shortcuts.map(([key, desc]) => (
+                    <React.Fragment key={key}>
+                      <kbd style={{ background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontFamily: "'Bangers', cursive", fontSize: 14, textAlign: "center", boxShadow: `2px 2px 0 ${darkMode ? "#000" : "#3D2B1F"}`, whiteSpace: "nowrap" }}>{key}</kbd>
+                      <span style={{ display: "flex", alignItems: "center", color: C.darkBrown }}>{desc}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <p style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: C.brown }}>Press ? or Esc to close</p>
           </div>
         </div>
       )}

@@ -968,6 +968,19 @@
         </div>
       </div>
 
+      <!-- Screen 12: Claude Sessions -->
+      <div class="screen" id="screen-claude">
+        <h2 class="section-title">Claude Sessions</h2>
+        <div class="btn-row mb-12">
+          <button class="btn btn-teal" onclick="loadClaude()">Refresh</button>
+          <button class="btn btn-green" onclick="launchClaude()">Launch Claude</button>
+          <button class="btn btn-red" onclick="stopAllClaude()">Stop All</button>
+        </div>
+        <div id="claudeSessionList">
+          <div class="empty-state"><div class="empty-emoji">\uD83E\uDD16</div><p>No active Claude sessions</p></div>
+        </div>
+      </div>
+
     </div>
 
     <!-- Last Updated Bar -->
@@ -1009,6 +1022,9 @@
       </button>
       <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')" role="tab" aria-selected="false" aria-label="Statistics">
         <span>📊</span><span class="tab-label">Stats</span>
+      </button>
+      <button class="tab-btn" data-tab="claude" onclick="switchTab('claude')" role="tab" aria-selected="false" aria-label="Claude sessions" style="position:relative;">
+        <span>\uD83E\uDD16</span><span class="tab-label">Claude</span><span class="tab-badge claude-badge" style="position:absolute;top:-2px;right:-2px;font-size:8px;min-width:14px;height:14px;line-height:14px;text-align:center;border-radius:7px;background:var(--teal);color:#fff;font-weight:700;"></span>
       </button>
     </div>
   </div>
@@ -1152,6 +1168,7 @@
       if (tab === 'memory') { populateRepoDropdowns(); loadMemory(); }
       if (tab === 'mistakes') { populateRepoDropdowns(); loadMistakes(); }
       if (tab === 'stats') refreshStats();
+      if (tab === 'claude') loadClaude();
       if (tab === 'chat') loadChatHistory();
     }
 
@@ -2403,6 +2420,76 @@
       navigator.clipboard.writeText(text).then(() => { haptic('light'); showToast('Stats copied to clipboard', 'success'); });
     }
 
+    // ─── Screen 12: Claude Sessions ──────────────────────────────────────────
+    async function loadClaude() {
+      const container = document.getElementById('claudeSessionList');
+      const data = await api('/api/claude-sessions');
+      if (!data) return;
+      updateLastFetch();
+      const sessions = data.sessions || [];
+
+      // Update tab badge
+      const badge = document.querySelector('[data-tab="claude"] .claude-badge');
+      if (badge) badge.textContent = sessions.length > 0 ? sessions.length : '';
+
+      if (sessions.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-emoji">\uD83E\uDD16</div><p>No active Claude sessions</p></div>';
+        return;
+      }
+      const now = Date.now();
+      container.innerHTML = sessions.map(s => {
+        let elapsed = '';
+        if (s.started) {
+          try {
+            const ms = now - new Date(s.started).getTime();
+            const mins = Math.floor(ms / 60000);
+            const secs = Math.floor((ms % 60000) / 1000);
+            elapsed = mins + 'm ' + secs + 's';
+          } catch(e) {}
+        }
+        const promptPreview = esc((s.prompt || '').substring(0, 80)) + ((s.prompt || '').length > 80 ? '\u2026' : '');
+        return '<div class="card">' +
+          '<div class="card-row"><span class="card-label">PID</span><span class="card-value" style="font-family:monospace;">' + esc(String(s.pid || '?')) + '</span></div>' +
+          '<div class="card-row"><span class="card-label">Prompt</span><span class="card-value" style="font-size:11px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + promptPreview + '</span></div>' +
+          (elapsed ? '<div class="card-row"><span class="card-label">Elapsed</span><span class="card-value">' + elapsed + '</span></div>' : '') +
+          '<div style="margin-top:8px;text-align:right;"><button class="btn btn-red btn-sm" onclick="stopOneClaude(\'' + esc(String(s.pid || '')) + '\')" style="padding:4px 12px;font-size:11px;">\u23F9 Stop</button></div>' +
+          '</div>';
+      }).join('');
+    }
+
+    async function launchClaude() {
+      const promptText = prompt('Enter Claude prompt:');
+      if (!promptText || !promptText.trim()) return;
+      haptic('heavy');
+      const res = await api('/api/claude-launch', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: promptText.trim().substring(0, 2000) })
+      });
+      if (res && res.ok) {
+        showToast('Claude session launched', 'success');
+      } else if (res && res.message) {
+        showToast(res.message, 'success');
+      } else {
+        showToast('Launch request sent', 'info');
+      }
+      setTimeout(loadClaude, 2000);
+    }
+
+    async function stopAllClaude() {
+      if (!confirm('Stop all Claude sessions?')) return;
+      haptic('heavy');
+      await api('/api/claude-stop', { method: 'POST', body: JSON.stringify({ pid: 'all' }) });
+      showToast('All Claude sessions stopped', 'warning');
+      setTimeout(loadClaude, 1000);
+    }
+
+    async function stopOneClaude(pid) {
+      haptic('medium');
+      await api('/api/claude-stop', { method: 'POST', body: JSON.stringify({ pid: pid }) });
+      showToast('Claude session ' + pid + ' stopped', 'warning');
+      setTimeout(loadClaude, 1000);
+    }
+
     function updateCostBadge() {
       const badge = document.getElementById('costBadge');
       if (totalCost > 0) {
@@ -2456,6 +2543,7 @@
         if (currentTab === 'home') refreshHome();
         if (currentTab === 'flow') loadFlowMap();
         if (currentTab === 'stats') refreshStats();
+        if (currentTab === 'claude') loadClaude();
         // Adaptive: check if system is active and adjust
         const running = repos.filter(r => r.running).length;
         const newInterval = running > 0 ? 5000 : 15000;
@@ -2683,7 +2771,7 @@
     document.addEventListener('keydown', function(e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); return; }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-      const tabMap = { '1': 'home', '2': 'add', '3': 'items', '4': 'plan', '5': 'logs', '6': 'chat', '7': 'stats', '8': 'health', '9': 'mistakes' };
+      const tabMap = { '1': 'home', '2': 'add', '3': 'items', '4': 'plan', '5': 'logs', '6': 'chat', '7': 'stats', '8': 'health', '9': 'mistakes', '0': 'claude' };
       if (tabMap[e.key]) { e.preventDefault(); switchTab(tabMap[e.key]); return; }
       if (e.key === 'r' || e.key === 'R') { e.preventDefault(); if (currentTab === 'home') refreshHome(); else if (currentTab === 'stats') refreshStats(); else switchTab(currentTab); return; }
       if (e.key === '?') { e.preventDefault(); const h = document.getElementById('shortcutHelp'); if (h) h.style.display = h.style.display === 'flex' ? 'none' : 'flex'; }

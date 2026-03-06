@@ -2515,6 +2515,17 @@ def _record_metric(path, status_code=200, latency_ms=0):
 _response_cache = {}
 _cache_lock = threading.Lock()
 CACHE_TTL = 3  # default seconds
+_draining = False  # drain mode: when True, no new cycles start
+_claude_procs = {}  # pid -> {prompt, started, proc}
+
+
+def _claude_watcher(proc):
+    """Wait for a Claude process to finish and clean up."""
+    try:
+        proc.wait(timeout=600)
+    except Exception:
+        proc.kill()
+    _claude_procs.pop(proc.pid, None)
 # Per-endpoint TTL overrides (longer for expensive/stable endpoints)
 _CACHE_TTL_MAP = {
     "/api/sparklines": 30,
@@ -3358,6 +3369,10 @@ class API(BaseHTTPRequestHandler):
                 {"method": "GET", "path": "/api/comparison", "desc": "Repo comparison matrix"},
                 {"method": "GET", "path": "/api/errors/recent", "desc": "Recent errors across all repos"},
                 {"method": "GET", "path": "/api/stale-items", "desc": "Items stuck in progress 2h+"},
+                {"method": "GET", "path": "/api/claude-sessions", "desc": "Active Claude Code sessions"},
+                {"method": "GET", "path": "/api/git-status?repo_id=N", "desc": "Git status for a repo"},
+                {"method": "GET", "path": "/api/drain", "desc": "Drain mode status"},
+                {"method": "POST", "path": "/api/drain", "desc": "Toggle drain mode"},
             ]})
 
         if path == "/api/metrics":
@@ -3672,6 +3687,63 @@ class API(BaseHTTPRequestHandler):
                 except Exception:
                     comparison.append({"id": r["id"], "name": r["name"], "state": "unknown", "cost": 0, "items_done": 0, "items_total": 0, "cost_per_item": 0, "error_count": 0, "error_rate": 0, "total_actions": 0, "cycles": 0, "health_score": 0})
             return self._json({"repos": comparison, "total_cost": round(sum(costs.values()), 4)})
+
+        if path == "/api/claude-sessions":
+            sessions = []
+            for pid, info in list(_claude_procs.items()):
+                p = info.get("proc")
+                if p and p.poll() is None:
+                    sessions.append({
+                        "pid": pid,
+                        "prompt": info.get("prompt", ""),
+                        "started": info.get("started", ""),
+                        "running": True,
+                    })
+                else:
+                    _claude_procs.pop(pid, None)
+            return self._json({"sessions": sessions})
+
+        if path == "/api/git-status":
+            rid_val = self._safe_int(q.get("repo_id", [None])[0])
+            if rid_val is None:
+                return self._json({"error": "repo_id required (integer)"}, 400)
+            cache_key = f"git-status:{rid_val}"
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                return self._json(cached)
+            repo = next((r for r in manager.master.get_repos() if r["id"] == rid_val), None)
+            if not repo:
+                return self._json({"error": "Repo not found"}, 404)
+            repo_path = repo["path"]
+            if not os.path.isdir(os.path.join(repo_path, ".git")):
+                return self._json({"error": "Not a git repository"}, 400)
+            try:
+                status_result = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=repo_path, capture_output=True, text=True, timeout=10
+                )
+                branch_result = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    cwd=repo_path, capture_output=True, text=True, timeout=10
+                )
+                files = [l for l in status_result.stdout.strip().split("\n") if l]
+                branch = branch_result.stdout.strip() or "HEAD"
+                result = {
+                    "repo_id": rid_val,
+                    "name": repo["name"],
+                    "branch": branch,
+                    "clean": len(files) == 0,
+                    "files": files,
+                }
+                _cache_set(cache_key, result)
+                return self._json(result)
+            except subprocess.TimeoutExpired:
+                return self._json({"error": "Git command timed out"}, 504)
+            except Exception as e:
+                return self._json({"error": f"Git error: {str(e)}"}, 500)
+
+        if path == "/api/drain":
+            return self._json({"draining": _draining})
 
         self._json({"error": "Not found"}, 404)
 
@@ -4427,6 +4499,59 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": "text required"}, 400)
             bridge_write_outbox(text, source)
             return self._json({"ok": True})
+
+        if path == "/api/drain":
+            global _draining
+            enabled = b.get("enabled")
+            if enabled is None:
+                return self._json({"error": "enabled (bool) required"}, 400)
+            _draining = bool(enabled)
+            log.info("Drain mode %s", "ENABLED" if _draining else "DISABLED")
+            return self._json({"ok": True, "draining": _draining})
+
+        if path == "/api/claude-launch":
+            prompt_text = b.get("prompt", "").strip()[:2000]
+            if not prompt_text:
+                return self._json({"error": "prompt required"}, 400)
+            import subprocess as _sp
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            try:
+                proc = _sp.Popen(
+                    ["npx", "claude", "--dangerously-skip-permissions", "-p", prompt_text],
+                    stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                    cwd=project_root, text=True, encoding="utf-8", errors="replace",
+                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                )
+                _claude_procs[proc.pid] = {"prompt": prompt_text[:100], "started": datetime.now(timezone.utc).isoformat(), "proc": proc}
+                threading.Thread(target=_claude_watcher, args=(proc,), daemon=True).start()
+                log.info("Claude launched PID %d: %s", proc.pid, prompt_text[:60])
+                return self._json({"ok": True, "pid": proc.pid})
+            except Exception as e:
+                log.error("Claude launch failed: %s", e)
+                return self._json({"error": str(e)}, 500)
+
+        if path == "/api/claude-stop":
+            pid_val = b.get("pid", "all")
+            if pid_val == "all":
+                killed = 0
+                for pid, info in list(_claude_procs.items()):
+                    p = info.get("proc")
+                    if p and p.poll() is None:
+                        p.kill()
+                        killed += 1
+                _claude_procs.clear()
+                return self._json({"ok": True, "killed": killed})
+            else:
+                try:
+                    pid = int(pid_val)
+                except (ValueError, TypeError):
+                    return self._json({"error": "invalid pid"}, 400)
+                info = _claude_procs.get(pid)
+                if not info or info["proc"].poll() is not None:
+                    return self._json({"error": f"no active session {pid}"}, 404)
+                info["proc"].kill()
+                _claude_procs.pop(pid, None)
+                return self._json({"ok": True, "pid": pid})
 
         self._json({"error": "Not found"}, 404)
 

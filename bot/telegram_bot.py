@@ -3320,6 +3320,89 @@ def cmd_wave():
     return "\n".join(lines)
 
 
+def cmd_git_status(name):
+    """Show git status (branch, clean/dirty, changed files) for a repo."""
+    if not name.strip():
+        return "Usage: `git_status <repo>` or `gs <repo>`" + _repo_hint("git_status")
+    repo = _find_repo(name)
+    if not repo:
+        return f"Repo '{name}' not found."
+    data = _orch_get(f"/api/git-status?repo_id={repo['id']}")
+    if isinstance(data, dict) and "error" in data:
+        return f"\u26A0\uFE0F Git status error: {data['error']}"
+    branch = data.get("branch", "unknown")
+    clean = data.get("clean", True)
+    files = data.get("files", [])
+    status_icon = "\u2705" if clean else "\u26A0\uFE0F"
+    status_word = "Clean" if clean else "Dirty"
+    lines = [f"\U0001F4C2 *Git Status: {repo['name']}*\n"]
+    lines.append(f"  \U0001F33F Branch: `{branch}`")
+    lines.append(f"  {status_icon} {status_word}")
+    if files:
+        lines.append(f"\n\U0001F4C4 *Changed files ({len(files)}):*")
+        for f in files[:15]:
+            lines.append(f"  `{f}`")
+        if len(files) > 15:
+            lines.append(f"  _...and {len(files) - 15} more_")
+    return "\n".join(lines)
+
+
+def cmd_drain(mode=""):
+    """Toggle or check drain mode (prevents new cycles from starting)."""
+    mode = mode.strip().lower()
+    if mode in ("on", "enable", "true"):
+        result = _orch_post("/api/drain", {"enabled": True})
+        if isinstance(result, dict) and "error" in result:
+            return f"\u26A0\uFE0F Failed to enable drain: {result['error']}"
+        return "\U0001F6D1 *Drain mode: ON*\nNo new cycles will start. Running cycles will finish."
+    elif mode in ("off", "disable", "false"):
+        result = _orch_post("/api/drain", {"enabled": False})
+        if isinstance(result, dict) and "error" in result:
+            return f"\u26A0\uFE0F Failed to disable drain: {result['error']}"
+        return "\u2705 *Drain mode: OFF*\nCycles will resume normally."
+    else:
+        data = _orch_get("/api/drain")
+        if isinstance(data, dict) and "error" in data:
+            return f"\u26A0\uFE0F Failed to check drain: {data['error']}"
+        draining = data.get("draining", False)
+        icon = "\U0001F6D1" if draining else "\u2705"
+        state = "ON" if draining else "OFF"
+        lines = [f"{icon} *Drain mode: {state}*"]
+        if draining:
+            lines.append("No new cycles will start. Running cycles will finish.")
+        else:
+            lines.append("Cycles are running normally.")
+        lines.append("\nUse `drain on` / `drain off` to toggle.")
+        return "\n".join(lines)
+
+
+def cmd_compare_costs():
+    """Show a ranked cost comparison table for all repos with visual bars."""
+    repos = _orch_get("/api/repos") or []
+    if isinstance(repos, dict) and "error" in repos:
+        return f"\u26A0\uFE0F Failed to fetch repos: {repos['error']}"
+    if not repos:
+        return "No repos registered."
+    ranked = []
+    for r in repos:
+        cost = r.get("stats", {}).get("cost", 0)
+        if isinstance(cost, (int, float)):
+            ranked.append((r["name"], cost))
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    if not ranked or all(c == 0 for _, c in ranked):
+        return "\U0001F4B0 No cost data available yet."
+    max_cost = max(c for _, c in ranked)
+    total = sum(c for _, c in ranked)
+    lines = ["\U0001F4B0 *Cost Comparison*\n"]
+    for i, (name, cost) in enumerate(ranked[:20]):
+        bar_len = int((cost / max_cost) * 12) if max_cost > 0 else 0
+        bar = "\u2588" * bar_len + "\u2591" * (12 - bar_len)
+        pct = round(cost / total * 100) if total > 0 else 0
+        lines.append(f"  {i+1}. `{name[:14]:14s}` ${cost:.4f} {bar} {pct}%")
+    lines.append(f"\n\U0001F4B5 Total: *${total:.4f}*")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -3346,6 +3429,9 @@ def cmd_help():
 `add repo name: /path` — Register new repo
 `remove [repo]` — Remove repo (keeps files)
 `push [repo]` — Git push
+`git_status [repo]` / `gs [repo]` — Git branch & changed files
+`drain` / `drain on|off` — Toggle drain mode
+`compare_costs` / `cc` — Cost comparison with bars
 `screenshot` / `show me` — Dashboard photo
 `digest` — Daily digest summary
 `costs` — Per-repo API costs
@@ -4008,6 +4094,13 @@ def handle_message(msg):
             },
         )
         reply = None  # Already sent
+    elif t.startswith("git_status ") or t.startswith("gs "):
+        arg = t.split(" ", 1)[1].strip() if " " in t else ""
+        reply = cmd_git_status(arg)
+    elif t == "drain" or t.startswith("drain "):
+        reply = cmd_drain(t[6:].strip() if t.startswith("drain ") else "")
+    elif t in ("compare_costs", "cost_compare", "cc"):
+        reply = cmd_compare_costs()
     else:
         # Try fuzzy command matching before forwarding to bridge
         import difflib
@@ -4016,7 +4109,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily", "hall_of_fame", "start-claude", "claude-status", "claude-stop"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily", "hall_of_fame", "start-claude", "claude-status", "claude-stop", "git_status", "drain", "compare_costs"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
