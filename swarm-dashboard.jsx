@@ -303,15 +303,18 @@ function Dashboard() {
   const repoStats = useMemo(() => {
     const totalDone = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
     const totalItems = repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0);
+    const totalAgents = repos.reduce((s, r) => s + (r.stats?.agents || 0), 0);
+    const overallPct = totalItems > 0 ? Math.round(totalDone / totalItems * 100) : 0;
     return {
       total: repos.length,
       running: repos.filter(r => r.running).length,
       paused: repos.filter(r => r.paused).length,
       idle: repos.filter(r => !r.running).length,
       totalCost: Object.values(costs).reduce((a, b) => a + (b || 0), 0),
-      totalDone, totalItems,
+      totalDone, totalItems, totalAgents, overallPct,
     };
   }, [repos, costs]);
+  const runningRepos = useMemo(() => repos.filter(r => r.running), [repos]);
 
   // Memoized sorted repos for dropdowns (sorted by pinned first, then name)
   const sortedRepos = useMemo(() =>
@@ -1108,24 +1111,19 @@ function Dashboard() {
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
               {lastRefresh && <span style={{ fontSize: 8, color: C.brown, opacity: 0.7 }}>{Math.floor((Date.now() - lastRefresh) / 1000) < 10 ? "just now" : Math.floor((Date.now() - lastRefresh) / 1000) + "s ago"}</span>}
-              {repos.length > 0 && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: repos.filter(r => r.running).length > 0 ? `${C.green}22` : `${C.brown}11`, color: repos.filter(r => r.running).length > 0 ? C.green : C.brown, fontWeight: 700 }}>{repos.filter(r => r.running).length}/{repos.length} running</span>}
-              {repos.length > 0 && (() => { const tc = repos.reduce((s, r) => s + (r.stats?.cost || 0), 0); return tc > 0 ? <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: tc > 5 ? "#FFEBEE" : tc > 1 ? `${C.orange}22` : `${C.green}22`, color: tc > 5 ? C.red : tc > 1 ? C.orange : C.green, fontWeight: 700 }}>{"\uD83D\uDCB0"} ${tc.toFixed(2)}</span> : null; })()}
+              {repos.length > 0 && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: repoStats.running > 0 ? `${C.green}22` : `${C.brown}11`, color: repoStats.running > 0 ? C.green : C.brown, fontWeight: 700 }}>{repoStats.running}/{repos.length} running</span>}
+              {totalCost > 0 && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: totalCost > 5 ? "#FFEBEE" : totalCost > 1 ? `${C.orange}22` : `${C.green}22`, color: totalCost > 5 ? C.red : totalCost > 1 ? C.orange : C.green, fontWeight: 700 }}>{"\uD83D\uDCB0"} ${totalCost.toFixed(2)}</span>}
               {healthScores?.average_score != null && (() => {
                 const s = healthScores.average_score;
                 const hc = s >= 80 ? C.green : s >= 60 ? C.orange : C.red;
                 return <span title={`System health: ${s}%`} style={{ width: 8, height: 8, borderRadius: "50%", background: hc, display: "inline-block", animation: s < 60 ? "pulse 1.5s infinite" : "none", boxShadow: `0 0 4px ${hc}` }} />;
               })()}
               {/* Overall mini progress bar */}
-              {(() => {
-                const ti = repos.reduce((a, r) => a + (r.stats?.items_total || 0), 0);
-                const di = repos.reduce((a, r) => a + (r.stats?.items_done || 0), 0);
-                const pct = ti > 0 ? Math.round(di / ti * 100) : 0;
-                return ti > 0 && (
-                  <div style={{ flex: 1, maxWidth: 80, height: 5, background: `${C.darkBrown}22`, borderRadius: 3, overflow: "hidden" }} title={`${di}/${ti} items (${pct}%)`}>
-                    <div style={{ height: "100%", background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${pct}%`, borderRadius: 3, transition: "width .5s" }} />
+              {repoStats.totalItems > 0 && (
+                  <div style={{ flex: 1, maxWidth: 80, height: 5, background: `${C.darkBrown}22`, borderRadius: 3, overflow: "hidden" }} title={`${repoStats.totalDone}/${repoStats.totalItems} items (${repoStats.overallPct}%)`}>
+                    <div style={{ height: "100%", background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${repoStats.overallPct}%`, borderRadius: 3, transition: "width .5s" }} />
                   </div>
-                );
-              })()}
+              )}
             </>); })()}
           </div>
         )}
@@ -1178,9 +1176,9 @@ function Dashboard() {
               {[
                 { emoji: "\uD83D\uDCE6", label: "Repos", val: repoStats.total, bg: C.lightOrange },
                 { emoji: "\u26A1", label: "Running", val: repoStats.running, bg: C.lightTeal },
-                { emoji: "\uD83D\uDCCB", label: "Items", val: repos.reduce((s,r)=>(s+(r.stats?.items_total||0)),0), bg: C.yellow },
-                { emoji: "\u2705", label: "Done", val: repos.reduce((s,r)=>(s+(r.stats?.items_done||0)),0), bg: C.lightTeal },
-                { emoji: "\uD83E\uDD20", label: "Agents", val: repos.reduce((s,r)=>(s+(r.stats?.agents||0)),0), bg: C.lightOrange },
+                { emoji: "\uD83D\uDCCB", label: "Items", val: repoStats.totalItems, bg: C.yellow },
+                { emoji: "\u2705", label: "Done", val: repoStats.totalDone, bg: C.lightTeal },
+                { emoji: "\uD83E\uDD20", label: "Agents", val: repoStats.totalAgents, bg: C.lightOrange },
                 { emoji: "\uD83D\uDCB0", label: "Total Cost", val: "$" + repoStats.totalCost.toFixed(2), bg: C.yellow },
               ].map((s,i) => (
                 <div key={i} className="stat-card" style={{ background: `linear-gradient(135deg, ${s.bg} 0%, ${s.bg}ee 100%)`, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "12px 20px", textAlign: "center", boxShadow: "0 2px 4px rgba(0,0,0,.1), 3px 3px 0 #3D2B1F", minWidth: 95, transition: "transform 0.2s, box-shadow 0.2s", cursor: "default" }}>
@@ -1196,37 +1194,29 @@ function Dashboard() {
               <div style={{ maxWidth: 500, margin: "0 auto 12px", display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 10, color: C.brown, fontWeight: 600, minWidth: 55 }}>30d Costs</span>
                 <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 1, height: 24 }}>
-                  {costHistory.slice(-30).map((d, i, arr) => {
-                    const max = Math.max(...arr.map(x => x.cost || 0), 0.01);
-                    return (
-                      <div key={i} style={{ flex: 1, height: `${((d.cost || 0) / max) * 22}px`, minHeight: d.cost > 0 ? 2 : 0, background: `linear-gradient(180deg, ${C.teal}, ${C.green})`, borderRadius: "2px 2px 0 0", transition: "height 0.3s" }} title={`${d.date}: $${d.cost}`} />
-                    );
-                  })}
+                  {(() => { const last30 = costHistory.slice(-30); const cmax = Math.max(...last30.map(x => x.cost || 0), 0.01); return last30.map((d, i) => (
+                      <div key={i} style={{ flex: 1, height: `${((d.cost || 0) / cmax) * 22}px`, minHeight: d.cost > 0 ? 2 : 0, background: `linear-gradient(180deg, ${C.teal}, ${C.green})`, borderRadius: "2px 2px 0 0", transition: "height 0.3s" }} title={`${d.date}: $${d.cost}`} />
+                    )); })()}
                 </div>
                 <span style={{ fontSize: 10, color: C.brown, fontWeight: 700 }}>${repoStats.totalCost.toFixed(2)}</span>
               </div>
             )}
             {/* Overall Progress */}
-            {(() => {
-              const totalItems = repos.reduce((s, r) => s + (r.stats?.items_total || 0), 0);
-              const doneItems = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
-              const overallPct = totalItems > 0 ? Math.round(doneItems / totalItems * 100) : 0;
-              return totalItems > 0 && (
+            {repoStats.totalItems > 0 && (
                 <div style={{ maxWidth: 500, margin: "0 auto 16px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
                     <span>Overall Swarm Progress</span>
-                    <span>{doneItems}/{totalItems} items ({overallPct}%)</span>
+                    <span>{repoStats.totalDone}/{repoStats.totalItems} items ({repoStats.overallPct}%)</span>
                   </div>
                   <div style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 10, height: 18, overflow: "hidden", position: "relative" }}>
-                    <div style={{ height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${overallPct}%`, transition: "width .5s" }} />
+                    <div style={{ height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${C.green}, ${C.teal})`, width: `${repoStats.overallPct}%`, transition: "width .5s" }} />
                   </div>
                 </div>
-              );
-            })()}
+            )}
             {/* Running Repos Strip */}
-            {repos.filter(r => r.running).length > 0 && (
+            {runningRepos.length > 0 && (
               <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginBottom: 16 }}>
-                {repos.filter(r => r.running).map(r => {
+                {runningRepos.map(r => {
                   const rst = STATES[r.state] || STATES.idle;
                   const done = r.stats?.items_done || 0;
                   const total = r.stats?.items_total || 0;
@@ -1821,23 +1811,19 @@ function Dashboard() {
             </Card>}
             {/* System Health Bar */}
             {repos.length > 0 && (() => {
-              const running = repos.filter(r => r.running).length;
-              const totalDone = repos.reduce((s, r) => s + (r.stats?.items_done || 0), 0);
-              const totalAll = repos.reduce((s, r) => s + (r.stats?.items_total || 1), 0);
               const totalErrs = repos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
-              const completionRate = Math.round(totalDone / Math.max(1, totalAll) * 100);
-              const errRate = Math.round(totalErrs / Math.max(1, totalAll) * 100);
-              const sysScore = Math.max(0, Math.min(100, completionRate - errRate + (running > 0 ? 10 : 0)));
+              const completionRate = repoStats.overallPct;
+              const errRate = Math.round(totalErrs / Math.max(1, repoStats.totalItems || 1) * 100);
+              const sysScore = Math.max(0, Math.min(100, completionRate - errRate + (repoStats.running > 0 ? 10 : 0)));
               const color = sysScore >= 70 ? C.green : sysScore >= 40 ? C.orange : C.red;
               return <div style={{ maxWidth: 600, margin: "0 auto 12px", display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: `${color}11`, borderRadius: 10, border: `1px solid ${color}33` }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color, minWidth: 40 }}>{sysScore}hp</span>
                 <div style={{ flex: 1, height: 6, background: `${C.darkBrown}11`, borderRadius: 3, overflow: "hidden" }}>
                   <div style={{ width: `${sysScore}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.5s" }} />
                 </div>
-                <span style={{ fontSize: 9, color: C.brown }}>{running}/{repos.length} active</span>
+                <span style={{ fontSize: 9, color: C.brown }}>{repoStats.running}/{repos.length} active</span>
                 {(() => {
                   try {
-                    const totalCost = repos.reduce((s, r) => s + (costs[r.id] || 0), 0);
                     const k = "sys_cost_trend";
                     const h = JSON.parse(localStorage.getItem(k) || "[]");
                     const now = new Date().toISOString().slice(0, 13);
@@ -2105,10 +2091,9 @@ function Dashboard() {
                     showToast(`Starting ${idle.length} idle repos`, "success"); load();
                   }} style={{ background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u25B6"} Start All Idle</button>
                   <button onClick={async () => {
-                    const running = repos.filter(r => r.running);
-                    if (running.length === 0) { showToast("No running repos to stop", "info"); return; }
-                    await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: running.map(r => r.id), action: "stop" }) });
-                    showToast(`Stopping ${running.length} repos`, "info"); load();
+                    if (runningRepos.length === 0) { showToast("No running repos to stop", "info"); return; }
+                    await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: runningRepos.map(r => r.id), action: "stop" }) });
+                    showToast(`Stopping ${runningRepos.length} repos`, "info"); load();
                   }} style={{ background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u23F9"} Stop All</button>
                   <button onClick={async () => {
                     const running = repos.filter(r => r.running && !r.paused);
