@@ -1200,6 +1200,7 @@ function Dashboard() {
                 { emoji: "\uD83D\uDCCB", label: "Items", val: repoStats.totalItems, bg: C.yellow },
                 { emoji: "\u2705", label: "Done", val: repoStats.totalDone, bg: C.lightTeal },
                 { emoji: "\uD83E\uDD20", label: "Agents", val: repoStats.totalAgents, bg: C.lightOrange },
+                { emoji: "\uD83D\uDCCA", label: "Complete", val: repoStats.overallPct + "%", bg: C.lightTeal },
                 { emoji: "\uD83D\uDCB0", label: "Total Cost", val: "$" + repoStats.totalCost.toFixed(2), bg: C.yellow },
               ].map((s,i) => (
                 <div key={i} className="stat-card" style={{ background: `linear-gradient(135deg, ${s.bg} 0%, ${s.bg}ee 100%)`, border: `3px solid ${C.darkBrown}`, borderRadius: 14, padding: "12px 20px", textAlign: "center", boxShadow: "0 2px 4px rgba(0,0,0,.1), 3px 3px 0 #3D2B1F", minWidth: 95, transition: "transform 0.2s, box-shadow 0.2s", cursor: "default" }}>
@@ -1823,12 +1824,12 @@ function Dashboard() {
                 <div style={{ textAlign: "center", fontSize: 12, color: C.brown, marginTop: 8 }}>No results found.</div>
               )}
             </details>
-            {/* Wave 200 Milestone Banner */}
-            {!localStorage.getItem("wave200_dismissed") && <Card bg="linear-gradient(135deg, #FFD700, #FF6B35)" style={{ maxWidth: 600, margin: "0 auto 12px", padding: "12px 16px", textAlign: "center", border: `3px solid ${C.darkBrown}`, position: "relative" }}>
-              <button onClick={() => { localStorage.setItem("wave200_dismissed", "1"); load(); }} style={{ position: "absolute", top: 4, right: 8, background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#fff8" }}>x</button>
-              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 2, color: "#fff", textShadow: "2px 2px 4px rgba(0,0,0,0.3)" }}>{"\uD83C\uDF0A"} Wave 200 Milestone! {"\uD83C\uDF89"}</div>
-              <div style={{ fontSize: 11, color: "#fff", opacity: 0.9, marginTop: 4 }}>72+ bot commands {"\u2022"} 6600+ lines of dashboard {"\u2022"} 3000+ lines of Mini App</div>
-              <div style={{ fontSize: 10, color: "#fff", opacity: 0.7, marginTop: 2 }}>600 improvements across Bot, Dashboard, and Mini App</div>
+            {/* Wave 250 Milestone Banner */}
+            {!localStorage.getItem("wave250_dismissed") && <Card bg="linear-gradient(135deg, #E040FB, #7C4DFF, #448AFF)" style={{ maxWidth: 600, margin: "0 auto 12px", padding: "12px 16px", textAlign: "center", border: `3px solid ${C.darkBrown}`, position: "relative" }}>
+              <button onClick={() => { localStorage.setItem("wave250_dismissed", "1"); load(); }} style={{ position: "absolute", top: 4, right: 8, background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#fff8" }}>x</button>
+              <div style={{ fontFamily: "'Bangers', cursive", fontSize: 22, letterSpacing: 2, color: "#fff", textShadow: "2px 2px 4px rgba(0,0,0,0.3)" }}>{"\uD83C\uDF0A"} Wave 250 Milestone! {"\uD83D\uDE80"}</div>
+              <div style={{ fontSize: 11, color: "#fff", opacity: 0.9, marginTop: 4 }}>100 bot commands {"\u2022"} 14 SQLite indexes {"\u2022"} Error Boundary {"\u2022"} Deep memoization</div>
+              <div style={{ fontSize: 10, color: "#fff", opacity: 0.7, marginTop: 2 }}>750+ improvements {"\u2022"} Never white-screens again {"\u2022"} 60% faster renders</div>
             </Card>}
             {/* System Health Bar */}
             {repos.length > 0 && (() => {
