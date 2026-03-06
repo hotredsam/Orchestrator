@@ -2565,6 +2565,7 @@ def _record_metric(path, status_code=200, latency_ms=0):
 _response_cache = {}
 _cache_lock = threading.Lock()
 CACHE_TTL = 3  # default seconds
+_file_count_cache = {}  # {repo_path: (count, timestamp)} - 60s TTL for git ls-files
 _draining = False  # drain mode: when True, no new cycles start
 _claude_procs = {}  # pid -> {prompt, started, proc}
 
@@ -2819,43 +2820,45 @@ class API(BaseHTTPRequestHandler):
                     r["running"] = thread_alive and st.running
                     r["paused"] = orch.is_paused if orch else False
                     r["last_activity"] = orch.state.last_activity if orch else 0
-                    # Single query for all item counts
-                    ic = db.fetchone(
-                        "SELECT COUNT(*) c,"
-                        " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done,"
-                        " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pend,"
-                        " SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) prog"
-                        " FROM items")
+                    # Combined queries for all counts (5 queries → 2)
+                    ic = db.get_item_counts()
                     sc = db.fetchone(
                         "SELECT COUNT(*) c,"
                         " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done"
                         " FROM plan_steps")
-                    mc = db.fetchone("SELECT COUNT(*) c FROM mistakes")
-                    mem_c = db.fetchone("SELECT COUNT(*) c FROM memory")
-                    ac = db.fetchone("SELECT COUNT(*) c FROM audio_reviews")
+                    extra = db.fetchone(
+                        "SELECT (SELECT COUNT(*) FROM mistakes) mistakes,"
+                        " (SELECT COUNT(*) FROM memory) memory,"
+                        " (SELECT COUNT(*) FROM audio_reviews) audio")
                     stats = {
-                        "items_total": ic["c"],
-                        "items_done": ic["done"] or 0,
-                        "items_pending": ic["pend"] or 0,
-                        "items_in_progress": ic["prog"] or 0,
+                        "items_total": ic["total"],
+                        "items_done": ic["done"],
+                        "items_pending": ic["pending"],
+                        "items_in_progress": ic["in_progress"],
                         "steps_total": sc["c"],
                         "steps_done": sc["done"] or 0,
                         "steps_pending": sc["c"] - (sc["done"] or 0),
                         "agents": st.active_agents,
-                        "memory": mem_c["c"],
-                        "mistakes": mc["c"],
-                        "audio": ac["c"],
+                        "memory": extra["memory"],
+                        "mistakes": extra["mistakes"],
+                        "audio": extra["audio"],
                     }
-                    # File count from git
-                    try:
-                        rp = r.get("path", "")
-                        if rp and os.path.isdir(os.path.join(rp, ".git")):
-                            fc = subprocess.run(["git", "ls-files"], capture_output=True, text=True, cwd=rp, timeout=5)
-                            stats["file_count"] = len(fc.stdout.strip().splitlines()) if fc.returncode == 0 else 0
-                        else:
-                            stats["file_count"] = 0
-                    except Exception:
-                        stats["file_count"] = 0
+                    # File count from git (cached 60s - subprocess is slow)
+                    rp = r.get("path", "")
+                    cached = _file_count_cache.get(rp)
+                    if cached and time.time() - cached[1] < 60:
+                        stats["file_count"] = cached[0]
+                    else:
+                        try:
+                            if rp and os.path.isdir(os.path.join(rp, ".git")):
+                                fc = subprocess.run(["git", "ls-files"], capture_output=True, text=True, cwd=rp, timeout=5)
+                                cnt = len(fc.stdout.strip().splitlines()) if fc.returncode == 0 else 0
+                            else:
+                                cnt = 0
+                            _file_count_cache[rp] = (cnt, time.time())
+                            stats["file_count"] = cnt
+                        except Exception:
+                            stats["file_count"] = _file_count_cache.get(rp, (0,))[0]
                     # Include ruflo config
                     ruflo_rows = db.fetchall("SELECT key, value FROM memory WHERE namespace='ruflo_config'")
                     stats["ruflo_config"] = {row["key"]: row["value"] for row in ruflo_rows}
