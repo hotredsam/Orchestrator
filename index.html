@@ -21,7 +21,7 @@
   <script type="text/babel" src="swarm-dashboard.jsx"></script>
   <script type="text/babel">
     function App() {
-      return React.createElement(Dashboard);
+      return React.createElement(ErrorBoundary, null, React.createElement(Dashboard));
     }
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(React.createElement(App));

@@ -1,5 +1,25 @@
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
+// Error Boundary — prevents white screen crashes, shows recovery UI
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null, errorInfo: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, errorInfo) { this.setState({ errorInfo }); console.error("Dashboard crash:", error, errorInfo); }
+  render() {
+    if (this.state.hasError) {
+      return React.createElement("div", { style: { padding: 40, textAlign: "center", fontFamily: "'Fredoka', sans-serif", background: "#FFF3E0", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" } },
+        React.createElement("div", { style: { fontSize: 64, marginBottom: 16 } }, "\uD83E\uDD20"),
+        React.createElement("h2", { style: { fontFamily: "'Bangers', cursive", fontSize: 32, letterSpacing: 2, marginBottom: 8 } }, "Swarm Town Hit a Cactus!"),
+        React.createElement("p", { style: { fontSize: 14, color: "#5D4037", marginBottom: 16, maxWidth: 500 } }, "Something went wrong rendering the dashboard. This is usually caused by a temporary data issue."),
+        React.createElement("pre", { style: { fontSize: 11, color: "#D32F2F", background: "#FFEBEE", padding: 12, borderRadius: 8, maxWidth: 600, overflow: "auto", marginBottom: 16, textAlign: "left" } }, String(this.state.error)),
+        React.createElement("button", { onClick: () => { this.setState({ hasError: false, error: null, errorInfo: null }); }, style: { background: "#4ECDC4", color: "#fff", border: "3px solid #3D2B1F", borderRadius: 12, padding: "12px 32px", fontSize: 18, fontFamily: "'Bangers', cursive", letterSpacing: 2, cursor: "pointer", boxShadow: "3px 3px 0 #3D2B1F" } }, "\uD83D\uDD04 Try Again"),
+        React.createElement("button", { onClick: () => { localStorage.clear(); window.location.reload(); }, style: { background: "#FF6B6B", color: "#fff", border: "3px solid #3D2B1F", borderRadius: 12, padding: "12px 32px", fontSize: 18, fontFamily: "'Bangers', cursive", letterSpacing: 2, cursor: "pointer", boxShadow: "3px 3px 0 #3D2B1F", marginLeft: 12 } }, "\uD83D\uDDD1 Reset & Reload")
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Debounce hook — delays value updates for search perf
 function useDebounce(value, delay = 250) {
   const [debounced, setDebounced] = useState(value);
