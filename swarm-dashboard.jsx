@@ -310,6 +310,24 @@ function Dashboard() {
     };
   }, [repos, costs]);
 
+  // Memoized sorted repos for dropdowns (sorted by pinned first, then name)
+  const sortedRepos = useMemo(() =>
+    [...repos].sort((a, b) => { const pa = pinnedRepos.includes(a.id) ? 0 : 1; const pb = pinnedRepos.includes(b.id) ? 0 : 1; return pa - pb || a.name.localeCompare(b.name); }),
+    [repos, pinnedRepos]
+  );
+
+  // Memoized tab badge counts
+  const tabBadges = useMemo(() => ({
+    home: repos.filter(r => r.running).length,
+    items: items.filter(i => i.status === "pending").length,
+    mistakes: mistakes.length,
+    logs: logs.filter(l => l.error).length,
+    plan: plan.filter(s => s.status === "in_progress").length,
+  }), [repos, items, mistakes, logs, plan]);
+
+  // Memoized total cost
+  const totalCost = useMemo(() => Object.values(costs).reduce((a, b) => a + (b || 0), 0), [costs]);
+
   const notify = useCallback((title, body) => {
     if (!browserNotifs) return;
     if (Notification.permission === "granted") {
@@ -991,15 +1009,15 @@ function Dashboard() {
         <div style={{ position: "absolute", top: 12, right: 16, display: "flex", alignItems: "center", gap: 8, zIndex: 3 }}>
           {repos.length > 0 && <select value={sr||""} onChange={e => setSR(Number(e.target.value))}
             style={{ padding: "5px 10px", background: C.yellow, border: `3px solid ${C.darkBrown}`, borderRadius: 12, fontSize: 13, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 180 }}>
-            {[...repos].sort((a, b) => { const pa = pinnedRepos.includes(a.id) ? 0 : 1; const pb = pinnedRepos.includes(b.id) ? 0 : 1; return pa - pb || a.name.localeCompare(b.name); }).map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name} [{r.state || "idle"}]</option>)}
+            {sortedRepos.map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name} [{r.state || "idle"}]</option>)}
           </select>}
           {uptime && (
             <div title={`PID: ${sysInfo.pid || "?"} | Threads: ${sysInfo.threads || "?"} | RAM: ${sysInfo.mem || "?"}MB`} style={{ background: C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: C.darkBrown, cursor: "help" }}>{"\u23F1\uFE0F"} {uptime}{sysInfo.mem ? ` | ${sysInfo.mem}MB` : ""}</div>
           )}
           {repos.length > 0 && (() => { const td = repos.reduce((s,r) => s + (r.stats?.items_done||0), 0); const tt = repos.reduce((s,r) => s + (r.stats?.items_total||0), 0); return tt > 0 ? <div style={{ background: "#E3F2FD", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#1565C0" }}>{td}/{tt} items</div> : null; })()}
-          {Object.keys(costs).length > 0 && (
+          {totalCost > 0 && (
             <div style={{ background: "#E8F5E9", border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#2E7D32" }}>
-              ${Object.values(costs).reduce((a,b) => a+b, 0).toFixed(2)}
+              ${totalCost.toFixed(2)}
             </div>
           )}
           {logs.length > 0 && (() => {
@@ -1048,12 +1066,7 @@ function Dashboard() {
       <div style={{ position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: scrolledPast ? "none" : `3px solid ${C.darkBrown}`, gap: 0 }}>
           {TABS.map(t => {
-            const badge = t.id === "home" ? repos.filter(r => r.running).length
-              : t.id === "items" ? items.filter(i => i.status === "pending").length
-              : t.id === "mistakes" ? mistakes.length
-              : t.id === "logs" && logs.some(l => l.error) ? logs.filter(l => l.error).length
-              : t.id === "plan" ? plan.filter(s => s.status === "in_progress").length
-              : 0;
+            const badge = tabBadges[t.id] || 0;
             const badgeBg = t.id === "mistakes" || t.id === "logs" ? C.red : t.id === "plan" ? C.orange : C.teal;
             const prev = prevBadges.current[t.id] || 0;
             const pulse = badge > prev && tab !== t.id;
@@ -1080,7 +1093,7 @@ function Dashboard() {
           <div style={{ background: darkMode ? "#1E1E2E" : C.cream, borderBottom: `3px solid ${C.darkBrown}`, padding: "4px 16px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, fontFamily: "'Fredoka', sans-serif" }}>
             <select value={sr||""} onChange={e => setSR(Number(e.target.value))}
               style={{ padding: "3px 8px", background: C.yellow, border: `2px solid ${C.darkBrown}`, borderRadius: 8, fontSize: 11, fontFamily: "'Bangers', cursive", fontWeight: 700, letterSpacing: 1, color: C.darkBrown, outline: "none", cursor: "pointer", maxWidth: 160 }}>
-              {[...repos].sort((a, b) => { const pa = pinnedRepos.includes(a.id) ? 0 : 1; const pb = pinnedRepos.includes(b.id) ? 0 : 1; return pa - pb || a.name.localeCompare(b.name); }).map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name}</option>)}
+              {sortedRepos.map(r => <option key={r.id} value={r.id}>{pinnedRepos.includes(r.id) ? "\uD83D\uDCCC " : ""}{r.name}</option>)}
             </select>
             {(() => { const cr = repos.find(r => r.id === sr); if (!cr) return null; const s = cr.stats || {}; return (<>
               <span style={{ fontWeight: 700, color: STATES[cr.state]?.color || C.brown }}>{cr.state || "idle"}</span>
@@ -4537,36 +4550,6 @@ function Dashboard() {
                   </div>
                 )}
                 {webhooks.length === 0 && <div style={{ fontSize: 12, color: C.brown, textAlign: "center", padding: 10 }}>No webhooks registered</div>}
-              </Card>
-
-              {/* ── Dashboard Settings Export/Import ── */}
-              <Card bg={C.cream} style={{ marginBottom: 16, padding: 18, background: `linear-gradient(135deg, #E8EAF6 0%, #C5CAE9 100%)` }}>
-                <div style={{ fontFamily: "'Bangers', cursive", fontSize: 20, marginBottom: 8, letterSpacing: 1.5 }}>{"\u2699\uFE0F"} Dashboard Preferences</div>
-                <p style={{ fontSize: 12, color: C.brown, marginBottom: 10 }}>Export or import your dashboard settings (dark mode, pinned repos, refresh interval, notifications).</p>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <Btn bg={C.teal} style={{ fontSize: 13, padding: "8px 18px" }} onClick={() => {
-                    const prefs = { darkMode, pinnedRepos, refreshInterval, browserNotifs, version: 1 };
-                    const blob = new Blob([JSON.stringify(prefs, null, 2)], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a"); a.href = url; a.download = "swarm-dashboard-prefs.json"; a.click(); URL.revokeObjectURL(url);
-                    showToast("Preferences exported", "success");
-                  }}>{"\uD83D\uDCE5"} Export Prefs</Btn>
-                  <Btn bg={C.orange} style={{ fontSize: 13, padding: "8px 18px" }} onClick={() => {
-                    const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
-                    input.onchange = async (e) => {
-                      const file = e.target.files[0]; if (!file) return;
-                      try {
-                        const p = JSON.parse(await file.text());
-                        if (typeof p.darkMode === "boolean") { setDarkMode(p.darkMode); localStorage.setItem("swarm-dark", p.darkMode ? "1" : "0"); }
-                        if (Array.isArray(p.pinnedRepos)) { setPinnedRepos(p.pinnedRepos); localStorage.setItem("swarm-pinned", JSON.stringify(p.pinnedRepos)); }
-                        if (typeof p.refreshInterval === "number") { setRefreshInterval(p.refreshInterval); localStorage.setItem("swarm-refresh", String(p.refreshInterval)); }
-                        if (typeof p.browserNotifs === "boolean") { setBrowserNotifs(p.browserNotifs); localStorage.setItem("swarm-notifs", p.browserNotifs ? "1" : "0"); }
-                        showToast("Preferences imported!", "success");
-                      } catch(err) { showToast(`Import error: ${err.message}`, "error"); }
-                    };
-                    input.click();
-                  }}>{"\uD83D\uDCE4"} Import Prefs</Btn>
-                </div>
               </Card>
 
               {/* ── Per-Repo Config ── */}
