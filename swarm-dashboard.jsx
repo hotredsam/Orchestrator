@@ -876,6 +876,7 @@ function Dashboard() {
         @keyframes glowPulse{0%,100%{box-shadow:0 0 8px rgba(247,148,29,0.3)}50%{box-shadow:0 0 20px rgba(247,148,29,0.7)}}
         @keyframes tiltIn{from{opacity:0;transform:rotate(-1deg) translateY(8px)}to{opacity:1;transform:rotate(0) translateY(0)}}
         @keyframes nodeGlow{0%,100%{filter:drop-shadow(0 0 4px rgba(247,148,29,0.4))}50%{filter:drop-shadow(0 0 12px rgba(247,148,29,0.8))}}
+        @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
         textarea,select{font-family:'Fredoka',sans-serif}
         select option{background:${C.cream};color:${C.darkBrown}}
         @media(max-width:700px){
@@ -1059,7 +1060,7 @@ function Dashboard() {
             if (badge !== prev) { prevBadges.current[t.id] = badge; if (pulse) { setTabPulse(p => ({ ...p, [t.id]: Date.now() })); } }
             const showPulse = tabPulse[t.id] && Date.now() - tabPulse[t.id] < 8000 && tab !== t.id;
             return (
-              <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => { setTab(t.id); setTabPulse(p => { const n = { ...p }; delete n[t.id]; return n; }); }} style={{
+              <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => { setTab(t.id); setBatchSelected(new Set()); setTabPulse(p => { const n = { ...p }; delete n[t.id]; return n; }); }} style={{
                 padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
                 border: "none", borderRight: `2px solid ${C.darkBrown}`,
                 borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
@@ -1870,19 +1871,36 @@ function Dashboard() {
                 ))}
               </>); })()}
             </div>
-            {/* Batch action bar */}
-            {batchSelected.size > 0 && (
-              <div style={{ maxWidth: 700, margin: "0 auto 12px", display: "flex", gap: 8, alignItems: "center", justifyContent: "center", background: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 12, padding: "8px 16px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{batchSelected.size} selected</span>
-                {[{a: "start", l: "Start", bg: C.green}, {a: "stop", l: "Stop", bg: C.red}, {a: "pause", l: "Pause", bg: C.orange}, {a: "resume", l: "Resume", bg: C.teal}].map(act => (
-                  <Btn key={act.a} bg={act.bg} style={{ fontSize: 11, padding: "4px 12px" }} onClick={async () => {
-                    await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: [...batchSelected], action: act.a }) });
-                    showToast(`${act.l} sent to ${batchSelected.size} repos`, "info"); load(); setBatchSelected(new Set());
-                  }}>{act.l}</Btn>
-                ))}
-                <Btn bg="#999" style={{ fontSize: 11, padding: "4px 12px" }} onClick={() => setBatchSelected(new Set())}>Clear</Btn>
-              </div>
-            )}
+            {/* Select All / Deselect All */}
+            <div style={{ maxWidth: 600, margin: "0 auto 8px", display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={() => {
+                const visible = repos.filter(r => {
+                  if (repoFilter === "running") return r.running;
+                  if (repoFilter === "idle") return !r.running && !r.archived;
+                  if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
+                  if (repoFilter === "archived") return r.archived;
+                  if (repoFilter.startsWith("tag:")) return (r.tags || "").split(",").includes(repoFilter.slice(4));
+                  if (repoFilter.startsWith("q:")) return r.name.toLowerCase().includes(repoFilter.slice(2).toLowerCase());
+                  return true;
+                });
+                const allSelected = visible.every(r => batchSelected.has(r.id));
+                if (allSelected) { setBatchSelected(new Set()); }
+                else { setBatchSelected(new Set(visible.map(r => r.id))); }
+              }} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", fontFamily: "'Fredoka', sans-serif" }}>
+                {(() => {
+                  const visible = repos.filter(r => {
+                    if (repoFilter === "running") return r.running;
+                    if (repoFilter === "idle") return !r.running && !r.archived;
+                    if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
+                    if (repoFilter === "archived") return r.archived;
+                    if (repoFilter.startsWith("tag:")) return (r.tags || "").split(",").includes(repoFilter.slice(4));
+                    if (repoFilter.startsWith("q:")) return r.name.toLowerCase().includes(repoFilter.slice(2).toLowerCase());
+                    return true;
+                  });
+                  return visible.length > 0 && visible.every(r => batchSelected.has(r.id)) ? "Deselect All" : `Select All (${visible.length})`;
+                })()}
+              </button>
+            </div>
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {[...repos].filter(r => {
                 if (repoFilter === "running") return r.running;
@@ -2226,6 +2244,27 @@ function Dashboard() {
                 </div>
               </Card>
             </details>
+            {/* Fixed-bottom batch actions toolbar */}
+            {batchSelected.size > 0 && (
+              <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1000, background: darkMode ? `linear-gradient(180deg, ${C.card} 0%, #1a1a2e 100%)` : `linear-gradient(180deg, ${C.darkBrown} 0%, #1E120A 100%)`, borderTop: `3px solid ${C.orange}`, padding: "10px 20px", display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap", animation: "slideUp 0.25s ease-out", boxShadow: "0 -4px 20px rgba(0,0,0,0.3)" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.white, fontFamily: "'Bangers', cursive", letterSpacing: 1.5 }}>{"\u2611\uFE0F"} {batchSelected.size} repos selected</span>
+                <Btn bg={C.green} style={{ fontSize: 12, padding: "6px 16px" }} onClick={async () => {
+                  await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: [...batchSelected], action: "start" }) });
+                  showToast(`Start sent to ${batchSelected.size} repos`, "success"); load(); setBatchSelected(new Set());
+                }}>{"\u25B6\uFE0F"} Start Selected</Btn>
+                <Btn bg={C.red} style={{ fontSize: 12, padding: "6px 16px" }} onClick={async () => {
+                  await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: [...batchSelected], action: "stop" }) });
+                  showToast(`Stop sent to ${batchSelected.size} repos`, "info"); load(); setBatchSelected(new Set());
+                }}>{"\u23F9\uFE0F"} Stop Selected</Btn>
+                <Btn bg={C.teal} style={{ fontSize: 12, padding: "6px 16px" }} onClick={async () => {
+                  for (const rid of batchSelected) {
+                    await f("/api/push", { method: "POST", body: JSON.stringify({ repo_id: rid, message: "batch push" }) });
+                  }
+                  showToast(`Push sent to ${batchSelected.size} repos`, "success"); setBatchSelected(new Set());
+                }}>{"\uD83D\uDE80"} Push Selected</Btn>
+                <Btn bg="#888" style={{ fontSize: 12, padding: "6px 16px" }} onClick={() => setBatchSelected(new Set())}>Clear</Btn>
+              </div>
+            )}
           </SectionBg>
         )}
 

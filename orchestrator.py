@@ -844,6 +844,18 @@ class MasterDB:
             )
         """)
         self.conn.commit()
+        # Scheduled tasks table (global, not per-repo)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt TEXT NOT NULL,
+                cron_expr TEXT NOT NULL,
+                last_run TEXT DEFAULT '',
+                enabled INTEGER DEFAULT 1,
+                created TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.conn.commit()
 
     def ex(self, q, p=()):
         with self.lock:
@@ -1162,6 +1174,12 @@ Do NOT repeat these mistakes. If you encounter similar issues, use a different a
 
     def h_idle(self):
         self.state.active_agents = 0
+
+        # Drain mode: stay idle, do not start new cycles
+        if _draining:
+            log.info(f"Drain mode active, skipping cycle for {self.repo['name']}")
+            time.sleep(POLL_SEC)
+            return State.IDLE
 
         audio = self.db.pending_audio()
         if audio:
@@ -2517,6 +2535,8 @@ _cache_lock = threading.Lock()
 CACHE_TTL = 3  # default seconds
 _draining = False  # drain mode: when True, no new cycles start
 _claude_procs = {}  # pid -> {prompt, started, proc}
+_scheduled_tasks = []  # scheduled task definitions (CRUD only, no execution yet)
+_scheduled_next_id = 1  # auto-increment ID for scheduled tasks
 
 
 def _claude_watcher(proc):
@@ -3745,6 +3765,19 @@ class API(BaseHTTPRequestHandler):
         if path == "/api/drain":
             return self._json({"draining": _draining})
 
+        if path == "/api/system-flags":
+            active_repos = sum(1 for t in manager.threads.values() if t.is_alive())
+            active_claude = sum(1 for info in _claude_procs.values() if info.get("proc") and info["proc"].poll() is None)
+            return self._json({
+                "draining": _draining,
+                "uptime_seconds": round(time.time() - _start_time, 1),
+                "active_repos": active_repos,
+                "claude_sessions": active_claude,
+            })
+
+        if path == "/api/scheduled-tasks":
+            return self._json({"tasks": _scheduled_tasks})
+
         self._json({"error": "Not found"}, 404)
 
     def do_POST(self):
@@ -4552,6 +4585,54 @@ class API(BaseHTTPRequestHandler):
                 info["proc"].kill()
                 _claude_procs.pop(pid, None)
                 return self._json({"ok": True, "pid": pid})
+
+        if path == "/api/scheduled-tasks":
+            global _scheduled_next_id
+            prompt = b.get("prompt", "").strip()[:2000]
+            cron_expr = b.get("cron_expr", "").strip()[:100]
+            if not prompt:
+                return self._json({"error": "prompt required"}, 400)
+            if not cron_expr:
+                return self._json({"error": "cron_expr required"}, 400)
+            task = {
+                "id": _scheduled_next_id,
+                "prompt": prompt,
+                "cron_expr": cron_expr,
+                "enabled": bool(b.get("enabled", True)),
+                "created": datetime.now(timezone.utc).isoformat(),
+            }
+            _scheduled_next_id += 1
+            _scheduled_tasks.append(task)
+            log.info("Scheduled task created: id=%d cron=%s", task["id"], cron_expr)
+            return self._json({"ok": True, "task": task})
+
+        self._json({"error": "Not found"}, 404)
+
+    def do_DELETE(self):
+        self._req_start = time.time()
+        self._req_id = secrets.token_hex(8)
+        # Invalidate response cache on any write operation
+        with _cache_lock:
+            _response_cache.clear()
+        if not self._check_rate():
+            return
+        if not self._check_auth():
+            return
+
+        p = urlparse(self.path)
+        path = p.path
+        q = parse_qs(p.query)
+
+        if path == "/api/scheduled-tasks":
+            tid = self._safe_int(q.get("id", [None])[0])
+            if tid is None:
+                return self._json({"error": "id query param required"}, 400)
+            before = len(_scheduled_tasks)
+            _scheduled_tasks[:] = [t for t in _scheduled_tasks if t["id"] != tid]
+            if len(_scheduled_tasks) == before:
+                return self._json({"error": "not found"}, 404)
+            log.info("Scheduled task deleted: id=%d", tid)
+            return self._json({"ok": True, "deleted_id": tid})
 
         self._json({"error": "Not found"}, 404)
 

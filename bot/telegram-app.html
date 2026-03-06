@@ -690,6 +690,7 @@
             <option value="cost">Cost</option>
           </select>
         </div>
+        <div id="systemFlagsCard"></div>
         <div id="homeRepoList">
           <div class="card" style="opacity:0.6;">
             <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
@@ -977,7 +978,7 @@
           <button class="btn btn-red" onclick="stopAllClaude()">Stop All</button>
         </div>
         <div id="claudeSessionList">
-          <div class="empty-state"><div class="empty-emoji">\uD83E\uDD16</div><p>No active Claude sessions</p></div>
+          <div class="empty-state"><div class="empty-emoji">&#129302;</div><p>No active Claude sessions</p></div>
         </div>
       </div>
 
@@ -1024,7 +1025,7 @@
         <span>📊</span><span class="tab-label">Stats</span>
       </button>
       <button class="tab-btn" data-tab="claude" onclick="switchTab('claude')" role="tab" aria-selected="false" aria-label="Claude sessions" style="position:relative;">
-        <span>\uD83E\uDD16</span><span class="tab-label">Claude</span><span class="tab-badge claude-badge" style="position:absolute;top:-2px;right:-2px;font-size:8px;min-width:14px;height:14px;line-height:14px;text-align:center;border-radius:7px;background:var(--teal);color:#fff;font-weight:700;"></span>
+        <span>&#129302;</span><span class="tab-label">Claude</span><span class="tab-badge claude-badge" style="position:absolute;top:-2px;right:-2px;font-size:8px;min-width:14px;height:14px;line-height:14px;text-align:center;border-radius:7px;background:var(--teal);color:#fff;font-weight:700;"></span>
       </button>
     </div>
   </div>
@@ -1190,6 +1191,7 @@
     }
 
     async function refreshHome() {
+      loadSystemFlags();
       const data = await api('/api/repos');
       if (!data) return;
       repos = data;
@@ -1404,6 +1406,71 @@
         const pins = JSON.parse(localStorage.getItem('swarm-pinned-repos') || '[]');
         if (pins.includes(card.dataset.repoId)) card.style.outline = '2px solid var(--teal)';
       });
+    }
+
+    // ─── System Flags & Drain Mode ────────────────────────────────────────────
+    let _systemFlagsTimer = null;
+    let _lastDrainState = null;
+
+    async function loadSystemFlags() {
+      const container = document.getElementById('systemFlagsCard');
+      if (!container) return;
+      const data = await api('/api/system-flags', undefined, { silent: true });
+      if (!data) {
+        container.innerHTML = '';
+        return;
+      }
+      _lastDrainState = data.draining;
+
+      // Format uptime
+      const totalSec = Math.floor(data.uptime_seconds || 0);
+      const hours = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      const uptimeStr = hours + 'h ' + mins + 'm';
+
+      const drainOn = data.draining;
+      const drainColor = drainOn ? 'var(--red)' : 'var(--green)';
+      const drainLabel = drainOn ? 'ON' : 'OFF';
+      const drainBg = drainOn
+        ? 'linear-gradient(135deg, #FFEBEE, #FFCDD2)'
+        : 'linear-gradient(135deg, var(--card-bg), var(--bg))';
+      const drainBorder = drainOn ? 'var(--red)' : 'var(--border)';
+
+      container.innerHTML = '<div class="card" style="margin-bottom:10px;padding:10px 14px;background:' + drainBg + ';border-color:' + drainBorder + ';">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+          '<span class="card-title" style="margin-bottom:0;font-size:15px;">\uD83D\uDEE1\uFE0F System Info</span>' +
+          '<button class="btn btn-sm" onclick="toggleDrain()" style="padding:4px 12px;font-size:11px;background:' + drainColor + ';color:#fff;border-color:' + drainColor + ';">' +
+            (drainOn ? '\u23F8 Draining' : '\u25B6 Normal') +
+          '</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px;">' +
+          '<div class="card-row" style="margin:0;"><span class="card-label">Drain Mode</span><span class="card-value" style="color:' + drainColor + ';font-weight:700;">\u25CF ' + drainLabel + '</span></div>' +
+          '<div class="card-row" style="margin:0;"><span class="card-label">Active Repos</span><span class="card-value">' + (data.active_repos || 0) + '</span></div>' +
+          '<div class="card-row" style="margin:0;"><span class="card-label">Uptime</span><span class="card-value">' + uptimeStr + '</span></div>' +
+          '<div class="card-row" style="margin:0;"><span class="card-label">Claude Sessions</span><span class="card-value">' + (data.claude_sessions || 0) + '</span></div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    async function toggleDrain() {
+      const newState = !_lastDrainState;
+      if (newState && !confirm('Enable drain mode? No new cycles will start.')) return;
+      haptic('heavy');
+      const result = await api('/api/drain', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: newState }),
+      });
+      if (result && result.ok) {
+        showToast('Drain mode ' + (newState ? 'enabled' : 'disabled'), newState ? 'warning' : 'success');
+        loadSystemFlags();
+      }
+    }
+
+    function startSystemFlagsRefresh() {
+      if (_systemFlagsTimer) clearInterval(_systemFlagsTimer);
+      _systemFlagsTimer = setInterval(() => {
+        if (currentTab === 'home') loadSystemFlags();
+      }, 10000);
     }
 
     async function registerRepo() {
@@ -2457,37 +2524,30 @@
       }).join('');
     }
 
+    function _sendWebAppData(data) {
+      if (tg && tg.sendData) {
+        tg.sendData(JSON.stringify(data));
+      } else {
+        showToast('Telegram WebApp not available \u2014 use bot commands instead', 'error');
+      }
+    }
+
     async function launchClaude() {
       const promptText = prompt('Enter Claude prompt:');
       if (!promptText || !promptText.trim()) return;
       haptic('heavy');
-      const res = await api('/api/claude-launch', {
-        method: 'POST',
-        body: JSON.stringify({ prompt: promptText.trim().substring(0, 2000) })
-      });
-      if (res && res.ok) {
-        showToast('Claude session launched', 'success');
-      } else if (res && res.message) {
-        showToast(res.message, 'success');
-      } else {
-        showToast('Launch request sent', 'info');
-      }
-      setTimeout(loadClaude, 2000);
+      _sendWebAppData({ action: 'start_claude', prompt: promptText.trim().substring(0, 2000) });
     }
 
     async function stopAllClaude() {
       if (!confirm('Stop all Claude sessions?')) return;
       haptic('heavy');
-      await api('/api/claude-stop', { method: 'POST', body: JSON.stringify({ pid: 'all' }) });
-      showToast('All Claude sessions stopped', 'warning');
-      setTimeout(loadClaude, 1000);
+      _sendWebAppData({ action: 'stop_claude' });
     }
 
     async function stopOneClaude(pid) {
       haptic('medium');
-      await api('/api/claude-stop', { method: 'POST', body: JSON.stringify({ pid: pid }) });
-      showToast('Claude session ' + pid + ' stopped', 'warning');
-      setTimeout(loadClaude, 1000);
+      _sendWebAppData({ action: 'stop_claude', pid: String(pid) });
     }
 
     function updateCostBadge() {
@@ -2560,9 +2620,11 @@
       if (document.hidden) {
         // Pause polling when hidden to save bandwidth
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (_systemFlagsTimer) { clearInterval(_systemFlagsTimer); _systemFlagsTimer = null; }
       } else {
         // Resume polling and immediately refresh when visible again
         startPolling();
+        startSystemFlagsRefresh();
         if (currentTab === 'home') refreshHome();
         else if (currentTab === 'stats') refreshStats();
         fetchCosts();
@@ -2648,6 +2710,7 @@
       // Connect SSE for real-time updates + start fallback polling
       connectSSE();
       startPolling();
+      startSystemFlagsRefresh();
       setupPullToRefresh();
       fetchCosts();
 

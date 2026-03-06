@@ -389,6 +389,33 @@ def _orch_post(path, data, retries=1):
     return {"error": str(last_err)}
 
 
+def _orch_delete(path, retries=1):
+    """DELETE from orchestrator API with retry + backoff."""
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            token = _fetch_api_token()
+            headers = {}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            req = Request(f"{ORCH_URL}{path}", method="DELETE", headers=headers)
+            resp = urlopen(req, timeout=10)
+            return json.loads(resp.read())
+        except HTTPError as e:
+            if e.code == 401:
+                _invalidate_token()
+                log.warning("Got 401 from orchestrator \u2014 token invalidated, will re-fetch")
+            last_err = e
+        except URLError as e:
+            log.warning("Orchestrator unreachable (attempt %d): %s", attempt + 1, e.reason)
+            last_err = e
+        except Exception as e:
+            last_err = e
+        if attempt < retries:
+            time.sleep(0.5 * (2 ** attempt))
+    return {"error": str(last_err)}
+
+
 def _find_repo(name):
     """Find a repo by name (case-insensitive partial match)."""
     repos = _orch_get("/api/repos")
@@ -3403,6 +3430,90 @@ def cmd_compare_costs():
     return "\n".join(lines)
 
 
+def cmd_schedule_claude(arg: str = ""):
+    """Manage scheduled Claude tasks via orchestrator API."""
+    arg = arg.strip()
+    if not arg or arg == "list":
+        data = _orch_get("/api/scheduled-tasks")
+        if isinstance(data, dict) and "error" in data:
+            return f"\u26A0\uFE0F Failed to fetch scheduled tasks: {data['error']}"
+        if not data:
+            return "\U0001F4C5 No scheduled tasks.\n\nAdd one: `/schedule_claude */5 * * * * check for errors`"
+        lines = ["\U0001F4C5 *Scheduled Claude Tasks*\n"]
+        for t in data:
+            status = "\u2705" if t.get("enabled", True) else "\u23F8\uFE0F"
+            lines.append(f"  {status} `{t.get('id', '?')}` | `{t.get('cron_expr', '?')}` | {t.get('prompt', '?')[:40]}")
+        return "\n".join(lines)
+    if arg.startswith("remove ") or arg.startswith("delete ") or arg.startswith("rm "):
+        task_id = arg.split(" ", 1)[1].strip()
+        if not task_id:
+            return "Usage: `/schedule_claude remove <id>`"
+        result = _orch_delete(f"/api/scheduled-tasks?id={task_id}")
+        if isinstance(result, dict) and "error" in result:
+            return f"\u274C Failed to remove task: {result['error']}"
+        return f"\u2705 Scheduled task `{task_id}` removed."
+    # Parse: <cron_expr> <prompt>
+    # Cron has 5 fields, so split first 5 tokens as cron, rest as prompt
+    parts = arg.split()
+    if len(parts) < 6:
+        return ("Usage:\n"
+                "`/schedule_claude list` \u2014 list tasks\n"
+                "`/schedule_claude */5 * * * * check errors` \u2014 add task\n"
+                "`/schedule_claude remove <id>` \u2014 remove task")
+    cron_expr = " ".join(parts[:5])
+    prompt = " ".join(parts[5:])
+    if len(prompt) > 500:
+        prompt = prompt[:500]
+    result = _orch_post("/api/scheduled-tasks", {"cron_expr": cron_expr, "prompt": prompt})
+    if isinstance(result, dict) and "error" in result:
+        return f"\u274C Failed to create task: {result['error']}"
+    task_id = result.get("id", "?")
+    return f"\u2705 Scheduled task created (id: `{task_id}`)\n\u23F0 Cron: `{cron_expr}`\n\U0001F4DD Prompt: {prompt[:60]}"
+
+
+def cmd_stalled():
+    """Find repos stuck in a non-idle state for more than 30 minutes."""
+    repos = _orch_get("/api/repos") or []
+    if isinstance(repos, dict) and "error" in repos:
+        return f"\u26A0\uFE0F Failed to fetch repos: {repos['error']}"
+    if not repos:
+        return "No repos registered."
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    stalled = []
+    for r in repos:
+        state = r.get("state", "idle")
+        if state == "idle":
+            continue
+        last_act = r.get("last_activity") or r.get("updated_at") or ""
+        if not last_act:
+            continue
+        try:
+            # Parse ISO timestamp
+            ts_str = last_act.replace("Z", "+00:00")
+            if "+" not in ts_str and "-" not in ts_str[10:]:
+                ts = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
+            else:
+                ts = datetime.fromisoformat(ts_str)
+            delta = now - ts
+            minutes = delta.total_seconds() / 60
+            if minutes >= 30:
+                stalled.append((r["name"], state, minutes))
+        except (ValueError, TypeError):
+            continue
+    if not stalled:
+        return "\u2705 No stalled repos. All active repos are making progress."
+    stalled.sort(key=lambda x: x[2], reverse=True)
+    lines = [f"\u26A0\uFE0F *Stalled Repos* ({len(stalled)} found)\n"]
+    for name, state, mins in stalled:
+        if mins >= 60:
+            time_str = f"{int(mins // 60)}h {int(mins % 60)}m"
+        else:
+            time_str = f"{int(mins)}m"
+        lines.append(f"  \u26A0\uFE0F `{name[:16]:16s}` | {state} | \u23F0 {time_str} stuck")
+    return "\n".join(lines)
+
+
 def cmd_help():
     return """*Swarm Town Commands:*
 
@@ -3482,6 +3593,8 @@ def cmd_help():
 `start-claude:<prompt>` — Launch Claude Code session
 `claude-status` — Show active sessions
 `claude-stop [pid|all]` — Stop session(s)
+`schedule_claude` — List/add/remove scheduled Claude tasks
+`stalled` — Show repos stuck in non-idle state 30+ min
 
 Send a voice message to queue audio for transcription."""
 
@@ -3742,7 +3855,7 @@ def handle_message(msg):
                 log.warning("web_app_data: data is not a dict")
                 return
             action = data.get("action", "")
-            VALID_ACTIONS = {"start_repo", "stop_repo", "start_all", "stop_all", "add_item"}
+            VALID_ACTIONS = {"start_repo", "stop_repo", "start_all", "stop_all", "add_item", "start_claude", "stop_claude"}
             if action == "start_repo":
                 repo = str(data.get("repo", "")).strip()
                 reply = cmd_start_repo(repo) if repo else "Missing repo name"
@@ -3759,6 +3872,12 @@ def handle_message(msg):
                 if item_type not in ("feature", "issue"):
                     item_type = "feature"
                 reply = cmd_add_item(item_type, title) if title else "Missing item title"
+            elif action == "start_claude":
+                prompt_text = str(data.get("prompt", "")).strip()
+                reply = cmd_start_claude(prompt_text, chat_id=chat_id) if prompt_text else "Missing prompt text"
+            elif action == "stop_claude":
+                pid_val = str(data.get("pid", "all")).strip()
+                reply = cmd_claude_stop(pid_val)
             elif action:
                 log.warning(f"web_app_data: unknown action '{action}'")
                 reply = f"Unknown action: {action}"
@@ -4101,6 +4220,18 @@ def handle_message(msg):
         reply = cmd_drain(t[6:].strip() if t.startswith("drain ") else "")
     elif t in ("compare_costs", "cost_compare", "cc"):
         reply = cmd_compare_costs()
+    elif t.startswith("schedule_claude ") or t.startswith("schedule claude "):
+        arg = t.split(" ", 1)[1].strip() if " " in t else ""
+        # schedule_claude has two-word prefix, grab rest after second space
+        if t.startswith("schedule claude "):
+            arg = t[len("schedule claude "):].strip()
+        else:
+            arg = t[len("schedule_claude "):].strip()
+        reply = cmd_schedule_claude(arg)
+    elif t in ("schedule_claude", "schedule claude"):
+        reply = cmd_schedule_claude("list")
+    elif t in ("stalled", "stuck_repos"):
+        reply = cmd_stalled()
     else:
         # Try fuzzy command matching before forwarding to bridge
         import difflib
@@ -4109,7 +4240,7 @@ def handle_message(msg):
                        "costs", "push", "digest", "budget", "metrics", "trends", "compare",
                        "activity", "notes", "search", "stale", "breakers", "grades",
                        "summary", "active", "top", "notify", "pin", "changelog", "timeline",
-                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily", "hall_of_fame", "start-claude", "claude-status", "claude-stop", "git_status", "drain", "compare_costs"]
+                       "queue", "leaderboard", "errors", "docs", "uptime", "repos", "dedupe", "fastest", "remind", "alive", "slowest", "agents", "pick", "deps", "hot", "cost_alert", "schedule", "export", "emoji", "retry_all", "backlog", "oldest", "completions", "throughput", "pending", "success", "wait_time", "overview", "quiet", "clone", "threshold", "sync", "dedupe_items", "watch", "rename", "focus", "wave", "progress", "diff", "impact", "benchmark", "group", "alerts", "rate", "streak", "top_errors", "idle", "cleanup", "blocked", "efficiency", "snapshot_all", "pause_all", "resume_all", "last", "velocity", "blame", "cost_rank", "capacity", "roi", "uptime_rank", "zero", "daily", "hall_of_fame", "start-claude", "claude-status", "claude-stop", "git_status", "drain", "compare_costs", "schedule_claude", "stalled"]
         first_word = t.split()[0] if t.split() else ""
         matches = difflib.get_close_matches(first_word, known_cmds, n=2, cutoff=0.6) if len(first_word) >= 3 else []
         if matches:
