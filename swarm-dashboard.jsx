@@ -1481,10 +1481,10 @@ function Dashboard() {
             {(() => { const errored = repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length; return <p style={{ textAlign: "center", fontSize: 12, color: C.cream, marginBottom: 10, fontWeight: 600, letterSpacing: 1 }}>{repos.length} total{repoStats.running > 0 ? ` \u00B7 ${repoStats.running} running` : ""}{repoStats.idle > 0 ? ` \u00B7 ${repoStats.idle} idle` : ""}{repoStats.paused > 0 ? ` \u00B7 ${repoStats.paused} paused` : ""}{errored > 0 ? ` \u00B7 ${errored} error` : ""}{repoStats.totalErrors > 0 ? ` \u00B7 ${repoStats.totalErrors} mistakes` : ""}{totalCost > 0 ? ` \u00B7 $${totalCost.toFixed(2)}` : ""}</p>; })()}
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16, flexWrap: "wrap" }}>
               <select value={repoFilter} onChange={e => setRepoFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
-                <option value="all">All ({repos.length})</option>
-                <option value="running">Running ({repos.filter(r => r.running && !r.paused).length})</option>
-                <option value="idle">Idle ({repos.filter(r => !r.running).length})</option>
-                <option value="paused">Paused ({repos.filter(r => r.paused).length})</option>
+                <option value="all">All ({repoStats.total})</option>
+                <option value="running">Running ({repoStats.running - repoStats.paused})</option>
+                <option value="idle">Idle ({repoStats.idle})</option>
+                <option value="paused">Paused ({repoStats.paused})</option>
                 <option value="error">Error ({repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length})</option>
               </select>
               <select value={repoSort} onChange={e => setRepoSort(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${C.darkBrown}`, background: C.cream, fontFamily: "'Fredoka', sans-serif", fontSize: 13, fontWeight: 600 }}>
