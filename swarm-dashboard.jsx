@@ -557,7 +557,7 @@ function Dashboard() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [sr, repos]);
+  }, [sr, repos, showCommandPalette, tab, repoFilter, masterFocus]);
 
   const repo = repos.find(r => r.id === sr);
   const cs = repo?.state || "idle";
@@ -785,7 +785,7 @@ function Dashboard() {
     }
   }, [showToast, load]);
 
-  const C = darkMode ? {
+  const C = useMemo(() => darkMode ? {
     orange: "#E8850F", teal: "#0097B8", cream: "#1E1E2E", yellow: "#D4A830",
     sky: "#0D1117", sand: "#2D2D3D", red: "#E74C3C", green: "#2ECC71",
     darkBrown: "#C0C0C0", brown: "#999999", white: "#1A1A2E",
@@ -795,7 +795,7 @@ function Dashboard() {
     sky: "#87CEEB", sand: "#F4D35E", red: "#E74C3C", green: "#2ECC71",
     darkBrown: "#3D2B1F", brown: "#5D4037", white: "#FFFFFF",
     lightOrange: "#FFD699", lightTeal: "#B2EBF2",
-  };
+  }, [darkMode]);
 
   const Card = ({ children, bg = C.white, style, className, ...p }) => (
     <div className={`hover-card ${className||""}`} style={{ background: bg, border: `3px solid ${C.darkBrown}`, borderRadius: 12, padding: 16, boxShadow: `0 2px 4px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.08), 3px 3px 0 ${darkMode ? '#000' : '#3D2B1F'}`, transition: "transform .2s ease, box-shadow .2s ease", ...style }} {...p}>{children}</div>
