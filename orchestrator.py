@@ -17,6 +17,7 @@ SWARM ORCHESTRATOR v3 — Full Autonomous Multi-Repo
 """
 
 import json, os, re, sqlite3, subprocess, sys, time, hashlib, logging, hmac, secrets, queue
+from collections import deque
 import logging.handlers
 import threading, shutil, base64, signal, traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -565,9 +566,18 @@ class RepoDB:
         self.conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
             CREATE INDEX IF NOT EXISTS idx_items_created ON items(created_at);
+            CREATE INDEX IF NOT EXISTS idx_items_source ON items(source);
+            CREATE INDEX IF NOT EXISTS idx_items_priority ON items(priority);
+            CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
             CREATE INDEX IF NOT EXISTS idx_plan_steps_status ON plan_steps(status);
+            CREATE INDEX IF NOT EXISTS idx_plan_steps_item ON plan_steps(item_id);
             CREATE INDEX IF NOT EXISTS idx_log_created ON execution_log(created_at);
+            CREATE INDEX IF NOT EXISTS idx_log_state ON execution_log(state);
             CREATE INDEX IF NOT EXISTS idx_memory_ns ON memory(namespace);
+            CREATE INDEX IF NOT EXISTS idx_memory_key ON memory(key);
+            CREATE INDEX IF NOT EXISTS idx_mistakes_type ON mistakes(error_type);
+            CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+            CREATE INDEX IF NOT EXISTS idx_history_action ON history(action);
         """)
         self.conn.commit()
         # Migrations for existing DBs
@@ -1983,7 +1993,7 @@ manager = Manager()
 
 # ─── Chat History ─────────────────────────────────────────────────────────────
 
-chat_history = []  # in-memory chat history (latest 50)
+chat_history = deque(maxlen=50)  # auto-drops oldest when exceeding 50
 
 
 # ─── Health Scanner ───────────────────────────────────────────────────────────
@@ -2518,8 +2528,7 @@ def _check_rate_limit(ip, path):
 
 _metrics = {"total": 0, "endpoints": {}, "errors": 0, "rate_limited": 0, "latencies": {}}
 _metrics_lock = threading.Lock()
-_request_log = []  # ring buffer of last N requests
-_request_log_max = 200
+_request_log = deque(maxlen=200)  # auto ring buffer
 
 
 def _record_metric(path, status_code=200, latency_ms=0):
@@ -2533,12 +2542,8 @@ def _record_metric(path, status_code=200, latency_ms=0):
             _metrics["rate_limited"] += 1
         if latency_ms > 0:
             if path not in _metrics["latencies"]:
-                _metrics["latencies"][path] = []
-            lat = _metrics["latencies"][path]
-            lat.append(latency_ms)
-            # Keep only last 100 measurements per endpoint
-            if len(lat) > 100:
-                _metrics["latencies"][path] = lat[-100:]
+                _metrics["latencies"][path] = deque(maxlen=100)
+            _metrics["latencies"][path].append(latency_ms)
         # Append to ring buffer (skip SSE/events to avoid noise)
         if path != "/api/events":
             _request_log.append({
@@ -2546,8 +2551,6 @@ def _record_metric(path, status_code=200, latency_ms=0):
                 "latency_ms": round(latency_ms, 1),
                 "ts": datetime.now(timezone.utc).isoformat(),
             })
-            if len(_request_log) > _request_log_max:
-                del _request_log[:len(_request_log) - _request_log_max]
 
 
 # Simple in-memory response cache (TTL-based)
@@ -3190,7 +3193,7 @@ class API(BaseHTTPRequestHandler):
             })
 
         if path == "/api/chat/history":
-            return self._json(chat_history[-50:])
+            return self._json(list(chat_history))
 
         if path == "/api/ruflo-config" and rid:
             db = manager.get_repo_db(rid)
@@ -3438,7 +3441,7 @@ class API(BaseHTTPRequestHandler):
             })
 
         if path == "/api/request-log":
-            limit = min(int(q.get("limit", ["50"])[0]), _request_log_max)
+            limit = min(int(q.get("limit", ["50"])[0]), 200)
             status_filter = q.get("status", [None])[0]
             with _metrics_lock:
                 entries = list(_request_log)
