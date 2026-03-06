@@ -1035,15 +1035,15 @@ function Dashboard() {
             );
           })()}
           <div title={sseConnected ? "Live updates connected" : "Live updates disconnected — reconnecting..."} style={{ width: 10, height: 10, borderRadius: "50%", background: sseConnected ? "#4CAF50" : "#F44336", border: `2px solid ${C.darkBrown}`, animation: sseConnected ? "none" : "pulse 1.5s infinite" }} />
-          <button onClick={() => setShowToastHistory(prev => !prev)} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1, position: "relative" }} title="Notification history">
+          <button onClick={() => setShowToastHistory(prev => !prev)} aria-label="Toggle notification history" style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1, position: "relative" }} title="Notification history">
             {"\uD83D\uDD14"}
             {toastHistory.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: C.red, color: C.white, borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{Math.min(toastHistory.length, 99)}</span>}
           </button>
-          <button onClick={toggleDark} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1 }} title="Toggle dark mode">
+          <button onClick={toggleDark} aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"} aria-pressed={darkMode} style={{ background: darkMode ? "#2D2D3D" : C.cream, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 10px", fontSize: 14, cursor: "pointer", lineHeight: 1 }} title="Toggle dark mode">
             {darkMode ? "\uD83C\uDF19" : "\u2600\uFE0F"}
           </button>
-          <div style={{ background: connected ? C.green : C.red, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: "#FFFFFF", animation: connected ? "none" : "pulse 1s infinite" }}>
-            {connected ? "● LIVE" : "● OFFLINE"}
+          <div role="status" aria-live="polite" aria-label={connected ? "Server connected" : "Server disconnected"} style={{ background: connected ? C.green : C.red, border: `2px solid ${C.darkBrown}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: "#FFFFFF", animation: connected ? "none" : "pulse 1s infinite" }}>
+            {connected ? "\u25CF LIVE" : "\u25CF OFFLINE"}
           </div>
         </div>
       </div>
@@ -1069,7 +1069,7 @@ function Dashboard() {
 
       {/* ═══ NAV TABS + STICKY REPO BAR ═══ */}
       <div style={{ position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: scrolledPast ? "none" : `3px solid ${C.darkBrown}`, gap: 0 }}>
+        <div role="tablist" aria-label="Dashboard sections" style={{ background: C.orange, display: "flex", overflow: "auto", borderBottom: scrolledPast ? "none" : `3px solid ${C.darkBrown}`, gap: 0 }}>
           {TABS.map(t => {
             const badge = tabBadges[t.id] || 0;
             const badgeBg = t.id === "mistakes" || t.id === "logs" ? C.red : t.id === "plan" ? C.orange : C.teal;
@@ -1078,7 +1078,7 @@ function Dashboard() {
             if (badge !== prev) { prevBadges.current[t.id] = badge; if (pulse) { setTabPulse(p => ({ ...p, [t.id]: Date.now() })); } }
             const showPulse = tabPulse[t.id] && Date.now() - tabPulse[t.id] < 8000 && tab !== t.id;
             return (
-              <button key={t.id} className={tab !== t.id ? "nav-tab" : ""} onClick={() => { setTab(t.id); setBatchSelected(new Set()); setTabPulse(p => { const n = { ...p }; delete n[t.id]; return n; }); }} style={{
+              <button key={t.id} role="tab" aria-selected={tab === t.id} aria-label={`${t.label} tab${badge > 0 ? ` (${badge})` : ""}`} className={tab !== t.id ? "nav-tab" : ""} onClick={() => { setTab(t.id); setBatchSelected(new Set()); setTabPulse(p => { const n = { ...p }; delete n[t.id]; return n; }); }} style={{
                 padding: "10px 16px", background: tab === t.id ? C.cream : "transparent",
                 border: "none", borderRight: `2px solid ${C.darkBrown}`,
                 borderBottom: tab === t.id ? `3px solid ${C.cream}` : "none",
@@ -1106,8 +1106,8 @@ function Dashboard() {
               <span style={{ color: C.brown }}>Steps: {s.steps_done||0}/{s.steps_total||0}</span>
               {costs[sr] > 0 && <span style={{ color: C.brown }}>${costs[sr]?.toFixed(2)}</span>}
               {cr.running
-                ? <button onClick={() => stopRepo(cr.id)} style={{ background: C.red, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u23F9"}</button>
-                : <button onClick={() => startRepo(cr.id)} style={{ background: C.green, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u25B6"}</button>}
+                ? <button onClick={() => stopRepo(cr.id)} aria-label={`Stop ${cr.name}`} style={{ background: C.red, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u23F9"}</button>
+                : <button onClick={() => startRepo(cr.id)} aria-label={`Start ${cr.name}`} style={{ background: C.green, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u25B6"}</button>}
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
               {sseConnected && <span style={{ color: C.teal, fontSize: 9, fontWeight: 600 }}>SSE</span>}
               {lastRefresh && <span style={{ fontSize: 8, color: C.brown, opacity: 0.7 }}>{Math.floor((Date.now() - lastRefresh) / 1000) < 10 ? "just now" : Math.floor((Date.now() - lastRefresh) / 1000) + "s ago"}</span>}
@@ -1161,11 +1161,11 @@ function Dashboard() {
           {/* START ALL banner */}
           <SectionBg bg={`linear-gradient(180deg, ${C.cream} 0%, #F5E6C8 100%)`}>
             <div style={{ textAlign: "center", marginBottom: 20, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-              <Btn onClick={startAll} bg={C.green} style={{ fontSize: 24, padding: "16px 48px", animation: repos.some(r=>r.running) ? "none" : "wiggle 2s infinite" }}>
+              <Btn onClick={startAll} bg={C.green} aria-label="Start all repo orchestrators" style={{ fontSize: 24, padding: "16px 48px", animation: repos.some(r=>r.running) ? "none" : "wiggle 2s infinite" }}>
                 {"\uD83D\uDE80"} START ALL
               </Btn>
               {repos.some(r => r.running) && (
-                <Btn onClick={stopAll} bg={C.red} style={{ fontSize: 24, padding: "16px 48px" }}>
+                <Btn onClick={stopAll} bg={C.red} aria-label="Stop all repo orchestrators" style={{ fontSize: 24, padding: "16px 48px" }}>
                   {"\u23F9\uFE0F"} STOP ALL
                 </Btn>
               )}
