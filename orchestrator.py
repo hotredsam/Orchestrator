@@ -38,6 +38,10 @@ if os.path.isfile(_env_path):
 from typing import Optional, Dict, List
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
+from ruflo_config import (
+    normalize_project as normalize_ruflo_project,
+    validate_project as validate_ruflo_project,
+)
 
 # Add bot/ directory to path for telegram_bot imports
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot"))
@@ -79,6 +83,26 @@ TELEGRAM_WHITELIST = {int(x.strip()) for x in _wl.split(",") if x.strip().isdigi
 
 # Paths exempt from bearer token auth (static assets + token endpoint)
 AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token", "/api/events", "/api/status", "/api/docs"}
+
+
+def repair_ruflo_config(path, profile="minimal", agent_teams=False):
+    """Normalize Ruflo / Claude Code config into the repo-supported layout."""
+    try:
+        result = normalize_ruflo_project(path, profile=profile, agent_teams=agent_teams)
+        for warning in result.get("warnings", []):
+            log.warning(f"Ruflo config warning for {path}: {warning}")
+        if not result.get("ok"):
+            problems = "; ".join(issue["message"] for issue in result.get("issues", []))
+            log.warning(f"Ruflo config validation failed for {path}: {problems}")
+        return result
+    except Exception as exc:
+        log.warning(f"Ruflo config repair failed for {path}: {exc}")
+        return {
+            "ok": False,
+            "issues": [{"level": "error", "message": str(exc)}],
+            "warnings": [],
+            "projectRoot": path,
+        }
 
 
 def validate_telegram_init_data(init_data: str) -> dict:
@@ -1102,7 +1126,22 @@ class Runner:
         return result
 
     def ruflo_init(self, cwd):
-        return self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120)
+        init_result = self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120)
+        config_result = repair_ruflo_config(cwd, profile="minimal")
+        output_parts = []
+        if init_result.get("output"):
+            output_parts.append(init_result["output"])
+        if config_result.get("warnings"):
+            output_parts.append("\n".join(config_result["warnings"]))
+        success = init_result.get("success", False) or config_result.get("ok", False)
+        return {
+            **init_result,
+            "success": success,
+            "init_command_success": init_result.get("success", False),
+            "config_repaired": config_result.get("ok", False),
+            "config_result": config_result,
+            "output": "\n".join(part for part in output_parts if part),
+        }
 
     def ruflo_setup(self, cwd):
         """Full Ruflo setup for a repo — init, memory, hooks."""
@@ -1110,6 +1149,7 @@ class Runner:
             self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120)
         self.run_cmd(["npx", "ruflo", "memory", "init"], cwd=cwd, timeout=60)
         self.run_cmd(["npx", "ruflo", "hooks", "enable", "--all"], cwd=cwd, timeout=30)
+        repair_ruflo_config(cwd, profile="full")
 
     def ruflo_swarm(self, cwd, topology="hierarchical", max_agents=4, agent_types=None):
         """Initialize a swarm with specific topology and agent types."""
@@ -2122,6 +2162,17 @@ def scan_repo_health(repo):
     # Ruflo checks
     if ".claude-flow" not in files and ".ruflo" not in files:
         add("issue", "Initialize Ruflo", "No .claude-flow/ directory — Ruflo not set up", True)
+    else:
+        validation = validate_ruflo_project(path)
+        if not validation.get("ok") or validation.get("warnings"):
+            details = [issue["message"] for issue in validation.get("issues", [])]
+            details.extend(validation.get("warnings", [])[:2])
+            add(
+                "issue" if not validation.get("ok") else "warning",
+                "Repair Ruflo config",
+                " ; ".join(details[:3]) or "Generated Ruflo / Claude config is stale or invalid",
+                True,
+            )
 
     # Dependency install checks
     if "package.json" in files and "node_modules" not in files:
@@ -2203,6 +2254,12 @@ SOFTWARE.
         r = runner.ruflo_init(path)
         result["fixed"] = r.get("success", False)
         result["message"] = "Initialized Ruflo" if result["fixed"] else "Ruflo init failed"
+
+    elif title == "Repair Ruflo config":
+        profile = "full" if os.path.exists(os.path.join(path, ".claude-flow")) else "minimal"
+        r = repair_ruflo_config(path, profile=profile)
+        result["fixed"] = r.get("ok", False)
+        result["message"] = "Repaired Ruflo config" if result["fixed"] else "Ruflo config repair failed"
 
     elif title == "Run npm install":
         r = runner.run_cmd(["npm", "install"], cwd=path, timeout=120)
@@ -2825,22 +2882,22 @@ class API(BaseHTTPRequestHandler):
                     r["last_activity"] = orch.state.last_activity if orch else 0
                     # Combined queries for all counts (5 queries → 2)
                     ic = db.get_item_counts()
-                    sc = db.fetchone(
-                        "SELECT COUNT(*) c,"
-                        " SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) done"
-                        " FROM plan_steps")
                     extra = db.fetchone(
-                        "SELECT (SELECT COUNT(*) FROM mistakes) mistakes,"
+                        "SELECT (SELECT COUNT(*) FROM plan_steps) steps_total,"
+                        " (SELECT COUNT(*) FROM plan_steps WHERE status='completed') steps_done,"
+                        " (SELECT COUNT(*) FROM mistakes) mistakes,"
                         " (SELECT COUNT(*) FROM memory) memory,"
                         " (SELECT COUNT(*) FROM audio_reviews) audio")
+                    st_total = extra["steps_total"]
+                    st_done = extra["steps_done"] or 0
                     stats = {
                         "items_total": ic["total"],
                         "items_done": ic["done"],
                         "items_pending": ic["pending"],
                         "items_in_progress": ic["in_progress"],
-                        "steps_total": sc["c"],
-                        "steps_done": sc["done"] or 0,
-                        "steps_pending": sc["c"] - (sc["done"] or 0),
+                        "steps_total": st_total,
+                        "steps_done": st_done,
+                        "steps_pending": st_total - st_done,
                         "agents": st.active_agents,
                         "memory": extra["memory"],
                         "mistakes": extra["mistakes"],
@@ -4851,3 +4908,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
