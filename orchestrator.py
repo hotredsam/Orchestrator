@@ -2827,7 +2827,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"costs": costs, "total": sum(costs.values())})
 
         if path == "/api/costs/history":
-            days = min(int(q.get("days", [30])[0]), 365)
+            days = min(_safe_int(q.get("days", [30])[0], 30), 365)
             history = manager.master.get_cost_history(days)
             return self._json({"history": history, "days": days})
 
@@ -2939,9 +2939,9 @@ class API(BaseHTTPRequestHandler):
             rid = int(q.get("repo_id", [0])[0]) if "repo_id" in q else None
         except (ValueError, TypeError, IndexError):
             rid = None
-        # Pagination params
-        limit = min(int(q.get("limit", [200])[0]), 1000)
-        offset = max(int(q.get("offset", [0])[0]), 0)
+        # Pagination params (safe against malformed input)
+        limit = min(_safe_int(q.get("limit", [200])[0], 200), 1000)
+        offset = max(_safe_int(q.get("offset", [0])[0], 0), 0)
         status_filter = q.get("status", [None])[0]
         source_filter = q.get("source", [None])[0]
 
@@ -3101,7 +3101,7 @@ class API(BaseHTTPRequestHandler):
             if not query or len(query) < 2:
                 return self._json({"error": "Query too short (min 2 chars)"}, 400)
             scope = q.get("scope", ["all"])[0]  # all, items, logs, mistakes
-            limit = min(int(q.get("limit", [50])[0]), 200)
+            limit = min(_safe_int(q.get("limit", [50])[0], 50), 200)
             results = {"items": [], "logs": [], "mistakes": []}
             repos = manager.master.get_repos()
             qlike = f"%{query}%"
@@ -3143,7 +3143,7 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/errors/recent":
             repos = manager.master.get_repos()
-            limit = min(int(q.get("limit", [20])[0]), 100)
+            limit = min(_safe_int(q.get("limit", [20])[0], 20), 100)
             errors = []
             for r in repos:
                 db = manager.get_repo_db(r["id"])
@@ -3218,7 +3218,7 @@ class API(BaseHTTPRequestHandler):
                                "total": len(scores)})
 
         if path == "/api/health/history":
-            days = int(q.get("days", [30])[0])
+            days = _safe_int(q.get("days", [30])[0], 30)
             history = manager.master.get_health_history(days)
             return self._json({"history": history, "days": days})
 
@@ -3516,7 +3516,7 @@ class API(BaseHTTPRequestHandler):
             })
 
         if path == "/api/request-log":
-            limit = min(int(q.get("limit", ["50"])[0]), 200)
+            limit = min(_safe_int(q.get("limit", ["50"])[0], 50), 200)
             status_filter = q.get("status", [None])[0]
             with _metrics_lock:
                 entries = list(_request_log)
@@ -3641,7 +3641,7 @@ class API(BaseHTTPRequestHandler):
             db = manager.get_repo_db(rid)
             if not db:
                 return self._json({"daily": [], "summary": {}})
-            period = int(q.get("days", [7])[0])
+            period = _safe_int(q.get("days", [7])[0], 7)
             # Aggregate execution_log by day
             rows = db.fetchall(
                 "SELECT date(created_at) as day, COUNT(*) as actions, "
@@ -3685,7 +3685,7 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/heatmap":
             # Activity heatmap: 7 days x 24 hours grid across all repos
-            days = int(q.get("days", [7])[0])
+            days = _safe_int(q.get("days", [7])[0], 7)
             grid = {}  # "day|hour" -> count
             repos = manager.master.get_repos()
             for repo in repos:
@@ -3739,7 +3739,7 @@ class API(BaseHTTPRequestHandler):
             return self._json({"agents": agents})
 
         if path == "/api/stale-items":
-            hours = int(q.get("hours", [2])[0])
+            hours = _safe_int(q.get("hours", [2])[0], 2)
             repos = manager.master.get_repos()
             stale = []
             for r in repos:
@@ -3759,7 +3759,7 @@ class API(BaseHTTPRequestHandler):
             db = manager.get_repo_db(rid)
             if not db:
                 return self._json([])
-            limit = min(int(q.get("limit", [100])[0]), 500)
+            limit = min(_safe_int(q.get("limit", [100])[0], 100), 500)
             rows = db.fetchall(
                 "SELECT id, state, action, created_at, cost_usd, duration_sec, error "
                 "FROM execution_log ORDER BY created_at DESC LIMIT ?", (limit,))
