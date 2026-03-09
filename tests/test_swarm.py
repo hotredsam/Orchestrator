@@ -1018,6 +1018,8 @@ class TestAPIEndpoints:
             r2 = urlopen(f"http://localhost:6969/api/state?repo_id={rid}")
             data = json.loads(r2.read())
             assert isinstance(data, dict)
+            assert "flow" in data
+            assert "current_state_meta" in data
 
     def test_137_items_endpoint(self):
         r = urlopen("http://localhost:6969/api/repos")
@@ -1919,9 +1921,9 @@ class TestRunnerMethods:
         result = mock_runner.whisper("/tmp/test.webm")
         assert "Whisper not installed" in result
 
-    def test_297_ruflo_setup_method(self, mock_runner):
+    def test_297_ruflo_setup_method(self, mock_runner, temp_repo):
         with patch.object(mock_runner, "run_cmd", return_value={"success": True, "output": "ok"}):
-            mock_runner.ruflo_setup("/tmp/fake")
+            mock_runner.ruflo_setup(temp_repo)
 
     def test_298_ruflo_swarm_method(self, mock_runner):
         with patch.object(mock_runner, "run_cmd", return_value={"success": True, "output": "ok"}):
@@ -2794,32 +2796,74 @@ class TestTelegramBotExtended:
         with patch("telegram_bot.send_message") as mock_send:
             notify_state_change("test-repo", "idle", "execute_step")
             mock_send.assert_called_once()
+            message = mock_send.call_args.args[0]
+            assert "Stage: Execute Step" in message
 
-    def test_453_notify_cycle_complete_sends(self):
+    def test_453_notify_tracker_transition_sends_readable_message(self, temp_db):
+        from orchestrator import build_repo_state_payload, RepoState, State
+        from telegram_bot import notify_tracker_transition
+
+        temp_db.add_item("feature", "Ship tracker flow", "Make tracker notifications readable", priority="high")
+        item = temp_db.fetchone("SELECT * FROM items ORDER BY id DESC LIMIT 1")
+        temp_db.save_plan(
+            [
+                {
+                    "item_id": item["id"],
+                    "description": "Implement backend flow metadata",
+                    "agent_type": "coder",
+                }
+            ]
+        )
+        step = temp_db.pending_steps()[0]
+        state = RepoState(current_state=State.EXECUTE_STEP, current_step_id=step["id"], cycle_count=2, active_agents=4)
+        payload = build_repo_state_payload({"id": 1, "name": "test-repo"}, state, temp_db)
+
+        assert payload["current_state_meta"]["label"] == "Build"
+        assert payload["current_item"]["title"] == "Ship tracker flow"
+        assert payload["flow"]["order"]
+
+        with patch("telegram_bot.send_message") as mock_send:
+            notify_tracker_transition(payload)
+            mock_send.assert_called_once()
+            message = mock_send.call_args.args[0]
+            assert "Stage: Build" in message
+            assert "Item: Ship tracker flow" in message
+            assert "Plan steps: 0/1 done" in message
+
+    def test_454_notify_cycle_complete_sends(self):
         from telegram_bot import notify_cycle_complete
         with patch("telegram_bot.send_message") as mock_send:
             notify_cycle_complete("test-repo", 1, 5)
             mock_send.assert_called_once()
+            assert "Cycle #1 complete" in mock_send.call_args.args[0]
 
-    def test_454_notify_error_sends(self):
+    def test_455_notify_error_sends(self):
         from telegram_bot import notify_error
         with patch("telegram_bot.send_message") as mock_send:
             notify_error("test-repo", "something broke")
             mock_send.assert_called_once()
+            assert "something broke" in mock_send.call_args.args[0]
 
-    def test_455_cmd_start_all_callable(self):
+    def test_456_notify_item_status_change_sends(self):
+        from telegram_bot import notify_item_status_change
+        with patch("telegram_bot.send_message") as mock_send:
+            notify_item_status_change("test-repo", "Improve flow map", "pending", "in_progress")
+            mock_send.assert_called_once()
+            assert "Status: Pending -> In Progress" in mock_send.call_args.args[0]
+
+    def test_457_cmd_start_all_callable(self):
         from telegram_bot import cmd_start_all
         assert callable(cmd_start_all)
 
-    def test_456_cmd_stop_all_callable(self):
+    def test_458_cmd_stop_all_callable(self):
         from telegram_bot import cmd_stop_all
         assert callable(cmd_stop_all)
 
-    def test_457_cmd_start_repo_callable(self):
+    def test_459_cmd_start_repo_callable(self):
         from telegram_bot import cmd_start_repo
         assert callable(cmd_start_repo)
 
-    def test_458_cmd_stop_repo_callable(self):
+    def test_460_cmd_stop_repo_callable(self):
         from telegram_bot import cmd_stop_repo
         assert callable(cmd_stop_repo)
 

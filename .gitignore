@@ -43,6 +43,14 @@ bridge/*.jsonl
 
 # Swarm data
 swarm-master.db
+.swarm/
+.claude/
+.claude-flow/
+.playwright-cli/
+benchmark-results/
+output/
+bridge/
+.mcp.json
 
 # Node
 node_modules/

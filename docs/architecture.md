@@ -94,7 +94,7 @@ IDLE ──► CHECK_AUDIO ──► TRANSCRIBE_AUDIO ──► PARSE_AUDIO_ITEM
 | TRANSCRIBE_AUDIO | Runs Whisper on audio files. |
 | PARSE_AUDIO_ITEMS | Uses Claude to extract issues/features from transcript. |
 | CHECK_REFACTOR | Checks if initial refactoring has been done. |
-| DO_REFACTOR | Runs Ruflo init + Ralph loop for repo structure cleanup. |
+| DO_REFACTOR | Runs Ruflo init, repo-local Ruflo config repair, and Ralph loop for repo structure cleanup. |
 | CHECK_NEW_ITEMS | Checks if there are pending items to work on. |
 | UPDATE_PLAN | Generates a build plan from pending items using Claude. |
 | CHECK_PLAN_COMPLETE | Checks if all plan steps are done. |
@@ -106,6 +106,20 @@ IDLE ──► CHECK_AUDIO ──► TRANSCRIBE_AUDIO ──► PARSE_AUDIO_ITEM
 | SCAN_REPO | Final scan: all tests, imports, build verification. |
 | CREDITS_EXHAUSTED | Probes every 60s until API credits return. |
 | ERROR | Fatal error state. Logged to mistakes table. |
+
+### Tracker Milestones
+
+The Telegram Mini App and Telegram notifications now group the internal states into stable tracker milestones:
+
+1. Intake
+2. Plan
+3. Build
+4. Test
+5. Optimize
+6. Scan
+7. Ready
+
+This milestone map is generated from backend state metadata rather than hardcoded in the frontend, so adding future states does not break the flow tab or the notification copy.
 
 ## Database Schema
 
@@ -160,3 +174,4 @@ All config via environment variables with sensible defaults:
 | AGENT_MODEL | sonnet | Claude model to use |
 | TELEGRAM_BOT_TOKEN | - | Telegram bot API token |
 | TELEGRAM_CHAT_ID | - | Telegram chat ID for notifications |
+

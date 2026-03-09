@@ -222,8 +222,9 @@ def send_message(text, chat_id=None, parse_mode="Markdown", reply_markup=None):
     payload = {
         "chat_id": chat_id or CHAT_ID,
         "text": text[:4096],
-        "parse_mode": parse_mode,
     }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
     result = _api("sendMessage", payload)
@@ -4348,50 +4349,137 @@ def notify_state_change(repo_name, old_state, new_state):
     """Notify on state transition."""
     if not _notify_prefs.get("state_changes", True):
         return
-    desc = {
-        "idle": "Waiting for items",
-        "check_audio": "Checking for audio reviews",
-        "transcribe_audio": "Transcribing audio",
-        "parse_audio_items": "Parsing items from audio",
-        "check_refactor": "Checking if refactor needed",
-        "do_refactor": "Refactoring codebase",
-        "check_new_items": "Checking for new items",
-        "update_plan": "Generating build plan",
-        "check_plan_complete": "Checking plan completion",
-        "execute_step": "Executing build step",
-        "test_step": "Running tests",
-        "check_steps_left": "Checking remaining steps",
-        "check_more_items": "Checking for more items",
-        "final_optimize": "Final optimization pass",
-        "scan_repo": "Scanning full repo",
-        "credits_exhausted": "Credits exhausted — waiting",
-        "error": "Error state",
-    }.get(new_state, new_state)
-    send_message(f"🔄 *{repo_name}* → {new_state} — {desc}")
+    notify_tracker_transition(
+        {
+            "repo_name": repo_name,
+            "old_state": old_state,
+            "new_state": new_state,
+            "current_state_meta": {
+                "label": str(new_state or "idle").replace("_", " ").title(),
+                "description": "",
+                "emoji": "🔄",
+            },
+        }
+    )
+
+
+def notify_tracker_transition(event):
+    """Send one readable tracker-stage message for a repo milestone."""
+    if not _notify_prefs.get("state_changes", True):
+        return
+    event = event or {}
+    def one_line(value):
+        return str(value or "").replace("\r", " ").replace("\n", " ").strip()
+    repo_name = event.get("repo_name") or event.get("repo") or "Repo"
+    meta = event.get("current_state_meta") or {}
+    label = one_line(meta.get("label") or str(event.get("new_state") or "idle").replace("_", " ").title())
+    emoji = meta.get("emoji") or "🔄"
+    description = one_line(meta.get("description") or "")
+    current_item = event.get("current_item") or {}
+    current_step = event.get("current_step") or {}
+    item_counts = event.get("item_counts") or {}
+    step_counts = event.get("step_counts") or {}
+
+    lines = [f"{emoji} {repo_name}", f"Stage: {label}"]
+    if description:
+        lines.append(description)
+    if current_item.get("title"):
+        lines.append(f"Item: {one_line(current_item['title'])[:160]}")
+    if current_step.get("description"):
+        step_total = int(step_counts.get("total") or 0)
+        step_num = int(step_counts.get("current") or current_step.get("number") or 0)
+        if step_total > 0 and step_num > 0:
+            lines.append(f"Step: {step_num}/{step_total} - {one_line(current_step['description'])[:180]}")
+        else:
+            lines.append(f"Step: {one_line(current_step['description'])[:180]}")
+    if item_counts.get("total"):
+        lines.append(f"Items: {int(item_counts.get('done') or 0)}/{int(item_counts.get('total') or 0)} complete")
+    if step_counts.get("total"):
+        lines.append(f"Plan steps: {int(step_counts.get('completed') or 0)}/{int(step_counts.get('total') or 0)} done")
+    cycle_count = event.get("cycle_count")
+    active_agents = event.get("active_agents")
+    if cycle_count is not None or active_agents is not None:
+        lines.append(
+            f"Cycle: {int(cycle_count or 0)} | Agents: {int(active_agents or 0)}"
+        )
+    send_message("\n".join(lines), parse_mode=None)
+
+
+def notify_item_status_change(repo_name, item_title, old_status, new_status):
+    """Notify when an item is moved manually in the tracker UI."""
+    if not _notify_prefs.get("state_changes", True):
+        return
+    item_title = str(item_title or "").replace("\r", " ").replace("\n", " ").strip()
+    old_label = str(old_status or "pending").replace("_", " ").title()
+    new_label = str(new_status or "pending").replace("_", " ").title()
+    send_message(
+        "\n".join(
+            [
+                f"🗂️ {repo_name}",
+                f"Item moved: {item_title[:180]}",
+                f"Status: {old_label} -> {new_label}",
+            ]
+        ),
+        parse_mode=None,
+    )
 
 
 def notify_cycle_complete(repo_name, cycle_num, items_done):
     if not _notify_prefs.get("completions", True):
         return
-    send_message(f"🎉 *{repo_name}* completed cycle #{cycle_num} — {items_done} items done")
+    send_message(
+        "\n".join(
+            [
+                f"🎉 {repo_name}",
+                f"Cycle #{cycle_num} complete",
+                f"Items completed: {items_done}",
+            ]
+        ),
+        parse_mode=None,
+    )
 
 
 def notify_credits_exhausted(repo_name):
     if not _notify_prefs.get("credits", True):
         return
-    send_message(f"💳 Credits exhausted for *{repo_name}*. Will auto-resume when back.")
+    send_message(
+        "\n".join(
+            [
+                f"💳 {repo_name}",
+                "Claude credits are exhausted.",
+                "The app will auto-resume when credits return.",
+            ]
+        ),
+        parse_mode=None,
+    )
 
 
 def notify_credits_restored(repo_name, resume_state):
     if not _notify_prefs.get("credits", True):
         return
-    send_message(f"✅ Credits restored! Resuming *{repo_name}* from {resume_state}")
+    send_message(
+        "\n".join(
+            [
+                f"✅ {repo_name}",
+                f"Credits restored. Resuming at: {resume_state}",
+            ]
+        ),
+        parse_mode=None,
+    )
 
 
 def notify_error(repo_name, error_msg):
     if not _notify_prefs.get("errors", True):
         return
-    send_message(f"💀 Error in *{repo_name}*: {error_msg[:500]}")
+    send_message(
+        "\n".join(
+            [
+                f"💀 {repo_name}",
+                f"Error: {str(error_msg)[:500]}",
+            ]
+        ),
+        parse_mode=None,
+    )
 
 
 # ─── Daily Digest ─────────────────────────────────────────────────────────────

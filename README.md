@@ -41,12 +41,14 @@ Swarm Town orchestrates 10+ AI agents per repository in parallel across your ent
 | **17-State Machine** | Full lifecycle: audio intake, refactoring, planning, building, testing, optimization |
 | **Voice Reviews** | Record audio, Whisper transcribes, items auto-extracted into the pipeline |
 | **Telegram Bot** | Control everything from your phone — start/stop, voice notes, screenshots, daily digests |
-| **Telegram Mini App** | Full mobile dashboard inside Telegram with all 6 screens |
+| **Telegram Mini App** | Mobile dashboard with backend-driven tracker flow, live repo status, and flow-map screenshots |
+| **Tracker Alerts** | Telegram messages fire on app milestone stages and manual item moves, not raw Claude hook spam |
 | **Credit Recovery** | Detects API credit exhaustion, pauses gracefully, auto-resumes when credits return |
 | **Mistake Memory** | Errors logged via Ruflo and injected into future prompts to prevent repeats |
 | **Model Routing** | Opus for architecture, Sonnet for coding, Haiku for scanning — automatically |
 | **Quality Gates** | Pre-commit, pre-push, and security scans before every git push |
 | **Ruflo Swarms** | 215 MCP tools, 10+ agent types (researcher, coder, tester, architect, reviewer) |
+| **Ruflo Config Repair** | `ruflo init` output is normalized into valid `.claude/settings.json` + `.claude-flow/config.json` with a built-in doctor command |
 | **Ralph Loops** | Persistent autonomous execution with stop-hook completion promises |
 | **Live Dashboard** | Los Lunas cartoon-style UI with real-time state visualization |
 | **Health Scanner** | Automated repo health checks with one-click auto-fix for common issues |
@@ -188,6 +190,35 @@ cd Orchestrator
 pip install -r requirements.txt
 playwright install chromium  # for screenshots
 ```
+
+### Ruflo Config
+
+This repo now treats the generated config as two separate layers:
+
+- `.claude/settings.json` contains only Claude Code-native settings: hooks, status line, and permissions.
+- `.claude-flow/config.json` contains the repo runtime settings consumed by the generated helper scripts.
+
+Legacy `claude-flow.config.json`, legacy `.claude-flow/config.yaml`, and stale custom `claudeFlow` blocks in `.claude/settings.json` are still read for migration, but only `.claude-flow/config.json` is written going forward.
+
+The orchestrator now runs config repair automatically after Ruflo init/setup. You can also run it directly:
+
+```bash
+# Minimal init-compatible config
+python ruflo_config.py normalize --project . --profile minimal
+
+# Full config with auto-memory hooks
+python ruflo_config.py normalize --project . --profile full
+
+# Full config plus Claude Code agent-team hooks
+python ruflo_config.py normalize --project . --profile full --agent-teams
+
+# Validate current config and fail fast on drift
+python ruflo_config.py doctor --project .
+```
+
+`minimal` writes a valid Claude Code settings file plus the runtime JSON config. `full` additionally enables the auto-memory helper. `--agent-teams` adds Claude Code `TaskCompleted` and `TeammateIdle` hooks on top of the full profile.
+
+Detailed rationale, migration behavior, and verification output are documented in [docs/ruflo-config-report.md](docs/ruflo-config-report.md).
 
 ### Run
 

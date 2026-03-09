@@ -508,7 +508,7 @@ stalled          — Find repos stuck in same state
 - **Home** — Repo cards with Start/Stop/Pause/Resume/Push/Remove, Start All/Stop All, pull-to-refresh, drain mode toggle, system flags
 - **Add** — Add feature/issue form + collapsible "Register New Repo" form
 - **Items** — Items list with status filter and delete
-- **Flow** — State machine flow map with current position
+- **Flow** — Backend-driven milestone flow map with current tracker stage, active item, and current step
 - **Plan** — Plan steps with progress bar and agent badges
 - **Logs** — Execution logs with color-coded actions
 - **Memory** — Agent memory entries with search
@@ -518,7 +518,7 @@ stalled          — Find repos stuck in same state
 - **Stats** — Dashboard stats with per-repo breakdown and costs
 - **Claude** — Active Claude Code sessions with status, prompt preview, and stop controls
 
-Features: Dark mode (localStorage), SSE real-time updates, toast notifications, haptic feedback, scrollable tab bar
+Features: Dark mode (localStorage), SSE real-time updates, toast notifications, haptic feedback, scrollable tab bar, backend-provided flow metadata that keeps the flow tab working when new states are added
 
 ## Environment
 ```
@@ -540,3 +540,4 @@ TELEGRAM_CHAT_ID=       # Your chat ID
 - `python ruflo_config.py normalize --project . --profile minimal|full [--agent-teams]` writes the supported format.
 - `python ruflo_config.py doctor --project .` validates hook keys, helper references, timeout units, and runtime-config presence.
 - `Runner.ruflo_init()` and `Runner.ruflo_setup()` run config repair automatically after Ruflo init/setup.
+- Telegram notifications now come from Swarm Town tracker milestones and item moves; generated Claude Code hooks no longer send Telegram messages directly.

@@ -28,7 +28,6 @@
       --tab-bg: #FFFFFF;
       --shadow: rgba(61, 43, 31, 0.12);
     }
-
     .dark {
       --bg: #1A1A2E;
       --card-bg: #252540;
@@ -1051,19 +1050,39 @@
     const params = new URLSearchParams(window.location.search);
     const API_BASE = params.get('api') || window.location.origin || 'http://localhost:6969';
     let __apiToken = window.__SWARM_API_TOKEN__ || '';
+    let __apiTokenPromise = null;
 
     let _apiLatencies = [];
+    async function ensureApiToken() {
+      if (__apiToken) return __apiToken;
+      if (__apiTokenPromise) return __apiTokenPromise;
+      __apiTokenPromise = fetch(API_BASE + '/api/token')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d && d.token) __apiToken = d.token;
+          return __apiToken;
+        })
+        .catch(() => '')
+        .finally(() => { __apiTokenPromise = null; });
+      return __apiTokenPromise;
+    }
     async function api(path, opts, { silent = false, retries = 1 } = {}) {
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
           const t0 = Date.now();
           const headers = { 'Content-Type': 'application/json' };
+          if (!__apiToken && path !== '/api/token') await ensureApiToken();
           if (__apiToken) headers['Authorization'] = 'Bearer ' + __apiToken;
           const res = await fetch(API_BASE + path, { headers, ...opts });
           const lat = Date.now() - t0;
           _apiLatencies.push(lat);
           if (_apiLatencies.length > 20) _apiLatencies.shift();
           updateConnQuality();
+          if (res.status === 401 && path !== '/api/token' && attempt < retries) {
+            __apiToken = '';
+            await ensureApiToken();
+            continue;
+          }
           if (!res.ok && !silent) {
             const errData = await res.json().catch(() => ({}));
             showToast(errData.error || `API error ${res.status}`, 'error');
@@ -1089,7 +1108,7 @@
 
     // Fetch token if not injected (fallback for local dev)
     if (!__apiToken) {
-      fetch(API_BASE + '/api/token').then(r=>r.json()).then(d=>{if(d.token)__apiToken=d.token;}).catch(()=>{});
+      ensureApiToken();
     }
 
     // ─── Dark Mode Toggle ──────────────────────────────────────────────────────
@@ -1246,10 +1265,10 @@
       const recs = [];
       const idleRepos = repos.filter(r => !r.running);
       const errorRepos = repos.filter(r => (r.stats?.mistakes || 0) > 3);
-      const totalPending = repos.reduce((s, r) => s + ((r.stats?.items_total || 0) - (r.stats?.items_done || 0)), 0);
+      const pendingTotalForRecs = repos.reduce((s, r) => s + ((r.stats?.items_total || 0) - (r.stats?.items_done || 0)), 0);
       if (idleRepos.length > repos.length * 0.6 && repos.length > 2) recs.push('▶️ Most repos idle — try "start all"');
       if (errorRepos.length > 0) recs.push(`⚠️ ${errorRepos.length} repo${errorRepos.length > 1 ? 's' : ''} with errors — check /health`);
-      if (totalPending > 30) recs.push(`📦 ${totalPending} items pending — consider /retry_all`);
+      if (pendingTotalForRecs > 30) recs.push(`📦 ${pendingTotalForRecs} items pending — consider /retry_all`);
       if (sysData && sysData.budget > 0 && (sysData.total_cost || 0) / sysData.budget > 0.85) recs.push('💰 Budget >85% used — review /costs');
       const recsHtml = recs.length > 0 ? `<div style="margin-bottom:8px;padding:8px 12px;background:linear-gradient(135deg,#FFF8E1,#FFECB3);border:2px solid var(--orange);border-radius:10px;">
         <div style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:4px;">💡 Recommendations</div>
@@ -1275,12 +1294,12 @@
       } catch (e) {}
 
       // Error summary card
-      const errorRepos = repos.filter(r => (r.stats?.mistakes || 0) > 0);
-      const totalErrors = errorRepos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
-      const errorSummaryHtml = totalErrors > 0 ? `<div style="margin-bottom:8px;padding:6px 12px;background:linear-gradient(135deg,#FFEBEE,#FFCDD2);border:2px solid var(--red);border-radius:10px;">
-        <div style="font-size:10px;font-weight:700;color:var(--red);margin-bottom:3px;">❌ ${totalErrors} Errors across ${errorRepos.length} repos</div>
-        ${errorRepos.slice(0, 3).map(r => `<div style="font-size:11px;color:var(--text);padding:1px 0;display:flex;justify-content:space-between;"><span>${esc(r.name)}</span><span style="font-size:10px;color:var(--red);font-weight:700;">${r.stats?.mistakes || 0} err</span></div>`).join('')}
-        ${errorRepos.length > 3 ? `<div style="font-size:9px;color:var(--text-secondary);margin-top:2px;">+${errorRepos.length - 3} more</div>` : ''}
+      const errorRepoList = repos.filter(r => (r.stats?.mistakes || 0) > 0);
+      const totalErrorCount = errorRepoList.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
+      const errorSummaryHtml = totalErrorCount > 0 ? `<div style="margin-bottom:8px;padding:6px 12px;background:linear-gradient(135deg,#FFEBEE,#FFCDD2);border:2px solid var(--red);border-radius:10px;">
+        <div style="font-size:10px;font-weight:700;color:var(--red);margin-bottom:3px;">❌ ${totalErrorCount} Errors across ${errorRepoList.length} repos</div>
+        ${errorRepoList.slice(0, 3).map(r => `<div style="font-size:11px;color:var(--text);padding:1px 0;display:flex;justify-content:space-between;"><span>${esc(r.name)}</span><span style="font-size:10px;color:var(--red);font-weight:700;">${r.stats?.mistakes || 0} err</span></div>`).join('')}
+        ${errorRepoList.length > 3 ? `<div style="font-size:9px;color:var(--text-secondary);margin-top:2px;">+${errorRepoList.length - 3} more</div>` : ''}
       </div>` : '';
 
       // Sort pinned repos first
@@ -1407,6 +1426,10 @@
         const pins = JSON.parse(localStorage.getItem('swarm-pinned-repos') || '[]');
         if (pins.includes(card.dataset.repoId)) card.style.outline = '2px solid var(--teal)';
       });
+    }
+
+    async function loadRepos() {
+      return refreshHome();
     }
 
     // ─── System Flags & Drain Mode ────────────────────────────────────────────
@@ -1863,10 +1886,10 @@
       const left = Math.min(x, window.innerWidth - 170);
       m.style.cssText = 'position:fixed;top:'+top+'px;left:'+left+'px;background:var(--card-bg);border:2px solid var(--border);border-radius:12px;box-shadow:0 8px 24px var(--shadow);z-index:250;min-width:160px;overflow:hidden;';
       const actions = [];
-      if (status === 'pending') actions.push({l:'✅ Mark Done',fn:'changeItemStatus('+repoId+','+itemId+',\\'completed\\')'});
-      if (status === 'completed') actions.push({l:'🔄 Re-open',fn:'changeItemStatus('+repoId+','+itemId+',\\'pending\\')'});
-      actions.push({l:'⬆️ Cycle Priority',fn:'cyclePriority('+repoId+','+itemId+',\\''+prio+'\\')'});
-      actions.push({l:'🗑️ Delete',fn:'deleteItem('+repoId+','+itemId+')'});
+      if (status === 'pending') actions.push({ l: '✅ Mark Done', fn: `changeItemStatus(${repoId},${itemId},'completed')` });
+      if (status === 'completed') actions.push({ l: '🔄 Re-open', fn: `changeItemStatus(${repoId},${itemId},'pending')` });
+      actions.push({ l: '⬆️ Cycle Priority', fn: `cyclePriority(${repoId},${itemId},'${prio}')` });
+      actions.push({ l: '🗑️ Delete', fn: `deleteItem(${repoId},${itemId})` });
       m.innerHTML = actions.map(a => '<button onclick="closeItemMenu();'+a.fn+'" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:13px;color:var(--text);border-bottom:1px solid var(--border);">'+a.l+'</button>').join('');
       document.body.appendChild(m);
       setTimeout(() => { document.addEventListener('click', closeItemMenu, { once: true }); }, 50);
@@ -2006,12 +2029,24 @@
     }
 
     // ─── Screen 3: Flow Map ──────────────────────────────────────────────────
-    const STATE_ORDER = [
+    const FLOW_ORDER_FALLBACK = [
       'idle', 'check_audio', 'transcribe_audio', 'parse_audio_items',
       'check_refactor', 'do_refactor', 'check_new_items', 'update_plan',
       'check_plan_complete', 'execute_step', 'test_step', 'check_steps_left',
       'check_more_items', 'final_optimize', 'scan_repo',
     ];
+
+    function getStateMetaFromPayload(stateName, stateData) {
+      const allStates = stateData?.all_states?.states || {};
+      const flowStates = stateData?.flow?.states || {};
+      const meta = flowStates[stateName] || allStates[stateName] || {};
+      return {
+        key: stateName || 'idle',
+        label: meta.label || formatState(stateName),
+        description: meta.description || '',
+        emoji: meta.emoji || stateEmoji(stateName),
+      };
+    }
 
     async function loadFlowMap() {
       const repoId = document.getElementById('flowRepoSelect')?.value;
@@ -2025,29 +2060,46 @@
       if (!stateData) return;
 
       const current = stateData.current_state || 'idle';
-      const currentIdx = STATE_ORDER.indexOf(current);
-
-      // Fetch items to show current in-progress item
-      const items = await api('/api/items?repo_id=' + repoId, undefined, { silent: true });
-      const activeItem = items && Array.isArray(items) ? items.find(it => it.status === 'in_progress') : null;
+      const currentFlow = stateData.current_flow_state || current;
+      const flowOrder = Array.isArray(stateData?.flow?.order) && stateData.flow.order.length
+        ? stateData.flow.order
+        : FLOW_ORDER_FALLBACK;
+      const currentIdx = Math.max(flowOrder.indexOf(currentFlow), 0);
+      const currentMeta = getStateMetaFromPayload(current, stateData);
+      const currentFlowMeta = getStateMetaFromPayload(currentFlow, stateData);
+      const activeItem = stateData.current_item || null;
+      const activeStep = stateData.current_step || null;
+      const itemCounts = stateData.item_counts || {};
+      const stepCounts = stateData.step_counts || {};
 
       el.innerHTML = `
         <div class="flow-current">
-          <span class="flow-emoji">${stateEmoji(current)}</span>
-          <div class="flow-state-name">${formatState(current)}</div>
+          <span class="flow-emoji">${currentFlowMeta.emoji}</span>
+          <div class="flow-state-name">${esc(currentFlowMeta.label)}</div>
           <div style="font-size:13px; color:var(--text-secondary); margin-top:4px;">
-            Cycle #${stateData.cycle_count || 0} | ${stateData.active_agents || 0} agents
+            ${esc(currentFlowMeta.description || currentMeta.description || '')}
           </div>
-          ${activeItem ? `<div style="margin-top:6px;padding:4px 10px;background:var(--orange);color:#fff;border-radius:8px;font-size:11px;font-weight:600;">⚡ ${esc(activeItem.title || '').substring(0, 50)}</div>` : ''}
+          <div style="font-size:13px; color:var(--text-secondary); margin-top:8px;">
+            Cycle #${stateData.cycle_count || 0} | ${stateData.active_agents || 0} agents
+            ${itemCounts.total ? ` | Items ${itemCounts.done || 0}/${itemCounts.total}` : ''}
+            ${stepCounts.total ? ` | Steps ${stepCounts.completed || 0}/${stepCounts.total}` : ''}
+          </div>
+          ${current !== currentFlow ? `<div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:999px;font-size:11px;color:var(--text-secondary);">${currentMeta.emoji} Internal state: ${esc(currentMeta.label)}</div>` : ''}
+          ${activeItem ? `<div style="margin-top:10px;padding:8px 12px;background:var(--orange);color:#fff;border-radius:12px;font-size:12px;font-weight:700;">🗂️ ${esc(activeItem.title || '').substring(0, 80)}</div>` : ''}
+          ${activeStep ? `<div style="margin-top:10px;padding:10px 12px;background:var(--card-bg);border:2px solid var(--border);border-radius:12px;text-align:left;">
+            <div style="font-size:11px;color:var(--text-secondary);font-weight:700;text-transform:uppercase;letter-spacing:0.03em;">Current Step ${activeStep.number && stepCounts.total ? `${activeStep.number}/${stepCounts.total}` : ''}</div>
+            <div style="margin-top:4px;font-size:13px;font-weight:700;color:var(--text);">${esc((activeStep.description || '').substring(0, 140))}</div>
+          </div>` : ''}
         </div>
         <div class="stepper">
-          ${STATE_ORDER.map((s, i) => {
+          ${flowOrder.map((s, i) => {
+            const meta = getStateMetaFromPayload(s, stateData);
             const status = i < currentIdx ? 'done' : i === currentIdx ? 'current' : 'pending';
-            const icon = status === 'done' ? '✓' : status === 'current' ? '▶' : (i + 1);
+            const icon = status === 'done' ? '✓' : status === 'current' ? meta.emoji : (i + 1);
             return `
               <div class="step-item">
                 <div class="step-dot ${status}">${icon}</div>
-                <div class="step-text ${status}">${formatState(s)}</div>
+                <div class="step-text ${status}">${esc(meta.label)}</div>
               </div>`;
           }).join('')}
         </div>`;
@@ -2446,8 +2498,21 @@
         if (currentTab === 'stats') refreshStats();
         try {
           const d = JSON.parse(e.data);
-          if (d.repo_name && d.new_state) {
-            showToast(`${d.repo_name}: ${formatState(d.new_state)}`, 'info');
+          const repoName = d.repo_name || d.repo;
+          const stateLabel = d.current_state_meta?.label || formatState(d.new_state || d.to);
+          if (repoName && stateLabel) {
+            showToast(`${repoName}: ${stateLabel}`, 'info');
+          }
+        } catch(e) {}
+      });
+      es.addEventListener('item_updated', (e) => {
+        if (currentTab === 'home') refreshHome();
+        if (currentTab === 'flow') loadFlowMap();
+        if (currentTab === 'items') loadItems();
+        try {
+          const d = JSON.parse(e.data);
+          if (d.repo_name && d.item?.title && d.current_status) {
+            showToast(`${d.repo_name}: ${d.item.title} -> ${formatState(d.current_status)}`, 'info');
           }
         } catch(e) {}
       });
@@ -2698,6 +2763,7 @@
       }
 
       // Load initial data
+      await ensureApiToken();
       await refreshHome();
       populateRepoDropdowns();
 

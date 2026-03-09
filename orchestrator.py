@@ -35,8 +35,8 @@ if os.path.isfile(_env_path):
             if _line and not _line.startswith("#") and "=" in _line:
                 _k, _v = _line.split("=", 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
-from typing import Optional, Dict, List
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Optional, Dict, List, Any
+from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 from ruflo_config import (
     normalize_project as normalize_ruflo_project,
@@ -58,6 +58,40 @@ MAX_AGENTS = int(os.environ.get("AGENT_MAX", "15"))
 RALPH_ITERS = int(os.environ.get("RALPH_ITERS", "50"))
 CLAUDE_MODEL = os.environ.get("AGENT_MODEL", "sonnet")
 INTAKE_FOLDER = os.environ.get("INTAKE_FOLDER", os.path.expanduser("~/Desktop/intake"))
+_DEFAULT_RECOMMENDATION_CANDIDATES = [
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "benchmark-results",
+        "ruflo-recommended-settings.json",
+    ),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "benchmark-results",
+        "ruflo-repo-optimizer-v3-live",
+        "recommended-settings.json",
+    ),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "benchmark-results",
+        "ruflo-repo-optimizer-v2-live",
+        "recommended-settings.json",
+    ),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "benchmark-results",
+        "ruflo-repo-optimizer-live",
+        "recommended-settings.json",
+    ),
+]
+RUFLO_RECOMMENDATIONS_PATH = os.environ.get("RUFLO_RECOMMENDATIONS_PATH", "")
+DEFAULT_RUFLO_RUNTIME = {
+    "variant": "minimal_no_status",
+    "profile": "minimal",
+    "hooks": True,
+    "statusline": False,
+    "auto_memory": False,
+    "agent_teams": False,
+}
 
 TELEGRAM_ENABLED = os.environ.get("TELEGRAM_ENABLED", "0") == "1"
 BUDGET_LIMIT = float(os.environ.get("AGENT_BUDGET_LIMIT", "0"))  # 0 = unlimited
@@ -82,13 +116,90 @@ _wl = os.environ.get("TELEGRAM_WHITELIST", "")
 TELEGRAM_WHITELIST = {int(x.strip()) for x in _wl.split(",") if x.strip().isdigit()} if _wl else set()
 
 # Paths exempt from bearer token auth (static assets + token endpoint)
-AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/api/token", "/api/events", "/api/status", "/api/docs"}
+AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/favicon.ico", "/api/token", "/api/events", "/api/status", "/api/docs"}
 
 
-def repair_ruflo_config(path, profile="minimal", agent_teams=False):
+def load_ruflo_recommendations():
+    """Load measured Ruflo runtime recommendations if present."""
+    candidates = [RUFLO_RECOMMENDATIONS_PATH] if RUFLO_RECOMMENDATIONS_PATH else []
+    candidates.extend(_DEFAULT_RECOMMENDATION_CANDIDATES)
+    try:
+        for candidate in candidates:
+            if not candidate or not os.path.isfile(candidate):
+                continue
+            with open(candidate, encoding="utf-8") as fp:
+                data = json.load(fp)
+            if isinstance(data, dict):
+                data["_loaded_from"] = candidate
+                return data
+    except Exception as exc:
+        log.warning(f"Could not load Ruflo recommendations: {exc}")
+    return {}
+
+
+def _recommendation_usable(scope: dict[str, Any] | None, evidence: dict[str, Any] | None) -> bool:
+    if not isinstance(scope, dict):
+        return False
+    if not isinstance(evidence, dict):
+        return False
+    confidence = str(evidence.get("confidence") or "").lower()
+    if confidence in {"medium", "high"}:
+        return True
+    winner_name = evidence.get("winnerName") or scope.get("name")
+    winner_stats = (evidence.get("candidates") or {}).get(winner_name, {})
+    if not isinstance(winner_stats, dict):
+        return False
+    if winner_stats.get("meetsSampleFloor") and float(winner_stats.get("exactRate") or 0) >= 0.5:
+        return True
+    return False
+
+
+def get_ruflo_runtime_settings(path, default_profile="minimal", agent_teams=None):
+    """Resolve Ruflo runtime settings using measured recommendations when available."""
+    settings = dict(DEFAULT_RUFLO_RUNTIME)
+    settings["profile"] = default_profile or settings["profile"]
+
+    recs = load_ruflo_recommendations()
+    repo_name = os.path.basename(os.path.abspath(path))
+    ptype_info = detect_project_type(path)
+    ptype = ptype_info.get("type", "unknown") if isinstance(ptype_info, dict) else "unknown"
+
+    candidate_scopes = [
+        (recs.get("globalDefault"), recs.get("globalEvidence")),
+        (
+            (recs.get("projectTypeDefaults") or {}).get(ptype),
+            (recs.get("projectTypeEvidence") or {}).get(ptype),
+        ),
+        (
+            (recs.get("repoOverrides") or {}).get(repo_name),
+            (recs.get("repoEvidence") or {}).get(repo_name),
+        ),
+    ]
+    for scope, evidence in candidate_scopes:
+        if _recommendation_usable(scope, evidence):
+            settings.update({k: v for k, v in scope.items() if k in settings})
+
+    if default_profile:
+        settings["profile"] = settings.get("profile") or default_profile
+    if agent_teams is not None:
+        settings["agent_teams"] = bool(agent_teams)
+
+    return settings
+
+
+def repair_ruflo_config(path, profile="minimal", agent_teams=None):
     """Normalize Ruflo / Claude Code config into the repo-supported layout."""
     try:
-        result = normalize_ruflo_project(path, profile=profile, agent_teams=agent_teams)
+        settings = get_ruflo_runtime_settings(path, default_profile=profile, agent_teams=agent_teams)
+        result = normalize_ruflo_project(
+            path,
+            profile=settings["profile"],
+            hooks=settings["hooks"],
+            status_line=settings["statusline"],
+            auto_memory=settings["auto_memory"],
+            agent_teams=settings["agent_teams"],
+        )
+        result["applied_settings"] = settings
         for warning in result.get("warnings", []):
             log.warning(f"Ruflo config warning for {path}: {warning}")
         if not result.get("ok"):
@@ -323,6 +434,14 @@ def get_costs() -> Dict[int, float]:
         return dict(_cost_totals)
 
 
+def _safe_int(val, default=None):
+    """Safely convert value to int, return default on failure."""
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
 # ─── Circuit Breaker ─────────────────────────────────────────────────────────
 
 class CircuitBreaker:
@@ -450,6 +569,162 @@ class State(Enum):
     ERROR = "error"
 
 
+def _humanize_state_label(value: str) -> str:
+    value = str(value or "idle").strip() or "idle"
+    return value.replace("_", " ").title()
+
+
+STATE_META_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    State.IDLE.value: {
+        "label": "Ready",
+        "description": "Waiting for new work or user input.",
+        "emoji": "😴",
+        "show_in_flow": True,
+        "notify": False,
+    },
+    State.CHECK_AUDIO.value: {
+        "label": "Intake",
+        "description": "Checking for recorded reviews and intake notes.",
+        "emoji": "🎧",
+        "flow_state": State.CHECK_NEW_ITEMS.value,
+    },
+    State.TRANSCRIBE_AUDIO.value: {
+        "label": "Transcribe",
+        "description": "Turning audio notes into text the tracker can use.",
+        "emoji": "🎤",
+        "flow_state": State.CHECK_NEW_ITEMS.value,
+    },
+    State.PARSE_AUDIO_ITEMS.value: {
+        "label": "Parse Intake",
+        "description": "Converting review notes into actionable items.",
+        "emoji": "📝",
+        "flow_state": State.CHECK_NEW_ITEMS.value,
+    },
+    State.CHECK_REFACTOR.value: {
+        "label": "Prep Repo",
+        "description": "Checking whether the repo needs baseline cleanup first.",
+        "emoji": "🔎",
+        "flow_state": State.CHECK_NEW_ITEMS.value,
+    },
+    State.DO_REFACTOR.value: {
+        "label": "Prep Repo",
+        "description": "Stabilizing the repo before new work starts.",
+        "emoji": "🔧",
+        "flow_state": State.CHECK_NEW_ITEMS.value,
+    },
+    State.CHECK_NEW_ITEMS.value: {
+        "label": "Intake",
+        "description": "Sorting new work and deciding what to tackle next.",
+        "emoji": "📥",
+        "show_in_flow": True,
+        "notify": True,
+    },
+    State.UPDATE_PLAN.value: {
+        "label": "Plan",
+        "description": "Building the execution plan for the active items.",
+        "emoji": "🗺️",
+        "show_in_flow": True,
+        "notify": True,
+    },
+    State.CHECK_PLAN_COMPLETE.value: {
+        "label": "Plan",
+        "description": "Checking whether planning is complete.",
+        "emoji": "✅",
+        "flow_state": State.UPDATE_PLAN.value,
+    },
+    State.EXECUTE_STEP.value: {
+        "label": "Build",
+        "description": "Implementing the current plan step.",
+        "emoji": "⚡",
+        "show_in_flow": True,
+        "notify": True,
+    },
+    State.TEST_STEP.value: {
+        "label": "Test",
+        "description": "Running tests and fixing any failures.",
+        "emoji": "🧪",
+        "show_in_flow": True,
+        "notify": True,
+    },
+    State.CHECK_STEPS_LEFT.value: {
+        "label": "Test",
+        "description": "Checking whether more plan steps remain.",
+        "emoji": "🔢",
+        "flow_state": State.TEST_STEP.value,
+    },
+    State.CHECK_MORE_ITEMS.value: {
+        "label": "Optimize",
+        "description": "Checking whether more queued items should join this cycle.",
+        "emoji": "🔄",
+        "flow_state": State.FINAL_OPTIMIZE.value,
+    },
+    State.FINAL_OPTIMIZE.value: {
+        "label": "Optimize",
+        "description": "Tightening the code and removing obvious waste.",
+        "emoji": "🚀",
+        "show_in_flow": True,
+        "notify": True,
+    },
+    State.SCAN_REPO.value: {
+        "label": "Scan",
+        "description": "Running final validation, docs refresh, and cleanup.",
+        "emoji": "🔍",
+        "show_in_flow": True,
+        "notify": True,
+    },
+    State.CREDITS_EXHAUSTED.value: {
+        "label": "Paused",
+        "description": "Waiting for Claude credits to reset.",
+        "emoji": "💳",
+        "notify": True,
+    },
+    State.ERROR.value: {
+        "label": "Error",
+        "description": "Execution stopped because of an error.",
+        "emoji": "💥",
+        "notify": True,
+    },
+}
+
+TRACKER_FLOW_DEFAULT = [
+    State.CHECK_NEW_ITEMS.value,
+    State.UPDATE_PLAN.value,
+    State.EXECUTE_STEP.value,
+    State.TEST_STEP.value,
+    State.FINAL_OPTIMIZE.value,
+    State.SCAN_REPO.value,
+    State.IDLE.value,
+]
+
+
+def get_state_meta(state_name: str | State | None) -> dict[str, Any]:
+    key = state_name.value if isinstance(state_name, State) else str(state_name or State.IDLE.value)
+    meta = dict(STATE_META_OVERRIDES.get(key, {}))
+    meta.setdefault("key", key)
+    meta.setdefault("label", _humanize_state_label(key))
+    meta.setdefault("description", meta["label"])
+    meta.setdefault("emoji", "🌵")
+    meta.setdefault("show_in_flow", False)
+    meta.setdefault("notify", False)
+    meta.setdefault("flow_state", key if meta["show_in_flow"] else None)
+    return meta
+
+
+def get_state_flow_key(state_name: str | State | None) -> str:
+    meta = get_state_meta(state_name)
+    flow_key = meta.get("flow_state")
+    return str(flow_key or meta["key"])
+
+
+def get_tracker_flow_order(current_state: str | State | None = None) -> list[str]:
+    order = list(TRACKER_FLOW_DEFAULT)
+    current_key = get_state_flow_key(current_state)
+    if current_key not in order and current_key not in {State.CREDITS_EXHAUSTED.value, State.ERROR.value}:
+        idle_index = order.index(State.IDLE.value) if State.IDLE.value in order else len(order)
+        order.insert(idle_index, current_key)
+    return order
+
+
 @dataclass
 class RepoState:
     current_state: State = State.IDLE
@@ -482,6 +757,97 @@ class RepoState:
         if not isinstance(d.get("errors", []), list):
             d["errors"] = []
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+def build_repo_state_payload(repo: dict[str, Any], state: RepoState, db) -> dict[str, Any]:
+    current_state = state.current_state.value if isinstance(state.current_state, State) else str(state.current_state or "idle")
+    flow_key = get_state_flow_key(current_state)
+    flow_order = get_tracker_flow_order(current_state)
+    full_order = [member.value for member in State]
+
+    item_counts = {"total": 0, "done": 0, "pending": 0, "in_progress": 0}
+    current_step = None
+    current_item = None
+    completed_steps = 0
+    total_steps = 0
+    current_step_number = 0
+
+    if db:
+        try:
+            item_counts = db.get_item_counts()
+            steps = db.all_steps()
+            total_steps = len(steps)
+            completed_steps = sum(1 for step in steps if step.get("status") == "completed")
+            if state.current_step_id:
+                current_step = db.fetchone("SELECT * FROM plan_steps WHERE id=?", (state.current_step_id,))
+            if not current_step:
+                pending_steps = db.pending_steps()
+                current_step = pending_steps[0] if pending_steps else None
+            if current_step:
+                current_step_number = int(current_step.get("step_order", completed_steps)) + 1
+                if current_step.get("item_id"):
+                    current_item = db.fetchone(
+                        "SELECT id, title, status, priority, type, started_at, completed_at "
+                        "FROM items WHERE id=?",
+                        (current_step["item_id"],),
+                    )
+            if not current_item:
+                current_item = db.fetchone(
+                    "SELECT id, title, status, priority, type, started_at, completed_at "
+                    "FROM items WHERE status='in_progress' "
+                    "ORDER BY COALESCE(started_at, created_at), created_at LIMIT 1"
+                )
+        except Exception as exc:
+            log.debug("Could not build repo state payload for %s: %s", repo.get("name"), exc)
+
+    step_payload = None
+    if current_step:
+        step_payload = {
+            "id": current_step.get("id"),
+            "item_id": current_step.get("item_id"),
+            "description": current_step.get("description", ""),
+            "status": current_step.get("status", ""),
+            "agent_type": current_step.get("agent_type", ""),
+            "step_order": current_step.get("step_order", 0),
+            "number": current_step_number or completed_steps + 1,
+        }
+
+    item_payload = None
+    if current_item:
+        item_payload = {
+            "id": current_item.get("id"),
+            "title": current_item.get("title", ""),
+            "status": current_item.get("status", ""),
+            "priority": current_item.get("priority", ""),
+            "type": current_item.get("type", ""),
+        }
+
+    payload = state.to_dict()
+    payload.update(
+        {
+            "repo_id": repo.get("id"),
+            "repo_name": repo.get("name"),
+            "current_state_meta": get_state_meta(current_state),
+            "current_flow_state": flow_key,
+            "flow": {
+                "order": flow_order,
+                "states": {key: get_state_meta(key) for key in flow_order},
+            },
+            "all_states": {
+                "order": full_order,
+                "states": {key: get_state_meta(key) for key in full_order},
+            },
+            "item_counts": item_counts,
+            "step_counts": {
+                "total": total_steps,
+                "completed": completed_steps,
+                "current": current_step_number,
+            },
+            "current_item": item_payload,
+            "current_step": step_payload,
+        }
+    )
+    return payload
 
 
 # ─── Per-Repo Database ────────────────────────────────────────────────────────
@@ -1480,7 +1846,11 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                         steps = json.loads(out[s:e])
                         self.db.save_plan(steps)
                         for i in pending:
-                            self.db.ex("UPDATE items SET status='in_progress',started_at=datetime('now') WHERE id=?", (i["id"],))
+                            self.db.ex(
+                                "UPDATE items SET status='in_progress',started_at=datetime('now'),"
+                                "updated_at=datetime('now'), completed_at=NULL WHERE id=?",
+                                (i["id"],),
+                            )
                         self.db.commit()
                         self.db.mem_store("plans", f"plan_{int(time.time())}",
                                          {"steps": len(steps), "items": [i["title"] for i in pending]})
@@ -1562,17 +1932,6 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         runner.ruflo_memory_store(self.repo["path"], f"step/{step['id']}/result",
                                   f"{'OK' if result['success'] else 'FAIL'}: {step['description'][:100]}")
 
-        # Telegram: step completed
-        if TELEGRAM_ENABLED:
-            try:
-                from telegram_bot import send_message as tg_msg
-                all_s = self.db.all_steps()
-                total_steps = len(all_s)
-                done_steps = sum(1 for s in all_s if s["status"] == "completed")
-                tg_msg(f"✅ *{self.repo['name']}* Step {done_steps+1}/{total_steps}: {step['description'][:60]}")
-            except Exception as e:
-                log.debug(f"Telegram notify failed: {e}")
-
         return State.TEST_STEP
 
     def h_test_step(self):
@@ -1653,13 +2012,6 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             file_count = 50
         self.state.active_agents = min(max(file_count // 50, 2), 8)
         self.save()
-        if TELEGRAM_ENABLED:
-            try:
-                from telegram_bot import send_message as tg_msg
-                total = len(self.db.all_steps())
-                tg_msg(f"🏗️ *{self.repo['name']}* — All {total} plan steps complete. Optimizing and scanning now.")
-            except Exception as e:
-                log.debug(f"Telegram notify failed: {e}")
         prompt = self._with_mistake_context(
             "Optimization: dead code removal, dedup, tree shaking (grep for unused). "
             "Output OPTIMIZE_COMPLETE when done."
@@ -1695,7 +2047,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         self.log("scan_repo", result.get("output", "")[:300], dur=time.time()-t0,
                  cost=result.get("cost", 0))
 
-        self.db.ex("UPDATE items SET status='completed',completed_at=datetime('now') "
+        self.db.ex("UPDATE items SET status='completed',completed_at=datetime('now'),updated_at=datetime('now') "
                    "WHERE status='in_progress'")
         self.db.commit()
 
@@ -1724,18 +2076,6 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             "tests_passed": tests_passed, "mistakes": mistakes,
             "cost": repo_cost,
         })
-
-        if TELEGRAM_ENABLED:
-            try:
-                from telegram_bot import send_message as tg_msg
-                tg_msg(f"🎉 *{self.repo['name']}* finished cycle #{self.state.cycle_count}!\n"
-                       f"📊 Items done: {items_done}/{items_total}\n"
-                       f"🧪 Total tests passed: {tests_passed}\n"
-                       f"💀 Mistakes this cycle: {mistakes}\n"
-                       f"💰 Total cost: ${repo_cost:.2f}\n"
-                       f"Next: watching for new items...")
-            except Exception as e:
-                log.debug(f"Telegram notify failed: {e}")
 
         return State.IDLE
 
@@ -1768,19 +2108,27 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         """Send SSE + Telegram notification on state transition."""
         old_val = old_state.value if hasattr(old_state, 'value') else str(old_state)
         new_val = new_state.value if hasattr(new_state, 'value') else str(new_state)
+        state_payload = build_repo_state_payload(self.repo, self.state, self.db)
+        state_payload.update(
+            {
+                "repo": self.repo["name"],
+                "repo_name": self.repo["name"],
+                "from": old_val,
+                "to": new_val,
+                "old_state": old_val,
+                "new_state": new_val,
+                "cost": get_costs().get(self.repo["id"], 0),
+            }
+        )
 
         # Always broadcast via SSE (regardless of Telegram)
         if old_val != new_val or new_val != "idle":
-            sse_broadcast("state_change", {
-                "repo": self.repo["name"], "repo_id": self.repo["id"],
-                "from": old_val, "to": new_val,
-                "cost": get_costs().get(self.repo["id"], 0),
-            })
+            sse_broadcast("state_change", state_payload)
 
         if not TELEGRAM_ENABLED:
             return
         try:
-            from telegram_bot import (notify_state_change, notify_cycle_complete,
+            from telegram_bot import (notify_tracker_transition, notify_cycle_complete,
                                        notify_credits_exhausted, notify_credits_restored,
                                        notify_error)
             # Only notify on meaningful transitions (skip idle->idle)
@@ -1790,13 +2138,15 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             if new_val == "credits_exhausted":
                 notify_credits_exhausted(self.repo["name"])
             elif old_val == "credits_exhausted" and new_val != "credits_exhausted":
-                notify_credits_restored(self.repo["name"], new_val)
+                notify_credits_restored(self.repo["name"], get_state_meta(new_val).get("label", new_val))
             elif new_val == "idle" and old_val == "scan_repo":
                 # Cycle complete
                 notify_cycle_complete(self.repo["name"], self.state.cycle_count,
                                       self.db.get_item_counts()["done"])
+            elif get_state_meta(new_val).get("notify") and old_val != new_val:
+                notify_tracker_transition(state_payload)
             else:
-                notify_state_change(self.repo["name"], old_val, new_val)
+                log.debug("Skipping Telegram state notification for %s: %s -> %s", self.repo["name"], old_val, new_val)
         except Exception as e:
             log.debug(f"Telegram notify error: {e}")
 
@@ -1977,11 +2327,14 @@ class Manager:
             return self._db_cache[db_path]
 
     def get_repo_state(self, repo_id) -> dict:
+        repo = next((r for r in self.master.get_repos() if r["id"] == repo_id), None)
+        if not repo:
+            return {}
         db = self.get_repo_db(repo_id)
         if not db:
             return {}
         state = db.load_state()
-        return state.to_dict()
+        return build_repo_state_payload(repo, state, db)
 
     def watchdog(self):
         """Background thread that auto-restarts dead repo threads and detects stuck orchestrators."""
@@ -2556,7 +2909,7 @@ MIME_TYPES = {
 _rate_limits = {}  # ip -> [timestamps]
 _rate_lock = threading.Lock()
 RATE_LIMIT_RPM = int(os.environ.get("RATE_LIMIT_RPM", "120"))  # requests per minute
-RATE_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/api/events",
+RATE_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/favicon.ico", "/api/events",
                       "/api/token", "/telegram-app", "/api/status"}
 
 
@@ -2788,6 +3141,12 @@ class API(BaseHTTPRequestHandler):
             return self._serve_file(os.path.join(STATIC_DIR, "index.html"))
         if path == "/swarm-dashboard.jsx":
             return self._serve_file(os.path.join(STATIC_DIR, "swarm-dashboard.jsx"))
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self._cors()
+            self.end_headers()
+            return
 
         # Token endpoint — returns current API token (exempt from auth, accessed locally)
         if path == "/api/token":
@@ -4153,6 +4512,7 @@ class API(BaseHTTPRequestHandler):
             rid = _safe_int(b.get("repo_id"))
             db = manager.get_repo_db(rid)
             if not db: return self._json({"error": "No repo"}, 400)
+            repo = next((r for r in manager.master.get_repos() if r["id"] == rid), None)
             item_id = _safe_int(b.get("item_id"))
             if not item_id: return self._json({"error": "item_id required"}, 400)
             if "status" in b and b["status"] not in ("pending", "in_progress", "completed", "failed", "archived"):
@@ -4161,16 +4521,60 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": f"Invalid priority '{b['priority']}'"}, 400)
             if "type" in b and b["type"] not in ("feature", "issue", "bug", "task", "enhancement"):
                 return self._json({"error": f"Invalid type '{b['type']}'"}, 400)
+            current_item = db.fetchone("SELECT * FROM items WHERE id=?", (item_id,))
+            if not current_item:
+                return self._json({"error": "Item not found"}, 404)
             sets, vals = [], []
             for field in ("status", "priority", "title", "description", "type", "depends_on"):
                 if field in b:
                     sets.append(f"{field}=?")
                     vals.append(b[field])
+            if "status" in b:
+                status = b["status"]
+                if status == "pending":
+                    sets.extend(["started_at=NULL", "completed_at=NULL"])
+                elif status == "in_progress":
+                    sets.extend(["started_at=COALESCE(started_at, datetime('now'))", "completed_at=NULL"])
+                elif status == "completed":
+                    sets.extend([
+                        "started_at=COALESCE(started_at, datetime('now'))",
+                        "completed_at=datetime('now')",
+                    ])
+            sets.append("updated_at=datetime('now')")
             if not sets: return self._json({"error": "No fields to update"}, 400)
             vals.append(item_id)
             db.ex(f"UPDATE items SET {','.join(sets)} WHERE id=?", vals)
             db.commit()
-            return self._json({"ok": True})
+            updated_item = db.fetchone("SELECT * FROM items WHERE id=?", (item_id,))
+            sse_broadcast(
+                "item_updated",
+                {
+                    "repo_id": rid,
+                    "repo_name": repo["name"] if repo else "",
+                    "item_id": item_id,
+                    "item": updated_item,
+                    "previous_status": current_item.get("status"),
+                    "current_status": updated_item.get("status") if updated_item else current_item.get("status"),
+                },
+            )
+            if (
+                TELEGRAM_ENABLED
+                and repo
+                and "status" in b
+                and updated_item
+                and current_item.get("status") != updated_item.get("status")
+            ):
+                try:
+                    from telegram_bot import notify_item_status_change
+                    notify_item_status_change(
+                        repo["name"],
+                        updated_item.get("title", f"Item {item_id}"),
+                        current_item.get("status", ""),
+                        updated_item.get("status", ""),
+                    )
+                except Exception as exc:
+                    log.debug("Telegram item update failed: %s", exc)
+            return self._json({"ok": True, "item": updated_item})
 
         if path == "/api/items/delete":
             rid = _safe_int(b.get("repo_id"))
@@ -4556,6 +4960,13 @@ class API(BaseHTTPRequestHandler):
                     config["sparc_mode"] = sparc
                     config["topology"] = topo
                     config["project_type"] = ptype
+                    runtime = get_ruflo_runtime_settings(repo["path"], default_profile="minimal")
+                    config["ruflo_variant"] = runtime["variant"]
+                    config["ruflo_profile"] = runtime["profile"]
+                    config["ruflo_hooks"] = "1" if runtime["hooks"] else "0"
+                    config["ruflo_statusline"] = "1" if runtime["statusline"] else "0"
+                    config["ruflo_auto_memory"] = "1" if runtime["auto_memory"] else "0"
+                    config["ruflo_agent_teams"] = "1" if runtime["agent_teams"] else "0"
                     for k, v in config.items():
                         db.mem_store("ruflo_config", k, v)
                     # Selective item optimization: reset chosen items to pending
@@ -4833,7 +5244,7 @@ def digest_scheduler():
 
 
 def serve():
-    s = HTTPServer(("0.0.0.0", API_PORT), API)
+    s = ThreadingHTTPServer(("0.0.0.0", API_PORT), API)
     log.info(f"🌐 API on http://localhost:{API_PORT}")
     if PUBLIC_URL:
         log.info(f"🌍 Public URL: {PUBLIC_URL}")
@@ -4908,4 +5319,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
