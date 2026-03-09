@@ -2,7 +2,7 @@ Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAct
 Start-Sleep -Seconds 1
 
 $scriptPath = "C:\Users\hotre\OneDrive\Desktop\Coding Projects\swarm-town\orchestrator.py"
-Start-Process python -ArgumentList "`"$scriptPath`"","--server-only" -NoNewWindow
+Start-Process python -ArgumentList "`"$scriptPath`"","--server-only" -WindowStyle Hidden
 Start-Sleep -Seconds 3
 
 # Open browser

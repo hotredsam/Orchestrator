@@ -42,6 +42,21 @@ const f = (u, o) => fetch(`${API}${u}`, {
   },
 });
 
+const asArray = (value) => Array.isArray(value) ? value : [];
+const asObject = (value) => (value && typeof value === "object" && !Array.isArray(value)) ? value : {};
+const asNullableObject = (value) => (value && typeof value === "object" && !Array.isArray(value)) ? value : null;
+const endpointPath = (url) => {
+  try { return new URL(url, API).pathname; }
+  catch { return (url || "").split("?")[0]; }
+};
+const makeSessionId = () => {
+  try { if (window.crypto?.randomUUID) return window.crypto.randomUUID(); }
+  catch {}
+  return `swarm-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+const isRepoManaged = (repo) => Boolean(repo && (repo.managed ?? repo.running));
+const isRepoBusy = (repo) => Boolean(repo && (repo.busy ?? repo.running));
+
 const STATES = {
   idle: { label: "IDLE", emoji: "💤", color: "#4ECDC4", desc: "Chillin' in the desert..." },
   check_audio: { label: "Check Audio", emoji: "👂", color: "#FFB347", desc: "Listening for voice reviews" },
@@ -109,7 +124,11 @@ function RepoReadme({ repoId, Card, C }) {
   const [content, setContent] = useState("");
   const [source, setSource] = useState("");
   useEffect(() => {
-    if (repoId) f(`/api/repo-readme?repo_id=${repoId}`).then(r => r.json()).then(d => { setContent(d.content || ""); setSource(d.source || ""); }).catch(() => {});
+    if (repoId) f(`/api/repo-readme?repo_id=${repoId}`).then(r => r.json()).then(d => {
+      const data = asObject(d);
+      setContent(data.content || "");
+      setSource(data.source || "");
+    }).catch(() => {});
   }, [repoId]);
   return (
     <details style={{ maxWidth: 680, margin: "0 auto 16px" }}>
@@ -238,7 +257,7 @@ function Dashboard() {
   const [compactRepos, setCompactRepos] = useState(false);
   const [groupByType, setGroupByType] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "3000"));
+  const [refreshInterval, setRefreshInterval] = useState(() => parseInt(localStorage.getItem("swarm-refresh") || "15000"));
   const [staleItems, setStaleItems] = useState([]);
   const [recentErrors, setRecentErrors] = useState([]);
   const [circuitBreakers, setCircuitBreakers] = useState([]);
@@ -259,7 +278,16 @@ function Dashboard() {
   const chnk = useRef([]);
   const tmr = useRef(null);
   const sseRef = useRef(null);
+  const missingApiRef = useRef(new Set());
   const sseRetries = useRef(0);
+  const sessionIdRef = useRef(sessionStorage.getItem("swarm-dashboard-session") || makeSessionId());
+  const loadStateRef = useRef({ inFlight: false, pending: false, pendingFull: false });
+  const [sessionReady, setSessionReady] = useState(false);
+  const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== "hidden");
+
+  useEffect(() => {
+    sessionStorage.setItem("swarm-dashboard-session", sessionIdRef.current);
+  }, []);
 
   // Toast notification system
   const [toastHistory, setToastHistory] = useState([]);
@@ -326,17 +354,22 @@ function Dashboard() {
     const totalAgents = repos.reduce((s, r) => s + (r.stats?.agents || 0), 0);
     const totalErrors = repos.reduce((s, r) => s + (r.stats?.mistakes || 0), 0);
     const overallPct = totalItems > 0 ? Math.round(totalDone / totalItems * 100) : 0;
+    const managed = repos.filter(r => isRepoManaged(r)).length;
+    const busy = repos.filter(r => isRepoBusy(r)).length;
+    const paused = repos.filter(r => r.paused).length;
     return {
       total: repos.length,
-      running: repos.filter(r => r.running).length,
-      paused: repos.filter(r => r.paused).length,
-      idle: repos.filter(r => !r.running).length,
+      managed,
+      running: busy,
+      busy,
+      paused,
+      idle: repos.filter(r => !isRepoBusy(r) && !r.paused).length,
       totalCost: Object.values(costs).reduce((a, b) => a + (b || 0), 0),
       errorState: repos.filter(r => r.state === "error" || r.state === "credits_exhausted").length,
       totalDone, totalItems, totalAgents, totalErrors, overallPct,
     };
   }, [repos, costs]);
-  const runningRepos = useMemo(() => repos.filter(r => r.running), [repos]);
+  const runningRepos = useMemo(() => repos.filter(r => isRepoBusy(r)), [repos]);
 
   // Memoized sorted repos for dropdowns (sorted by pinned first, then name)
   const sortedRepos = useMemo(() =>
@@ -351,6 +384,13 @@ function Dashboard() {
     return { pending: pending.length, done: done.length, total: items.length, completePct: items.length > 0 ? Math.round(done.length / items.length * 100) : 0 };
   }, [items]);
 
+  // Keep this ahead of tab badges so in-browser Babel does not see an uninitialized reference.
+  const planStats = useMemo(() => {
+    const done = plan.filter(s => s.status === "completed").length;
+    const inProg = plan.filter(s => s.status === "in_progress").length;
+    return { done, inProgress: inProg, total: plan.length, pct: plan.length > 0 ? Math.round(done / plan.length * 100) : 0 };
+  }, [plan]);
+
   // Memoized tab badge counts
   const tabBadges = useMemo(() => ({
     home: repoStats.running,
@@ -363,19 +403,56 @@ function Dashboard() {
   // Alias for backward compat — repoStats.totalCost already has this
   const totalCost = repoStats.totalCost;
 
-  // Memoized plan step counts
-  const planStats = useMemo(() => {
-    const done = plan.filter(s => s.status === "completed").length;
-    const inProg = plan.filter(s => s.status === "in_progress").length;
-    return { done, inProgress: inProg, total: plan.length, pct: plan.length > 0 ? Math.round(done / plan.length * 100) : 0 };
-  }, [plan]);
-
   const notify = useCallback((title, body) => {
     if (!browserNotifs) return;
     if (Notification.permission === "granted") {
       new Notification(title, { body, icon: "/favicon.ico" });
     }
   }, [browserNotifs]);
+
+  const apiToken = token || __authToken;
+  const rateLimitedUntilRef = useRef(0);
+  const isOptionalEndpointAvailable = useCallback((url) => !missingApiRef.current.has(endpointPath(url)), []);
+  const fetchOptional = useCallback(async (url, options) => {
+    const key = endpointPath(url);
+    if (missingApiRef.current.has(key)) return null;
+    if (Date.now() < rateLimitedUntilRef.current) return null;
+    try {
+      const response = await f(url, options);
+      if (response.status === 404) {
+        missingApiRef.current.add(key);
+        return null;
+      }
+      if (response.status === 429) {
+        rateLimitedUntilRef.current = Date.now() + 10000;
+        return null;
+      }
+      return response.ok ? response : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const postSession = useCallback(async (route, payload = {}) => {
+    if (!apiToken) return false;
+    try {
+      const sessionRoute = route === "/api/app/session/close" ? `${route}?token=${encodeURIComponent(apiToken)}` : route;
+      const response = await f(sessionRoute, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiToken}` },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          path: window.location.pathname,
+          visible: document.visibilityState !== "hidden",
+          ...payload,
+        }),
+        keepalive: route === "/api/app/session/close",
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }, [apiToken]);
 
   // Persist filter preferences to localStorage
   useEffect(() => { localStorage.setItem("swarm-item-filter", itemFilter); }, [itemFilter]);
@@ -396,17 +473,46 @@ function Dashboard() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!apiToken) return undefined;
+    let alive = true;
+    const heartbeat = () => postSession("/api/app/session/heartbeat");
+    postSession("/api/app/session/open").then(ok => { if (alive) setSessionReady(ok); });
+    const hb = setInterval(heartbeat, 10000);
+    const onVisibility = () => {
+      const visible = document.visibilityState !== "hidden";
+      setPageVisible(visible);
+      if (visible) {
+        postSession("/api/app/session/heartbeat", { visible: true });
+      }
+    };
+    const onPageHide = () => { postSession("/api/app/session/close"); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("beforeunload", onPageHide);
+    return () => {
+      alive = false;
+      clearInterval(hb);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("beforeunload", onPageHide);
+      postSession("/api/app/session/close");
+      setSessionReady(false);
+    };
+  }, [apiToken, postSession]);
+
   // SSE — real-time event stream for instant updates
   useEffect(() => {
+    if (!apiToken) return undefined;
     const connect = () => {
       if (sseRef.current) sseRef.current.close();
-      const es = new EventSource(`${API}/api/events`);
+      const es = new EventSource(`${API}/api/events?token=${encodeURIComponent(apiToken)}`);
       sseRef.current = es;
       es.addEventListener("state_change", (e) => {
         try {
           const d = JSON.parse(e.data);
           if (d.cost) setCosts(prev => ({ ...prev, [d.repo_id]: d.cost }));
-          load(); // Refresh data on state change
+          load(false);
         } catch {}
       });
       es.addEventListener("log", (e) => {
@@ -419,7 +525,7 @@ function Dashboard() {
         try {
           const d = JSON.parse(e.data);
           showToast(`Watchdog restarted ${d.repo_name || "repo"}`, "warning");
-          load();
+          load(false);
         } catch {}
       });
       es.addEventListener("error_event", (e) => {
@@ -434,7 +540,7 @@ function Dashboard() {
           const d = JSON.parse(e.data);
           showToast(`${d.repo || "Repo"} completed cycle #${d.cycle} (${d.items_done}/${d.items_total} items, ${d.tests_passed} tests)`, "success");
           notify("Cycle Complete", `${d.repo} cycle #${d.cycle}: ${d.items_done}/${d.items_total} items done`);
-          load();
+          load(false);
         } catch {}
       });
       es.addEventListener("budget_exceeded", (e) => {
@@ -442,7 +548,13 @@ function Dashboard() {
           const d = JSON.parse(e.data);
           showToast(`${d.repo || "Repo"} paused: budget $${d.budget?.toFixed(2)} exceeded ($${d.cost?.toFixed(2)} spent)`, "warning");
           notify("Budget Exceeded", `${d.repo} paused: $${d.cost?.toFixed(2)} spent`);
-          load();
+          load(false);
+        } catch {}
+      });
+      es.addEventListener("dashboard_presence", (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (!d.active) showToast("Dashboard session ended. Repo work stopped.", "info");
         } catch {}
       });
       es.addEventListener("connected", () => { setSseConnected(true); sseRetries.current = 0; });
@@ -450,79 +562,134 @@ function Dashboard() {
     };
     connect();
     return () => { if (sseRef.current) sseRef.current.close(); };
-  }, []);
+  }, [apiToken, sessionReady, notify]);
 
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
   const load = useCallback(async (full = true) => {
+    if (!apiToken || !sessionReady) return;
+    if (!pageVisible && !full) return;
+    if (Date.now() < rateLimitedUntilRef.current) return;
+    if (loadStateRef.current.inFlight) {
+      loadStateRef.current.pending = true;
+      loadStateRef.current.pendingFull = loadStateRef.current.pendingFull || full;
+      return;
+    }
+    loadStateRef.current.inFlight = true;
+    setLoading(true);
+    let selectedRepoId = sr;
     try {
-      const repoUrl = repoFilter === "archived" ? "/api/repos?include_archived=1" : "/api/repos";
-      const r = await f(repoUrl);
-      if (r.ok) { const d = await r.json(); setRepos(d); if (!sr && d.length) setSR(d[0].id); }
-      setCon(true);
-    } catch(err) { console.warn("Server connection lost:", err.message); setCon(false); setLoading(false); return; }
-    if (!sr) { setLoading(false); return; }
-    const t = tabRef.current;
-    try {
+      try {
+        const repoUrl = repoFilter === "archived" ? "/api/repos?include_archived=1" : "/api/repos";
+        const r = await f(repoUrl);
+        if (r.status === 429) {
+          rateLimitedUntilRef.current = Date.now() + 10000;
+          return;
+        }
+        if (r.ok) {
+          const d = asArray(await r.json()).map(repoRow => ({
+            ...repoRow,
+            managed: Boolean(repoRow.managed ?? repoRow.running),
+            busy: Boolean(repoRow.busy ?? repoRow.running),
+          }));
+          setRepos(d);
+          if (!selectedRepoId && d.length) {
+            selectedRepoId = d[0].id;
+            setSR(d[0].id);
+          }
+        }
+        setCon(true);
+      } catch(err) {
+        console.warn("Server connection lost:", err.message);
+        setCon(false);
+        return;
+      }
+      if (!selectedRepoId) return;
+      const t = tabRef.current;
       // Always fetch items + plan (shown in home/master), rest based on active tab
-      const fetches = [f(`/api/items?repo_id=${sr}`), f(`/api/plan?repo_id=${sr}`)];
+      const fetches = [f(`/api/items?repo_id=${selectedRepoId}`), f(`/api/plan?repo_id=${selectedRepoId}`)];
       const keys = ["items", "plan"];
-      if (full || t === "home" || t === "logs") { fetches.push(f(`/api/logs?repo_id=${sr}`)); keys.push("logs"); }
-      if (full || t === "home") { fetches.push(f(`/api/notes?repo_id=${sr}`)); keys.push("repoNotes"); }
+      if (full || t === "home" || t === "logs") { fetches.push(f(`/api/logs?repo_id=${selectedRepoId}`)); keys.push("logs"); }
+      if ((full || t === "home") && isOptionalEndpointAvailable("/api/notes")) { fetches.push(f(`/api/notes?repo_id=${selectedRepoId}`)); keys.push("repoNotes"); }
       if (full || t === "agents") {
-        fetches.push(f(`/api/agents?repo_id=${sr}`)); keys.push("agents");
-        fetches.push(f(`/api/agent-stats?repo_id=${sr}`)); keys.push("agentStats");
+        fetches.push(f(`/api/agents?repo_id=${selectedRepoId}`)); keys.push("agents");
+        fetches.push(f(`/api/agent-stats?repo_id=${selectedRepoId}`)); keys.push("agentStats");
       }
-      if (full || t === "memory") { fetches.push(f(`/api/memory?repo_id=${sr}`)); keys.push("memory"); }
+      if (full || t === "memory") { fetches.push(f(`/api/memory?repo_id=${selectedRepoId}`)); keys.push("memory"); }
       if (full || t === "mistakes") {
-        fetches.push(f(`/api/mistakes?repo_id=${sr}`)); keys.push("mistakes");
-        fetches.push(f(`/api/mistakes/analysis?repo_id=${sr}`)); keys.push("mistakeAnalysis");
+        fetches.push(f(`/api/mistakes?repo_id=${selectedRepoId}`)); keys.push("mistakes");
+        fetches.push(f(`/api/mistakes/analysis?repo_id=${selectedRepoId}`)); keys.push("mistakeAnalysis");
       }
-      if (full || t === "audio") { fetches.push(f(`/api/audio?repo_id=${sr}`)); keys.push("audio"); }
-      if (full || t === "history") { fetches.push(f(`/api/history?repo_id=${sr}`)); keys.push("history"); }
+      if (full || t === "audio") { fetches.push(f(`/api/audio?repo_id=${selectedRepoId}`)); keys.push("audio"); }
+      if (full || t === "history") { fetches.push(f(`/api/history?repo_id=${selectedRepoId}`)); keys.push("history"); }
       const results = await Promise.all(fetches);
       const setters = { items: setItems, plan: setPlan, logs: setLogs, agents: setAgents, agentStats: setAgentStats, memory: setMemory, mistakes: setMistakes, mistakeAnalysis: setMistakeAnalysis, audio: setAudio, history: setHistory, repoNotes: setRepoNotes };
+      const collectionKeys = new Set(["items", "plan", "logs", "agents", "memory", "mistakes", "audio", "history", "repoNotes"]);
+      const nullableObjectKeys = new Set(["agentStats", "mistakeAnalysis"]);
       for (let i = 0; i < keys.length; i++) {
-        if (results[i].ok) { const d = await results[i].json(); setters[keys[i]](d); }
+        if (results[i].ok) {
+          const key = keys[i];
+          const d = await results[i].json();
+          if (collectionKeys.has(key)) setters[key](asArray(d));
+          else if (nullableObjectKeys.has(key)) setters[key](asNullableObject(d));
+          else setters[key](d);
+        }
       }
       // Fetch costs + webhooks + budget + claude sessions
-      try { const cr = await f("/api/costs"); if(cr.ok) { const cd = await cr.json(); if(cd.costs) setCosts(cd.costs); } } catch {}
-      try { const cs2 = await f("/api/claude-sessions"); if(cs2.ok) { const cd2 = await cs2.json(); setClaudeSessions(cd2.sessions || []); } } catch {}
+      try { const cr = await fetchOptional("/api/costs"); if(cr) { const cd = asObject(await cr.json()); if(cd.costs) setCosts(asObject(cd.costs)); } } catch {}
+      try { const cs2 = await fetchOptional("/api/claude-sessions"); if(cs2) { const cd2 = asObject(await cs2.json()); setClaudeSessions(asArray(cd2.sessions)); } } catch {}
       if (full || t === "settings") {
-        try { const wr = await f("/api/webhooks"); if(wr.ok) { const wd = await wr.json(); setWebhooks(wd.webhooks || []); } } catch {}
-        try { const br = await f("/api/budget"); if(br.ok) { const bd = await br.json(); setBudgetLimit(bd.budget_limit || 0); } } catch {}
+        try { const wr = await fetchOptional("/api/webhooks"); if(wr) { const wd = asObject(await wr.json()); setWebhooks(asArray(wd.webhooks)); } } catch {}
+        try { const br = await fetchOptional("/api/budget"); if(br) { const bd = asObject(await br.json()); setBudgetLimit(bd.budget_limit || 0); } } catch {}
       }
       if (full || t === "metrics") {
-        try { const mr = await f("/api/metrics"); if(mr.ok) setApiMetrics(await mr.json()); } catch {}
+        try { const mr = await fetchOptional("/api/metrics"); if(mr) setApiMetrics(await mr.json()); } catch {}
       }
       if (full || t === "trends") {
-        try { const tr = await f(`/api/trends?repo_id=${sr}&days=14`); if(tr.ok) setTrends(await tr.json()); } catch {}
-        try { const ch = await f("/api/costs/history?days=30"); if(ch.ok) { const cd = await ch.json(); setCostHistory(cd.history || []); } } catch {}
+        try { const tr = await fetchOptional(`/api/trends?repo_id=${selectedRepoId}&days=14`); if(tr) setTrends(asNullableObject(await tr.json())); } catch {}
+        try { const ch = await fetchOptional("/api/costs/history?days=30"); if(ch) { const cd = asObject(await ch.json()); setCostHistory(asArray(cd.history)); } } catch {}
       }
       if (full || t === "compare") {
-        try { const cr = await f("/api/comparison"); if(cr.ok) setComparison(await cr.json()); } catch {}
+        try { const cr = await fetchOptional("/api/comparison"); if(cr) setComparison(asNullableObject(await cr.json())); } catch {}
       }
-      try { const sr2 = await f("/api/status"); if(sr2.ok) { const sd = await sr2.json(); setUptime(sd.uptime || ""); setSysInfo({ threads: sd.threads, mem: sd.memory_mb, pid: sd.pid }); } } catch {}
+      try { const sr2 = await fetchOptional("/api/status"); if(sr2) { const sd = asObject(await sr2.json()); setUptime(sd.uptime || ""); setSysInfo({ threads: sd.threads, mem: sd.memory_mb, pid: sd.pid }); } } catch {}
       if (full || t === "home") {
-        try { const sl = await f("/api/stale-items?hours=2"); if(sl.ok) { const sd = await sl.json(); setStaleItems(sd.stale_items || []); } } catch {}
-        try { const er = await f("/api/errors/recent?limit=5"); if(er.ok) { const ed = await er.json(); setRecentErrors(ed.errors || []); } } catch {}
+        try { const sl = await fetchOptional("/api/stale-items?hours=2"); if(sl) { const sd = asObject(await sl.json()); setStaleItems(asArray(sd.stale_items)); } } catch {}
+        try { const er = await fetchOptional("/api/errors/recent?limit=5"); if(er) { const ed = asObject(await er.json()); setRecentErrors(asArray(ed.errors)); } } catch {}
       }
       if (full || t === "health") {
-        try { const cb = await f("/api/circuit-breakers"); if(cb.ok) { const cd = await cb.json(); setCircuitBreakers(cd.circuit_breakers || []); } } catch {}
-        try { const hs = await f("/api/health/detailed"); if(hs.ok) setHealthScores(await hs.json()); } catch {}
-        try { const sp = await f("/api/sparklines"); if(sp.ok) { const sd = await sp.json(); setSparklines(sd.sparklines || {}); } } catch {}
-        try { const et = await f("/api/eta"); if(et.ok) { const ed = await et.json(); setEtas(ed.etas || {}); } } catch {}
-        try { const hm = await f("/api/heatmap"); if(hm.ok) setHeatmap(await hm.json()); } catch {}
-        try { const cf = await f("/api/cost-forecast"); if(cf.ok) setCostForecast(await cf.json()); } catch {}
-        try { const hh = await f("/api/health/history"); if(hh.ok) setHealthHistory(await hh.json()); } catch {}
+        try { const cb = await fetchOptional("/api/circuit-breakers"); if(cb) { const cd = asObject(await cb.json()); setCircuitBreakers(asArray(cd.circuit_breakers)); } } catch {}
+        try { const hs = await fetchOptional("/api/health/detailed"); if(hs) setHealthScores(asNullableObject(await hs.json())); } catch {}
+        try { const sp = await fetchOptional("/api/sparklines"); if(sp) { const sd = asObject(await sp.json()); setSparklines(asObject(sd.sparklines)); } } catch {}
+        try { const et = await fetchOptional("/api/eta"); if(et) { const ed = asObject(await et.json()); setEtas(asObject(ed.etas)); } } catch {}
+        try { const hm = await fetchOptional("/api/heatmap"); if(hm) setHeatmap(asNullableObject(await hm.json())); } catch {}
+        try { const cf = await fetchOptional("/api/cost-forecast"); if(cf) setCostForecast(asNullableObject(await cf.json())); } catch {}
+        try { const hh = await fetchOptional("/api/health/history"); if(hh) setHealthHistory(asNullableObject(await hh.json())); } catch {}
       }
-    } catch(err) { console.warn("Data fetch error:", err.message); }
-    setLoading(false);
-    setLastRefresh(Date.now());
-  }, [sr]);
+    } catch(err) {
+      console.warn("Data fetch error:", err.message);
+    } finally {
+      setLoading(false);
+      setLastRefresh(Date.now());
+      loadStateRef.current.inFlight = false;
+      if (loadStateRef.current.pending) {
+        const nextFull = loadStateRef.current.pendingFull;
+        loadStateRef.current.pending = false;
+        loadStateRef.current.pendingFull = false;
+        setTimeout(() => load(nextFull), 250);
+      }
+    }
+  }, [apiToken, fetchOptional, isOptionalEndpointAvailable, pageVisible, repoFilter, sessionReady, sr]);
 
-  useEffect(() => { load(true); const i = setInterval(() => load(false), refreshInterval); return () => clearInterval(i); }, [load, refreshInterval]);
+  useEffect(() => {
+    if (!apiToken || !sessionReady) return undefined;
+    load(true);
+    const i = setInterval(() => {
+      if (document.visibilityState === "visible") load(false);
+    }, refreshInterval);
+    return () => clearInterval(i);
+  }, [apiToken, load, refreshInterval, sessionReady]);
 
   // Auto-scroll logs when tail mode is on
   useEffect(() => { if (logTail && logEndRef.current) logEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [logTail, logs]);
@@ -549,8 +716,8 @@ function Dashboard() {
       const TABS_LIST = ["home","master","flow","items","plan","audio","agents","memory","mistakes","logs","history","health","metrics","trends","compare","settings"];
       if (e.key >= "1" && e.key <= "9") { e.preventDefault(); const idx = parseInt(e.key) - 1; if (TABS_LIST[idx]) setTab(TABS_LIST[idx]); }
       if (e.key === "0") { e.preventDefault(); setTab("logs"); }
-      if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${repo?.running ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
-      if (e.key === "p" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr && repo?.running) f(`/api/${repo?.paused ? "resume" : "pause"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(load); }
+      if (e.key === "s" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr) f(`/api/${isRepoManaged(repo) ? "stop" : "start"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(() => load(true)); }
+      if (e.key === "p" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (sr && isRepoManaged(repo)) f(`/api/${repo?.paused ? "resume" : "pause"}`, { method: "POST", body: JSON.stringify({ repo_id: sr }) }).then(() => load(true)); }
       if (e.key === "r" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); load(); }
       if (e.key === "d" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleDark(); }
       if (e.key === "/") { e.preventDefault(); setTab("home"); setTimeout(() => { const el = document.querySelector("input[placeholder*='command']"); if (el) el.focus(); }, 100); }
@@ -1141,7 +1308,7 @@ function Dashboard() {
               <span style={{ color: C.brown }}>Items: {s.items_done||0}/{s.items_total||0}</span>
               <span style={{ color: C.brown }}>Steps: {s.steps_done||0}/{s.steps_total||0}</span>
               {costs[sr] > 0 && <span style={{ color: C.brown }}>${costs[sr]?.toFixed(2)}</span>}
-              {cr.running
+              {isRepoManaged(cr)
                 ? <button onClick={() => stopRepo(cr.id)} aria-label={`Stop ${cr.name}`} style={{ background: C.red, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u23F9"}</button>
                 : <button onClick={() => startRepo(cr.id)} aria-label={`Start ${cr.name}`} style={{ background: C.green, color: C.white, border: `1px solid ${C.darkBrown}`, borderRadius: 6, padding: "2px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers', cursive" }}>{"\u25B6"}</button>}
               {connected && <span style={{ color: C.green, fontWeight: 700 }}>{"\u25CF"} LIVE</span>}
@@ -1520,8 +1687,8 @@ function Dashboard() {
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: compactRepos ? "repeat(auto-fill, minmax(180px, 1fr))" : "repeat(auto-fill, minmax(280px, 1fr))", gap: compactRepos ? 8 : 16 }}>
               {repos.filter(r => {
                 if (repoFilter === "all") return true;
-                if (repoFilter === "running") return r.running && !r.paused;
-                if (repoFilter === "idle") return !r.running;
+                if (repoFilter === "running") return isRepoBusy(r) && !r.paused;
+                if (repoFilter === "idle") return !isRepoBusy(r) && !r.paused;
                 if (repoFilter === "paused") return r.paused;
                 if (repoFilter === "error") return r.state === "error" || r.state === "credits_exhausted";
                 return true;
@@ -1551,8 +1718,8 @@ function Dashboard() {
                       backgroundImage: sr === r.id
                         ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)`
                         : `linear-gradient(135deg, #FFFFFF 0%, #FDFAF2 100%)`,
-                      borderLeft: r.running ? `4px solid ${C.green}` : r.state === "error" ? `4px solid ${C.red}` : undefined,
-                      boxShadow: r.running ? `inset 4px 0 12px -4px ${C.green}44` : undefined,
+                      borderLeft: isRepoBusy(r) ? `4px solid ${C.green}` : r.state === "error" ? `4px solid ${C.red}` : undefined,
+                      boxShadow: isRepoBusy(r) ? `inset 4px 0 12px -4px ${C.green}44` : undefined,
                     }}
                     title={`${r.name} | ${r.state} | Items: ${s.items_done||0}/${s.items_total||0} | Steps: ${s.steps_done||0}/${s.steps_total||0} | Errors: ${s.mistakes||0} | Cycles: ${r.cycle_count||0} | Cost: $${(costs[r.id]||0).toFixed(2)} | Branch: ${r.branch||'main'}`}
                     onClick={() => { setSR(r.id); setTab("flow"); }}
@@ -1564,14 +1731,14 @@ function Dashboard() {
                     {/* Pinned indicator */}
                     {pinnedRepos.includes(r.id) && <div style={{ position: "absolute", top: -1, left: -1, fontSize: 14, padding: "2px 6px" }} title="Pinned">{"\uD83D\uDCCC"}</div>}
                     {/* Running indicator */}
-                    {r.running && <div style={{ position: "absolute", top: -1, right: -1, background: `linear-gradient(135deg, ${C.green}, #27ae60)`, border: `2px solid ${C.darkBrown}`, borderRadius: "0 10px 0 10px", padding: "4px 12px", fontSize: 10, fontWeight: 700, color: C.white, letterSpacing: 1, fontFamily: "'Bangers', cursive" }}>RUNNING</div>}
+                    {isRepoBusy(r) && <div style={{ position: "absolute", top: -1, right: -1, background: `linear-gradient(135deg, ${C.green}, #27ae60)`, border: `2px solid ${C.darkBrown}`, borderRadius: "0 10px 0 10px", padding: "4px 12px", fontSize: 10, fontWeight: 700, color: C.white, letterSpacing: 1, fontFamily: "'Bangers', cursive" }}>RUNNING</div>}
                     {/* Error count badge */}
-                    {(s.mistakes || 0) > 0 && !r.running && (
+                    {(s.mistakes || 0) > 0 && !isRepoBusy(r) && (
                       <div style={{ position: "absolute", top: -1, right: -1, background: C.red, border: `2px solid ${C.darkBrown}`, borderRadius: "0 10px 0 10px", padding: "3px 10px", fontSize: 10, fontWeight: 700, color: C.white, fontFamily: "'Bangers', cursive" }}>{s.mistakes} err</div>
                     )}
 
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, position: "relative" }}>
-                      <div style={{ width: 48, height: 48, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, transition: "transform 0.3s ease, background 0.3s ease", animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
+                      <div style={{ width: 48, height: 48, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, transition: "transform 0.3s ease, background 0.3s ease", animation: isRepoBusy(r) ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 2px 8px ${rst.color}44` }}>
                         {rst.emoji}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1579,7 +1746,7 @@ function Dashboard() {
                         <div style={{ fontSize: 10, color: C.brown, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{r.path}</div>
                         {r.last_activity > 0 && <div style={{ fontSize: 9, color: C.brown, opacity: 0.5, marginTop: 1, display: "flex", alignItems: "center", gap: 4 }}>
                           {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); return ago < 60 ? "active just now" : ago < 3600 ? `active ${Math.floor(ago/60)}m ago` : ago < 86400 ? `active ${Math.floor(ago/3600)}h ago` : `active ${Math.floor(ago/86400)}d ago`; })()}
-                          {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); if (r.running && ago > 3600) { const h = Math.floor(ago/3600); return <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: h > 4 ? "#FFEBEE" : `${C.orange}22`, color: h > 4 ? C.red : C.orange, fontWeight: 700 }}>{"\u23F3"} stuck {h}h</span>; } return null; })()}
+                          {(() => { const ago = Math.floor((Date.now()/1000) - r.last_activity); if (isRepoBusy(r) && ago > 3600) { const h = Math.floor(ago/3600); return <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: h > 4 ? "#FFEBEE" : `${C.orange}22`, color: h > 4 ? C.red : C.orange, fontWeight: 700 }}>{"\u23F3"} stuck {h}h</span>; } return null; })()}
                         </div>}
                       </div>
                       {/* Item progress ring */}
@@ -1618,7 +1785,7 @@ function Dashboard() {
                         const k = `act_${r.id}`;
                         const now = Date.now();
                         const h = JSON.parse(localStorage.getItem(k) || "[]").filter(e => now - e.t < 86400000);
-                        h.push({ t: now, d: s.items_done || 0, e: s.mistakes || 0, run: r.running ? 1 : 0 });
+                        h.push({ t: now, d: s.items_done || 0, e: s.mistakes || 0, run: isRepoBusy(r) ? 1 : 0 });
                         if (h.length > 48) h.splice(0, h.length - 48);
                         localStorage.setItem(k, JSON.stringify(h));
                         if (h.length < 4) return null;
@@ -1719,10 +1886,10 @@ function Dashboard() {
 
                     {/* Action buttons + state label */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {r.running
+                      {isRepoManaged(r)
                         ? <Btn bg={C.red} onClick={e => { e.stopPropagation(); stopRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u23F9"} Stop</Btn>
                         : <Btn bg={C.green} onClick={e => { e.stopPropagation(); startRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u25B6"} Start</Btn>}
-                      {r.running && (r.paused
+                      {isRepoManaged(r) && (r.paused
                         ? <Btn bg={C.teal} onClick={e => { e.stopPropagation(); resumeRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u25B6"} Resume</Btn>
                         : <Btn bg={C.orange} onClick={e => { e.stopPropagation(); pauseRepo(r.id); }} style={{ fontSize: 12, padding: "6px 14px" }}>{"\u23F8"} Pause</Btn>)}
                       <Btn bg="#888" onClick={e => { e.stopPropagation(); deleteRepo(r.id); }} style={{ fontSize: 11, padding: "5px 10px" }}>{"\u2716"}</Btn>
@@ -1912,8 +2079,8 @@ function Dashboard() {
             <div style={{ maxWidth: 600, margin: "0 auto 8px", display: "flex", justifyContent: "flex-end" }}>
               <button onClick={() => {
                 const visible = repos.filter(r => {
-                  if (repoFilter === "running") return r.running;
-                  if (repoFilter === "idle") return !r.running && !r.archived;
+                  if (repoFilter === "running") return isRepoBusy(r);
+                  if (repoFilter === "idle") return !isRepoBusy(r) && !r.paused && !r.archived;
                   if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
                   if (repoFilter === "archived") return r.archived;
                   if (repoFilter.startsWith("tag:")) return (r.tags || "").split(",").includes(repoFilter.slice(4));
@@ -1926,8 +2093,8 @@ function Dashboard() {
               }} style={{ fontSize: 11, color: C.brown, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", fontFamily: "'Fredoka', sans-serif" }}>
                 {(() => {
                   const visible = repos.filter(r => {
-                    if (repoFilter === "running") return r.running;
-                    if (repoFilter === "idle") return !r.running && !r.archived;
+                    if (repoFilter === "running") return isRepoBusy(r);
+                    if (repoFilter === "idle") return !isRepoBusy(r) && !r.paused && !r.archived;
                     if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
                     if (repoFilter === "archived") return r.archived;
                     if (repoFilter.startsWith("tag:")) return (r.tags || "").split(",").includes(repoFilter.slice(4));
@@ -1940,8 +2107,8 @@ function Dashboard() {
             </div>
             <div className="repo-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {[...repos].filter(r => {
-                if (repoFilter === "running") return r.running;
-                if (repoFilter === "idle") return !r.running && !r.archived;
+                if (repoFilter === "running") return isRepoBusy(r);
+                if (repoFilter === "idle") return !isRepoBusy(r) && !r.paused && !r.archived;
                 if (repoFilter === "pinned") return pinnedRepos.includes(r.id);
                 if (repoFilter === "archived") return r.archived;
                 if (repoFilter.startsWith("tag:")) return (r.tags || "").split(",").includes(repoFilter.slice(4));
@@ -1980,7 +2147,7 @@ function Dashboard() {
                   <Card key={r.id} className="hover-lift master-card" bg={batchSelected.has(r.id) ? C.yellow : isFocused ? C.lightTeal : C.white} style={{ cursor: "pointer", transition: "transform .2s, box-shadow .2s", outline: isFocused ? `3px solid ${C.teal}` : "none", outlineOffset: -1, background: batchSelected.has(r.id) ? `linear-gradient(135deg, ${C.yellow} 0%, #FFD54F 100%)` : isFocused ? `linear-gradient(135deg, ${C.lightTeal} 0%, #D4F4E8 100%)` : `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}
                     onClick={() => { setSR(r.id); setTab("flow"); }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                      <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: r.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : r.state === "error" ? "pulse-error 1.5s ease-in-out infinite" : "none", boxShadow: r.state === "error" ? `0 0 12px ${C.red}88` : `0 2px 8px ${rst.color}44` }}>
+                      <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg, ${rst.color}, ${rst.color}dd)`, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, animation: isRepoBusy(r) ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : r.state === "error" ? "pulse-error 1.5s ease-in-out infinite" : "none", boxShadow: r.state === "error" ? `0 0 12px ${C.red}88` : `0 2px 8px ${rst.color}44` }}>
                         {rst.emoji}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1997,8 +2164,8 @@ function Dashboard() {
                             style={{ width: 16, height: 16, accentColor: C.teal, cursor: "pointer" }} title="Select for batch action" />
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                          <span style={{ color: C.brown, fontWeight: 500 }}>{rst.label} {r.running ? "-- RUNNING" : ""}</span>
-                          {r.running && (() => {
+                          <span style={{ color: C.brown, fontWeight: 500 }}>{rst.label} {isRepoBusy(r) ? "-- RUNNING" : isRepoManaged(r) ? "-- READY" : ""}</span>
+                          {isRepoBusy(r) && (() => {
                             const stateOrder = ["idle","check_audio","check_refactor","check_new_items","update_plan","execute_step","test_step","check_steps_left","final_optimize","scan_repo"];
                             const idx = stateOrder.indexOf(r.state || "idle");
                             return (
@@ -2038,12 +2205,12 @@ function Dashboard() {
                     </div>
                     {/* Quick Actions */}
                     <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                      {!r.running ? (
+                      {!isRepoManaged(r) ? (
                         <button onClick={e => { e.stopPropagation(); apiAction("/api/start", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }, `${r.name} started`); }} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 8, background: C.green, color: C.white, border: `2px solid ${C.darkBrown}`, cursor: "pointer", fontWeight: 700, fontFamily: "'Fredoka',sans-serif" }}>{"\u25B6\uFE0F"} Start</button>
                       ) : (
                         <button onClick={e => { e.stopPropagation(); apiAction("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }, `${r.name} stopped`); }} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 8, background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, cursor: "pointer", fontWeight: 700, fontFamily: "'Fredoka',sans-serif" }}>{"\u23F9\uFE0F"} Stop</button>
                       )}
-                      {r.running && (
+                      {isRepoManaged(r) && (
                         r.paused ? (
                           <button onClick={e => { e.stopPropagation(); apiAction("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }, `${r.name} resumed`); }} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 8, background: C.teal, color: C.white, border: `2px solid ${C.darkBrown}`, cursor: "pointer", fontWeight: 700, fontFamily: "'Fredoka',sans-serif" }}>{"\u25B6\uFE0F"} Resume</button>
                         ) : (
@@ -2078,13 +2245,13 @@ function Dashboard() {
                     {!compactMaster && sparklines[r.id]?.length > 1 && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
                         <span style={{ fontSize: 9, color: C.brown, minWidth: 42 }}>7d trend</span>
-                        <Sparkline data={sparklines[r.id]} width={100} height={14} color={r.running ? C.teal : C.brown} />
+                        <Sparkline data={sparklines[r.id]} width={100} height={14} color={isRepoBusy(r) ? C.teal : C.brown} />
                         <span style={{ fontSize: 9, color: C.brown }}>{sparklines[r.id].reduce((a,b) => a+b, 0)} actions</span>
                       </div>
                     )}
                     {/* Quick actions */}
                     {!compactMaster && <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
-                      {r.running ? (
+                      {isRepoManaged(r) ? (
                         <>
                           <button onClick={e => { e.stopPropagation(); f("/api/stop", { method: "POST", body: JSON.stringify({ repo_id: r.id }) }).then(load); }}
                             style={{ background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive", letterSpacing: 1 }}>{"\u23F9"} Stop</button>
@@ -2121,7 +2288,7 @@ function Dashboard() {
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={async () => {
-                    const idle = repos.filter(r => !r.running && !r.archived);
+                    const idle = repos.filter(r => !isRepoManaged(r) && !r.archived);
                     if (idle.length === 0) { showToast("No idle repos to start", "info"); return; }
                     await f("/api/repos/batch", { method: "POST", body: JSON.stringify({ repo_ids: idle.map(r => r.id), action: "start" }) });
                     showToast(`Starting ${idle.length} idle repos`, "success"); load();
@@ -2132,13 +2299,13 @@ function Dashboard() {
                     showToast(`Stopping ${runningRepos.length} repos`, "info"); load();
                   }} style={{ background: C.red, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u23F9"} Stop All</button>
                   <button onClick={async () => {
-                    const running = repos.filter(r => r.running && !r.paused);
+                    const running = repos.filter(r => isRepoManaged(r) && !r.paused);
                     if (running.length === 0) { showToast("No running repos to pause", "info"); return; }
                     for (const r of running) await f("/api/pause", { method: "POST", body: JSON.stringify({ repo_id: r.id }) });
                     showToast(`Paused ${running.length} repos`, "info"); load();
                   }} style={{ background: C.orange, color: C.white, border: `2px solid ${C.darkBrown}`, borderRadius: 8, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Bangers',cursive" }}>{"\u23F8"} Pause All</button>
                   <button onClick={async () => {
-                    const paused = repos.filter(r => r.running && r.paused);
+                    const paused = repos.filter(r => isRepoManaged(r) && r.paused);
                     if (paused.length === 0) { showToast("No paused repos to resume", "info"); return; }
                     for (const r of paused) await f("/api/resume", { method: "POST", body: JSON.stringify({ repo_id: r.id }) });
                     showToast(`Resumed ${paused.length} repos`, "success"); load();
@@ -2172,7 +2339,7 @@ function Dashboard() {
                 const pct = totalCost / budgetLimit * 100;
                 if (pct > 85) alerts.push({ icon: "\uD83D\uDCB8", msg: `Budget ${pct.toFixed(0)}% consumed ($${totalCost.toFixed(2)}/$${budgetLimit.toFixed(2)})`, lvl: pct > 95 ? "red" : "orange" });
               }
-              const staleRepos = repos.filter(r => r.running && r.stats?.items_done === 0 && (r.stats?.items_total || 0) > 0);
+              const staleRepos = repos.filter(r => isRepoBusy(r) && r.stats?.items_done === 0 && (r.stats?.items_total || 0) > 0);
               staleRepos.forEach(r => alerts.push({ icon: "\u23F3", msg: `${r.name}: running but 0 completions`, lvl: "orange" }));
               if (alerts.length === 0) return null;
               return <Card bg={C.white} style={{ maxWidth: 700, margin: "16px auto 0", padding: 14, borderLeft: `4px solid ${C.red}` }}>
@@ -2226,7 +2393,7 @@ function Dashboard() {
                 const s = r.stats || {};
                 const rate = (s.items_done || 0) / Math.max(1, s.items_total || 1) * 100;
                 const errPenalty = (s.mistakes || 0) / Math.max(1, s.items_total) * 50;
-                return { name: r.name, score: Math.round(rate - errPenalty), done: s.items_done || 0, total: s.items_total || 0, running: r.running };
+                return { name: r.name, score: Math.round(rate - errPenalty), done: s.items_done || 0, total: s.items_total || 0, running: isRepoBusy(r) };
               }).sort((a, b) => b.score - a.score);
               if (scored.length < 2) return null;
               const top = scored.slice(0, 3);
@@ -2325,10 +2492,10 @@ function Dashboard() {
                 {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
               <div style={{ display: "flex", gap: 4 }}>
-                {repo?.running
+                {isRepoManaged(repo)
                   ? <Btn bg={C.red} onClick={() => stopRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u23F9"} Stop</Btn>
                   : <Btn bg={C.green} onClick={() => startRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u25B6"} Start</Btn>}
-                {repo?.running && (repo.paused
+                {isRepoManaged(repo) && (repo.paused
                   ? <Btn bg={C.teal} onClick={() => resumeRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u25B6"} Resume</Btn>
                   : <Btn bg={C.orange} onClick={() => pauseRepo(repo.id)} style={{ fontSize: 11, padding: "5px 12px" }}>{"\u23F8"} Pause</Btn>)}
               </div>
@@ -2339,7 +2506,7 @@ function Dashboard() {
             <Card bg={C.white} style={{ maxWidth: 680, margin: "0 auto 16px", padding: "14px 20px", background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: "50%", background: si.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, animation: repo?.running ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 0 12px ${si.color}44` }}>
+                  <div style={{ width: 48, height: 48, borderRadius: "50%", background: si.color, border: `3px solid ${C.darkBrown}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, animation: isRepoBusy(repo) ? "bounce 2s cubic-bezier(0.4,0,0.2,1) infinite" : "none", boxShadow: `0 0 12px ${si.color}44` }}>
                     {si.emoji}
                   </div>
                   <div>
@@ -2446,9 +2613,9 @@ function Dashboard() {
 
             {/* Action buttons */}
             <div style={{ textAlign: "center", marginBottom: 16, display: "flex", justifyContent: "center", gap: 10 }}>
-              {repo && !repo.running && <Btn bg={C.green} onClick={() => startRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9654; Start</Btn>}
-              {repo?.running && <Btn bg={C.red} onClick={() => stopRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9209; Stop</Btn>}
-              {repo?.running && (repo.paused
+              {repo && !isRepoManaged(repo) && <Btn bg={C.green} onClick={() => startRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9654; Start</Btn>}
+              {isRepoManaged(repo) && <Btn bg={C.red} onClick={() => stopRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9209; Stop</Btn>}
+              {isRepoManaged(repo) && (repo.paused
                 ? <Btn bg={C.teal} onClick={() => resumeRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9654; Resume</Btn>
                 : <Btn bg={C.orange} onClick={() => pauseRepo(sr)} style={{ padding: "10px 20px", fontSize: 16 }}>&#9208; Pause</Btn>)}
               <Btn bg={C.teal} onClick={pushGH} style={{ padding: "10px 20px", fontSize: 16 }}>&uarr; Push Git</Btn>
@@ -2564,10 +2731,10 @@ function Dashboard() {
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: C.brown, lineHeight: 1.6 }}>
-                  {repo?.running ? (
+                  {isRepoBusy(repo) ? (
                     <span style={{ color: C.green, fontWeight: 600 }}>Orchestrator is running -- agents are active and processing.</span>
                   ) : (
-                    <span style={{ color: C.orange, fontWeight: 600 }}>Orchestrator is paused. Hit Start to kick things off!</span>
+                    <span style={{ color: C.orange, fontWeight: 600 }}>{isRepoManaged(repo) ? "Orchestrator is ready but idle. Stop it or let it pick up new work." : "Orchestrator is stopped. Hit Start to kick things off!"}</span>
                   )}
                   {stepsTotal > 0 && <div style={{ marginTop: 4 }}>Progress: {stepsDone} of {stepsTotal} steps complete ({stepsTotal > 0 ? Math.round(stepsDone/stepsTotal*100) : 0}%)</div>}
                 </div>
@@ -3498,10 +3665,10 @@ function Dashboard() {
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               {logs.length===0 ? (
                 <Card style={{ textAlign: "center", padding: 30, background: `linear-gradient(135deg, ${C.white} 0%, ${C.cream} 100%)` }}>
-                  <div style={{ fontSize: 32, marginBottom: 6 }}>{repo?.running ? "\u2699\uFE0F" : "\uD83D\uDCDC"}</div>
-                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 4 }}>{repo?.running ? "Waiting for first log..." : "No logs on the books yet"}</div>
-                  <div style={{ fontSize: 12, color: C.brown }}>{repo?.running ? "Logs will appear once the repo starts executing steps." : sr ? "Start this repo to begin logging activity." : "Select and start a repo to see logs here."}</div>
-                  {repo?.running && <div style={{ marginTop: 8, fontSize: 20, animation: "spin 2s linear infinite" }}>{"\u2699\uFE0F"}</div>}
+                  <div style={{ fontSize: 32, marginBottom: 6 }}>{isRepoBusy(repo) ? "\u2699\uFE0F" : "\uD83D\uDCDC"}</div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: 18, letterSpacing: 1, marginBottom: 4 }}>{isRepoBusy(repo) ? "Waiting for first log..." : "No logs on the books yet"}</div>
+                  <div style={{ fontSize: 12, color: C.brown }}>{isRepoBusy(repo) ? "Logs will appear once the repo starts executing steps." : sr ? "Start this repo to begin logging activity." : "Select and start a repo to see logs here."}</div>
+                  {isRepoBusy(repo) && <div style={{ marginTop: 8, fontSize: 20, animation: "spin 2s linear infinite" }}>{"\u2699\uFE0F"}</div>}
                 </Card>
               ) :
                 visibleLogs.map((l, i) => (
@@ -4753,3 +4920,16 @@ function Dashboard() {
     </div>
   );
 }
+
+function App() {
+  return React.createElement(ErrorBoundary, null, React.createElement(Dashboard));
+}
+
+if (typeof document !== "undefined") {
+  const rootEl = document.getElementById("root");
+  if (rootEl) {
+    const root = ReactDOM.createRoot(rootEl);
+    root.render(React.createElement(App));
+  }
+}
+

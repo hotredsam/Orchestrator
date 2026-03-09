@@ -116,7 +116,7 @@ _wl = os.environ.get("TELEGRAM_WHITELIST", "")
 TELEGRAM_WHITELIST = {int(x.strip()) for x in _wl.split(",") if x.strip().isdigit()} if _wl else set()
 
 # Paths exempt from bearer token auth (static assets + token endpoint)
-AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/telegram-app", "/favicon.ico", "/api/token", "/api/events", "/api/status", "/api/docs"}
+AUTH_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/swarm-dashboard.js", "/telegram-app", "/favicon.ico", "/api/token", "/api/events", "/api/status", "/api/docs"}
 
 
 def load_ruflo_recommendations():
@@ -1280,6 +1280,10 @@ class MasterDB:
     def get_repos(self):
         return [dict(r) for r in self.ex("SELECT * FROM repos ORDER BY name").fetchall()]
 
+    def get_repo(self, repo_id):
+        row = self.ex("SELECT * FROM repos WHERE id=?", (repo_id,)).fetchone()
+        return dict(row) if row else None
+
     def add_repo(self, name, path, github_url="", branch="main"):
         db_path = os.path.join(path, ".swarm-agent.db")
         self.ex("INSERT OR IGNORE INTO repos (name,path,db_path,github_url,branch) VALUES (?,?,?,?,?)",
@@ -1381,22 +1385,97 @@ class Runner:
     def __init__(self):
         self.has_claude = shutil.which("claude") is not None
         self.has_whisper = shutil.which("whisper") is not None
+        self._proc_lock = threading.Lock()
+        self._active_procs = {}  # pid -> {proc, repo_id}
 
     def _is_credit_error(self, text):
         t = text.lower()
         return any(p in t for p in self.CREDIT_PATTERNS)
 
-    def run_cmd(self, cmd, cwd=".", timeout=600):
+    def _register_proc(self, proc, repo_id=None):
+        with self._proc_lock:
+            self._active_procs[proc.pid] = {"proc": proc, "repo_id": repo_id}
+
+    def _unregister_proc(self, proc):
+        with self._proc_lock:
+            self._active_procs.pop(getattr(proc, "pid", None), None)
+
+    def _kill_process_tree(self, proc):
+        if not proc:
+            return
+        try:
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    shell=False,
+                    env=clean_env(),
+                )
+            else:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    def terminate_repo(self, repo_id):
+        with self._proc_lock:
+            procs = [meta.get("proc") for meta in self._active_procs.values() if meta.get("repo_id") == repo_id]
+        for proc in procs:
+            self._kill_process_tree(proc)
+
+    def terminate_all(self):
+        with self._proc_lock:
+            procs = [meta.get("proc") for meta in self._active_procs.values()]
+        for proc in procs:
+            self._kill_process_tree(proc)
+
+    def run_cmd(self, cmd, cwd=".", timeout=600, stop_event=None, repo_id=None):
         start = time.time()
         use_shell = sys.platform == "win32"
         try:
             env = clean_env()
             env["CLAUDE_SKIP_PERMISSIONS"] = "1"
-            r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                               shell=use_shell, env=env)
+            popen_cmd = subprocess.list2cmdline(cmd) if use_shell and isinstance(cmd, (list, tuple)) else cmd
+            creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if sys.platform == "win32" else 0
+            proc = subprocess.Popen(
+                popen_cmd,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                shell=use_shell,
+                env=env,
+                creationflags=creationflags,
+                start_new_session=(sys.platform != "win32"),
+            )
+            self._register_proc(proc, repo_id=repo_id)
+            timed_out = False
+            stopped = False
+            while True:
+                if stop_event and stop_event.is_set():
+                    stopped = True
+                    self._kill_process_tree(proc)
+                    break
+                if proc.poll() is not None:
+                    break
+                if time.time() - start > timeout:
+                    timed_out = True
+                    self._kill_process_tree(proc)
+                    break
+                time.sleep(0.2)
+            out, err = proc.communicate(timeout=10)
             elapsed = time.time() - start
-            out = r.stdout.strip()
-            err = r.stderr.strip()
+            out = (out or "").strip()
+            err = (err or "").strip()
+
+            if stopped:
+                return {"success": False, "stopped": True, "output": out, "error": "STOPPED", "elapsed": elapsed}
+            if timed_out:
+                return {"success": False, "output": out, "error": f"TIMEOUT {timeout}s", "elapsed": timeout}
 
             if self._is_credit_error(out + err):
                 return {"success": False, "credits_exhausted": True, "output": out,
@@ -1404,26 +1483,27 @@ class Runner:
 
             try:
                 parsed = json.loads(out)
-                return {"success": r.returncode == 0, "output": parsed.get("result", out),
-                        "raw": out, "elapsed": elapsed, "cost": parsed.get("cost_usd", 0)}
+                return {"success": proc.returncode == 0, "output": parsed.get("result", out),
+                        "raw": out, "elapsed": elapsed, "cost": parsed.get("cost_usd", 0), "exit_code": proc.returncode}
             except (json.JSONDecodeError, ValueError):
-                return {"success": r.returncode == 0, "output": out or err, "raw": out,
-                        "elapsed": elapsed, "error": err[:1000] if r.returncode != 0 else ""}
-        except subprocess.TimeoutExpired:
-            return {"success": False, "output": "", "error": f"TIMEOUT {timeout}s", "elapsed": timeout}
+                return {"success": proc.returncode == 0, "output": out or err, "raw": out,
+                        "elapsed": elapsed, "error": err[:1000] if proc.returncode != 0 else "", "exit_code": proc.returncode}
         except FileNotFoundError as e:
             return {"success": False, "output": "", "error": f"Not found: {e}", "elapsed": 0}
         except Exception as e:
             return {"success": False, "output": "", "error": str(e), "elapsed": 0}
+        finally:
+            if "proc" in locals():
+                self._unregister_proc(proc)
 
-    def claude(self, cwd, prompt, timeout=600, model=None):
+    def claude(self, cwd, prompt, timeout=600, model=None, stop_event=None, repo_id=None):
         return self.run_cmd(
             ["claude", "-p", prompt, "--model", model or CLAUDE_MODEL,
              "--output-format", "json", "--dangerously-skip-permissions"],
-            cwd=cwd, timeout=timeout,
+            cwd=cwd, timeout=timeout, stop_event=stop_event, repo_id=repo_id,
         )
 
-    def claude_retry(self, cwd, prompt, retries=3, timeout=600, model=None, repo_id=None):
+    def claude_retry(self, cwd, prompt, retries=3, timeout=600, model=None, repo_id=None, stop_event=None):
         import random
         cb = get_circuit_breaker(repo_id) if repo_id else None
         for i in range(retries):
@@ -1431,8 +1511,10 @@ class Runner:
                 log.warning(f"Circuit breaker OPEN for repo {repo_id}, skipping attempt {i+1}")
                 return {"success": False, "output": "", "error": "Circuit breaker open — too many failures",
                         "elapsed": 0, "circuit_breaker": True}
-            r = self.claude(cwd, prompt, timeout, model=model)
+            r = self.claude(cwd, prompt, timeout, model=model, stop_event=stop_event, repo_id=repo_id)
             if r.get("credits_exhausted"):
+                return r
+            if r.get("stopped"):
                 return r
             if r["success"]:
                 if cb:
@@ -1445,18 +1527,18 @@ class Runner:
             time.sleep(delay)
         return r
 
-    def ralph(self, cwd, prompt, max_iters=RALPH_ITERS, promise="TASK_COMPLETE", model=None):
+    def ralph(self, cwd, prompt, max_iters=RALPH_ITERS, promise="TASK_COMPLETE", model=None, stop_event=None, repo_id=None):
         rp = f'/ralph-loop "{prompt}" --max-iterations {max_iters} --completion-promise "{promise}"'
         cmd = ["claude", "-p", rp, "--dangerously-skip-permissions"]
         if model:
             cmd.extend(["--model", model])
-        return self.run_cmd(cmd, cwd=cwd, timeout=3600)
+        return self.run_cmd(cmd, cwd=cwd, timeout=3600, stop_event=stop_event, repo_id=repo_id)
 
-    def whisper(self, audio_path):
+    def whisper(self, audio_path, stop_event=None, repo_id=None):
         """Transcribe audio using Whisper."""
         if self.has_whisper:
             r = self.run_cmd(["whisper", audio_path, "--model", "base", "--output_format", "txt"],
-                             timeout=300)
+                             timeout=300, stop_event=stop_event, repo_id=repo_id)
             if r["success"]:
                 txt_path = audio_path.rsplit(".", 1)[0] + ".txt"
                 if os.path.exists(txt_path):
@@ -1475,10 +1557,10 @@ class Runner:
             log.debug(f"grep failed in {cwd}: {e}")
             return ""
 
-    def git_push(self, cwd, msg="auto: agent commit", branch="main"):
-        self.run_cmd(["git", "add", "-A"], cwd=cwd, timeout=30)
-        self.run_cmd(["git", "commit", "-m", msg, "--allow-empty"], cwd=cwd, timeout=30)
-        result = self.run_cmd(["git", "push", "origin", branch], cwd=cwd, timeout=120)
+    def git_push(self, cwd, msg="auto: agent commit", branch="main", stop_event=None, repo_id=None):
+        self.run_cmd(["git", "add", "-A"], cwd=cwd, timeout=30, stop_event=stop_event, repo_id=repo_id)
+        self.run_cmd(["git", "commit", "-m", msg, "--allow-empty"], cwd=cwd, timeout=30, stop_event=stop_event, repo_id=repo_id)
+        result = self.run_cmd(["git", "push", "origin", branch], cwd=cwd, timeout=120, stop_event=stop_event, repo_id=repo_id)
         if TELEGRAM_ENABLED:
             try:
                 from telegram_bot import send_message as tg_msg
@@ -1491,8 +1573,8 @@ class Runner:
                 log.debug(f"Telegram notify failed for git push: {e}")
         return result
 
-    def ruflo_init(self, cwd):
-        init_result = self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120)
+    def ruflo_init(self, cwd, stop_event=None, repo_id=None):
+        init_result = self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120, stop_event=stop_event, repo_id=repo_id)
         config_result = repair_ruflo_config(cwd, profile="minimal")
         output_parts = []
         if init_result.get("output"):
@@ -1509,37 +1591,37 @@ class Runner:
             "output": "\n".join(part for part in output_parts if part),
         }
 
-    def ruflo_setup(self, cwd):
+    def ruflo_setup(self, cwd, stop_event=None, repo_id=None):
         """Full Ruflo setup for a repo — init, memory, hooks."""
         if not os.path.exists(os.path.join(cwd, ".claude-flow")):
-            self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120)
-        self.run_cmd(["npx", "ruflo", "memory", "init"], cwd=cwd, timeout=60)
-        self.run_cmd(["npx", "ruflo", "hooks", "enable", "--all"], cwd=cwd, timeout=30)
+            self.run_cmd(["npx", "ruflo", "init"], cwd=cwd, timeout=120, stop_event=stop_event, repo_id=repo_id)
+        self.run_cmd(["npx", "ruflo", "memory", "init"], cwd=cwd, timeout=60, stop_event=stop_event, repo_id=repo_id)
+        self.run_cmd(["npx", "ruflo", "hooks", "enable", "--all"], cwd=cwd, timeout=30, stop_event=stop_event, repo_id=repo_id)
         repair_ruflo_config(cwd, profile="full")
 
-    def ruflo_swarm(self, cwd, topology="hierarchical", max_agents=4, agent_types=None):
+    def ruflo_swarm(self, cwd, topology="hierarchical", max_agents=4, agent_types=None, stop_event=None, repo_id=None):
         """Initialize a swarm with specific topology and agent types."""
         self.run_cmd(["npx", "ruflo", "hive-mind", "init",
                        "--topology", topology, "--max-agents", str(max_agents)],
-                      cwd=cwd, timeout=60)
+                      cwd=cwd, timeout=60, stop_event=stop_event, repo_id=repo_id)
         for atype in (agent_types or ["coder"]):
             self.run_cmd(["npx", "ruflo", "agent", "spawn", "-t", atype],
-                          cwd=cwd, timeout=60)
+                          cwd=cwd, timeout=60, stop_event=stop_event, repo_id=repo_id)
 
-    def ruflo_sparc(self, cwd, mode, objective, timeout=600):
+    def ruflo_sparc(self, cwd, mode, objective, timeout=600, stop_event=None, repo_id=None):
         """Run a SPARC task."""
         return self.run_cmd(["npx", "ruflo", "sparc", "run", mode, objective],
-                             cwd=cwd, timeout=timeout)
+                             cwd=cwd, timeout=timeout, stop_event=stop_event, repo_id=repo_id)
 
-    def ruflo_memory_store(self, cwd, key, value):
+    def ruflo_memory_store(self, cwd, key, value, stop_event=None, repo_id=None):
         """Store a value in Ruflo memory."""
         self.run_cmd(["npx", "ruflo", "memory", "store", key, value[:500]],
-                      cwd=cwd, timeout=15)
+                      cwd=cwd, timeout=15, stop_event=stop_event, repo_id=repo_id)
 
-    def ruflo_memory_search(self, cwd, query):
+    def ruflo_memory_search(self, cwd, query, stop_event=None, repo_id=None):
         """Search Ruflo memory."""
         r = self.run_cmd(["npx", "ruflo", "memory", "search", query, "--limit", "5"],
-                          cwd=cwd, timeout=15)
+                          cwd=cwd, timeout=15, stop_event=stop_event, repo_id=repo_id)
         return r.get("output", "")
 
     def ruflo_quality_gate(self, cwd, check_type="full"):
@@ -1630,6 +1712,14 @@ Do NOT repeat these mistakes. If you encounter similar issues, use a different a
             time.sleep(POLL_SEC)
             return State.IDLE
 
+        # First-run bootstrap: seed a real backlog so new repos do not sit idle forever.
+        counts = self.db.get_item_counts()
+        if self.state.cycle_count == 0 and counts.get("total", 0) == 0 and not self.db.all_steps():
+            seeded = seed_repo_backlog(self.repo, self.db)
+            if seeded.get("added", 0) > 0:
+                log.info(f"🧭 [{self.repo['name']}] Seeded initial backlog with {seeded['added']} item(s)")
+                return State.CHECK_REFACTOR
+
         audio = self.db.pending_audio()
         if audio:
             return State.CHECK_AUDIO
@@ -1669,7 +1759,7 @@ Do NOT repeat these mistakes. If you encounter similar issues, use a different a
 
         for a in audio:
             log.info(f"🎤 Transcribing: {a['filename']}")
-            transcript = runner.whisper(a["filename"])
+            transcript = runner.whisper(a["filename"], stop_event=self.stop_event, repo_id=self.repo["id"])
             if not transcript or not transcript.strip():
                 log.warning(f"Empty transcript for {a['filename']}, marking as processed")
                 self.db.ex("UPDATE audio_reviews SET transcript='[empty]',status='processed',"
@@ -1699,7 +1789,7 @@ Transcription:
 Return ONLY a JSON array:
 [{{"type": "issue"|"feature", "title": "short title", "description": "detailed description", "priority": "low"|"medium"|"high"|"critical"}}]"""
 
-            result = runner.claude_retry(self.repo["path"], prompt, model="claude-haiku-4-5-20251001", repo_id=self.repo["id"])
+            result = runner.claude_retry(self.repo["path"], prompt, model="claude-haiku-4-5-20251001", repo_id=self.repo["id"], stop_event=self.stop_event)
             if self._handle_credits(result):
                 return State.CREDITS_EXHAUSTED
 
@@ -1742,12 +1832,18 @@ Return ONLY a JSON array:
         self.save()
 
         # Full Ruflo setup + hierarchical swarm for refactoring
-        runner.ruflo_setup(self.repo["path"])
-        runner.ruflo_swarm(self.repo["path"], "hierarchical", 4,
-                           ["architect", "coder", "reviewer"])
+        runner.ruflo_setup(self.repo["path"], stop_event=self.stop_event, repo_id=self.repo["id"])
+        runner.ruflo_swarm(
+            self.repo["path"],
+            "hierarchical",
+            4,
+            ["architect", "coder", "reviewer"],
+            stop_event=self.stop_event,
+            repo_id=self.repo["id"],
+        )
 
         # Search Ruflo memory for prior context
-        prior = runner.ruflo_memory_search(self.repo["path"], "refactor structure")
+        prior = runner.ruflo_memory_search(self.repo["path"], "refactor structure", stop_event=self.stop_event, repo_id=self.repo["id"])
 
         prompt = self._with_mistake_context(
             "Refactor this repository per best practices: ensure CLAUDE.md exists, "
@@ -1755,7 +1851,7 @@ Return ONLY a JSON array:
             "Do NOT change business logic. Output REFACTOR_COMPLETE when done."
             + (f"\n\nPrior context from memory:\n{prior}" if prior else "")
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="REFACTOR_COMPLETE", model="claude-opus-4-6")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="REFACTOR_COMPLETE", model="claude-opus-4-6", stop_event=self.stop_event, repo_id=self.repo["id"])
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -1764,14 +1860,14 @@ Return ONLY a JSON array:
 
         if result["success"]:
             self.state.refactor_done = True
-            runner.ruflo_memory_store(self.repo["path"], "refactor/result", "SUCCESS: refactoring complete")
+            runner.ruflo_memory_store(self.repo["path"], "refactor/result", "SUCCESS: refactoring complete", stop_event=self.stop_event, repo_id=self.repo["id"])
             if self.repo.get("github_url"):
-                runner.git_push(self.repo["path"], "refactor: initial structure", self.repo.get("branch","main"))
+                runner.git_push(self.repo["path"], "refactor: initial structure", self.repo.get("branch","main"), stop_event=self.stop_event, repo_id=self.repo["id"])
         else:
             err = result.get("error", "unknown error")
             log.warning(f"⚠️ [{self.repo['name']}] Refactor failed: {err[:200]}")
             self.db.log_mistake("refactor_failed", err[:500])
-            runner.ruflo_memory_store(self.repo["path"], "refactor/result", f"FAIL: {err[:200]}")
+            runner.ruflo_memory_store(self.repo["path"], "refactor/result", f"FAIL: {err[:200]}", stop_event=self.stop_event, repo_id=self.repo["id"])
             # Still mark done to avoid infinite retry, but log the skip
             self.state.refactor_done = True
 
@@ -1803,7 +1899,7 @@ Return ONLY a JSON array:
         self.save()
 
         # Use analyst + architect for planning
-        runner.ruflo_swarm(self.repo["path"], "mesh", 2, ["analyst", "architect"])
+        runner.ruflo_swarm(self.repo["path"], "mesh", 2, ["analyst", "architect"], stop_event=self.stop_event, repo_id=self.repo["id"])
 
         pending = self.db.get_pending_items()
         existing = self.db.pending_steps()
@@ -1833,7 +1929,7 @@ Agent types: researcher, coder, analyst, tester, architect, reviewer, optimizer
 
 Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"""
 
-        result = runner.claude_retry(self.repo["path"], prompt, model="claude-opus-4-6", repo_id=self.repo["id"])
+        result = runner.claude_retry(self.repo["path"], prompt, model="claude-opus-4-6", repo_id=self.repo["id"], stop_event=self.stop_event)
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -1864,7 +1960,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         remaining = self.db.pending_steps()
         if not remaining:
             if self.repo.get("github_url"):
-                runner.git_push(self.repo["path"], "feat: plan completed", self.repo.get("branch","main"))
+                runner.git_push(self.repo["path"], "feat: plan completed", self.repo.get("branch","main"), stop_event=self.stop_event, repo_id=self.repo["id"])
             return State.IDLE
         return State.EXECUTE_STEP
 
@@ -1893,12 +1989,12 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             sparc_mode = "dev"
 
         num_agents = len(agent_types) + 2
-        runner.ruflo_setup(self.repo["path"])
-        runner.ruflo_swarm(self.repo["path"], "hierarchical", num_agents, agent_types)
+        runner.ruflo_setup(self.repo["path"], stop_event=self.stop_event, repo_id=self.repo["id"])
+        runner.ruflo_swarm(self.repo["path"], "hierarchical", num_agents, agent_types, stop_event=self.stop_event, repo_id=self.repo["id"])
         self.state.active_agents = num_agents
 
         # Search Ruflo memory for prior context
-        prior = runner.ruflo_memory_search(self.repo["path"], step["description"][:50])
+        prior = runner.ruflo_memory_search(self.repo["path"], step["description"][:50], stop_event=self.stop_event, repo_id=self.repo["id"])
 
         prompt = self._with_mistake_context(
             f"Complete: {step['description']}\n\n"
@@ -1906,7 +2002,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             "Output STEP_COMPLETE when done."
             + (f"\n\nPrior context from memory:\n{prior}" if prior else "")
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=20, promise="STEP_COMPLETE", model="claude-sonnet-4-6")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=20, promise="STEP_COMPLETE", model="claude-sonnet-4-6", stop_event=self.stop_event, repo_id=self.repo["id"])
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -1929,8 +2025,13 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         self._step_exec_dur = dur
 
         # Store in Ruflo memory
-        runner.ruflo_memory_store(self.repo["path"], f"step/{step['id']}/result",
-                                  f"{'OK' if result['success'] else 'FAIL'}: {step['description'][:100]}")
+        runner.ruflo_memory_store(
+            self.repo["path"],
+            f"step/{step['id']}/result",
+            f"{'OK' if result['success'] else 'FAIL'}: {step['description'][:100]}",
+            stop_event=self.stop_event,
+            repo_id=self.repo["id"],
+        )
 
         return State.TEST_STEP
 
@@ -1946,7 +2047,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
         self.save()
 
         # Use TDD-focused swarm
-        runner.ruflo_swarm(self.repo["path"], "mesh", 3, ["tester", "tester"])
+        runner.ruflo_swarm(self.repo["path"], "mesh", 3, ["tester", "tester"], stop_event=self.stop_event, repo_id=self.repo["id"])
 
         prompt = self._with_mistake_context(
             f"You implemented: {step['description']}\n\n"
@@ -1955,7 +2056,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             "3. Fix ALL failures\n"
             "Output TESTS_COMPLETE when all pass."
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=15, promise="TESTS_COMPLETE", model="claude-sonnet-4-6")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=15, promise="TESTS_COMPLETE", model="claude-sonnet-4-6", stop_event=self.stop_event, repo_id=self.repo["id"])
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -1987,9 +2088,13 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             gate = runner.ruflo_quality_gate(self.repo["path"], "test")
             if not gate["passed"]:
                 log.warning(f"⚠️ [{self.repo['name']}] Quality gate failed after step {sid}, pushing anyway")
-            runner.git_push(self.repo["path"],
-                            f"feat: {step['description'][:40]} + {tw} tests",
-                            self.repo.get("branch","main"))
+            runner.git_push(
+                self.repo["path"],
+                f"feat: {step['description'][:40]} + {tw} tests",
+                self.repo.get("branch","main"),
+                stop_event=self.stop_event,
+                repo_id=self.repo["id"],
+            )
         return State.CHECK_STEPS_LEFT
 
     def h_check_steps_left(self):
@@ -2016,7 +2121,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             "Optimization: dead code removal, dedup, tree shaking (grep for unused). "
             "Output OPTIMIZE_COMPLETE when done."
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="OPTIMIZE_COMPLETE", model="claude-haiku-4-5-20251001")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="OPTIMIZE_COMPLETE", model="claude-haiku-4-5-20251001", stop_event=self.stop_event, repo_id=self.repo["id"])
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
         self.log("optimize", result.get("output","")[:300], cost=result.get("cost", 0))
@@ -2025,12 +2130,12 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             if not gate["passed"]:
                 log.warning(f"⚠️ [{self.repo['name']}] Quality gate failed after optimize: {gate['checks']}")
                 # Stash broken changes so we don't push broken code
-                runner.run_cmd(["git", "stash", "--include-untracked"], cwd=self.repo["path"], timeout=30)
+                runner.run_cmd(["git", "stash", "--include-untracked"], cwd=self.repo["path"], timeout=30, stop_event=self.stop_event, repo_id=self.repo["id"])
                 self.db.log_mistake("quality_gate_fail", f"Optimization broke quality gate: {gate['checks']}",
                                     state_snapshot="optimize")
                 log.warning(f"⚠️ [{self.repo['name']}] Changes stashed due to gate failure")
             else:
-                runner.git_push(self.repo["path"], "refactor: optimization pass", self.repo.get("branch","main"))
+                runner.git_push(self.repo["path"], "refactor: optimization pass", self.repo.get("branch","main"), stop_event=self.stop_event, repo_id=self.repo["id"])
         return State.SCAN_REPO
 
     def h_scan_repo(self):
@@ -2040,7 +2145,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             "Full scan: run all tests, check imports, verify build, update CLAUDE.md. "
             "Fix any issues. Output SCAN_COMPLETE."
         )
-        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="SCAN_COMPLETE", model="claude-haiku-4-5-20251001")
+        result = runner.ralph(self.repo["path"], prompt, max_iters=10, promise="SCAN_COMPLETE", model="claude-haiku-4-5-20251001", stop_event=self.stop_event, repo_id=self.repo["id"])
         if self._handle_credits(result):
             return State.CREDITS_EXHAUSTED
 
@@ -2055,7 +2160,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
             gate = runner.ruflo_quality_gate(self.repo["path"], "full")
             if not gate["passed"]:
                 log.warning(f"⚠️ [{self.repo['name']}] Quality gate failed on final scan: {gate['checks']}")
-            runner.git_push(self.repo["path"], "chore: final scan passed", self.repo.get("branch","main"))
+            runner.git_push(self.repo["path"], "chore: final scan passed", self.repo.get("branch","main"), stop_event=self.stop_event, repo_id=self.repo["id"])
 
         self.state.cycle_count += 1
         self.state.active_agents = 0
@@ -2207,6 +2312,10 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
                 except Exception as tg_err:
                     log.debug(f"Telegram error notify failed: {tg_err}")
         finally:
+            if self.stop_event.is_set():
+                self.state.current_state = State.IDLE
+                self.state.active_agents = 0
+                self.state.paused_state = ""
             self.state.running = False
             self.save()
             self.master.set_running(self.repo["id"], False)
@@ -2214,6 +2323,7 @@ Return ONLY JSON: [{{"description":"...","item_id":null,"agent_type":"coder"}}]"
 
     def stop(self):
         self.stop_event.set()
+        runner.terminate_repo(self.repo["id"])
 
     def pause(self):
         self.pause_event.set()
@@ -2249,7 +2359,31 @@ class Manager:
         self._db_cache_lock = threading.Lock()
         self._thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="swarm-pool")
 
+    def reset_startup_runtime(self):
+        """Server-only startup must not inherit stale in-flight runtime state."""
+        self.orchestrators.clear()
+        self.threads.clear()
+        now = time.time()
+        for repo in self.master.get_repos():
+            try:
+                self.master.set_running(repo["id"], False)
+                db = self.get_repo_db(repo["id"])
+                if not db:
+                    continue
+                state = db.load_state()
+                state.running = False
+                state.active_agents = 0
+                state.paused_state = ""
+                state.current_state = State.IDLE
+                state.last_activity = now
+                db.save_state(state)
+            except Exception as e:
+                log.warning("Failed to reset startup runtime for repo %s: %s", repo.get("name", repo.get("id")), e)
+        _response_cache.clear()
+
     def start_repo(self, repo_id):
+        if not has_active_dashboard_sessions():
+            return {"ok": False, "error": "Dashboard must be open before starting repo work"}
         if repo_id in self.threads and self.threads[repo_id].is_alive():
             return {"ok": False, "error": "Already running"}
 
@@ -2263,23 +2397,27 @@ class Manager:
         t = threading.Thread(target=orch.run, name=f"repo-{repo['name']}", daemon=True)
         self.threads[repo_id] = t
         t.start()
+        _response_cache.clear()
         return {"ok": True}
 
     def stop_repo(self, repo_id):
         if repo_id in self.orchestrators:
             self.orchestrators[repo_id].stop()
+            _response_cache.clear()
             return {"ok": True}
         return {"ok": False, "error": "Not running"}
 
     def pause_repo(self, repo_id):
         if repo_id in self.orchestrators:
             self.orchestrators[repo_id].pause()
+            _response_cache.clear()
             return {"ok": True}
         return {"ok": False, "error": "Not running"}
 
     def resume_repo(self, repo_id):
         if repo_id in self.orchestrators:
             self.orchestrators[repo_id].resume()
+            _response_cache.clear()
             return {"ok": True}
         return {"ok": False, "error": "Not running"}
 
@@ -2292,6 +2430,7 @@ class Manager:
     def stop_all(self):
         for rid in list(self.orchestrators):
             self.stop_repo(rid)
+        runner.terminate_all()
         # Wait for threads to finish (5s max per thread)
         for rid, t in list(self.threads.items()):
             t.join(timeout=5)
@@ -2313,6 +2452,7 @@ class Manager:
             self._thread_pool.shutdown(wait=False)
         except Exception:
             pass
+        _response_cache.clear()
 
     def get_repo_db(self, repo_id) -> Optional[RepoDB]:
         repos = self.master.get_repos()
@@ -2325,6 +2465,30 @@ class Manager:
             if db_path not in self._db_cache:
                 self._db_cache[db_path] = RepoDB(db_path)
             return self._db_cache[db_path]
+
+    def get_runtime_status(self, repo_id):
+        orch = self.orchestrators.get(repo_id)
+        thread = self.threads.get(repo_id)
+        alive = bool(thread and thread.is_alive())
+        paused = bool(orch.is_paused) if orch else False
+        if not alive or not orch:
+            return {"managed": False, "busy": False, "paused": False}
+        current_state = orch.state.current_state
+        current_value = current_state.value if isinstance(current_state, State) else str(current_state or "")
+        busy = bool(orch.state.running and not paused and current_value not in {State.IDLE.value, State.CREDITS_EXHAUSTED.value})
+        managed = bool(orch.state.running and alive)
+        return {"managed": managed, "busy": busy, "paused": paused}
+
+    def count_runtime_repos(self):
+        managed = 0
+        busy = 0
+        paused = 0
+        for repo in self.master.get_repos():
+            runtime = self.get_runtime_status(repo["id"])
+            managed += 1 if runtime["managed"] else 0
+            busy += 1 if runtime["busy"] else 0
+            paused += 1 if runtime["paused"] else 0
+        return {"managed": managed, "busy": busy, "paused": paused}
 
     def get_repo_state(self, repo_id) -> dict:
         repo = next((r for r in self.master.get_repos() if r["id"] == repo_id), None)
@@ -2546,6 +2710,49 @@ def scan_repo_health(repo):
     score = max(0, min(100, int((1 - deductions / total_checks) * 100)))
 
     return {"repo_id": repo["id"], "repo_name": repo["name"], "health_score": score, "issues": issues, "path": path}
+
+
+def seed_repo_backlog(repo, db):
+    """Create initial actionable items for a newly started repo."""
+    counts = db.get_item_counts()
+    if counts.get("total", 0) > 0:
+        return {"added": 0, "seeded": False}
+
+    report = scan_repo_health(repo)
+    issues = report.get("issues", [])
+    added = 0
+    seen_titles = set()
+    for issue in issues:
+        title = (issue.get("title") or "").strip()
+        if not title or title in seen_titles:
+            continue
+        seen_titles.add(title)
+        db.add_item(
+            issue.get("type", "issue"),
+            title[:120],
+            (issue.get("description") or title)[:2000],
+            issue.get("priority", "medium"),
+            source="bootstrap",
+        )
+        added += 1
+
+    if added == 0:
+        ptype_info = detect_project_type(repo["path"])
+        stack = ", ".join(ptype_info.get("stack", [])[:4]) or ptype_info.get("type", "project")
+        db.add_item(
+            "feature",
+            "Create initial roadmap",
+            f"Analyze the current {stack} codebase, identify the highest-value work, and create an executable initial plan.",
+            "high",
+            source="bootstrap",
+        )
+        added = 1
+
+    db.mem_store("bootstrap", "initial_backlog_seed", {
+        "added": added,
+        "seeded_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"added": added, "seeded": True}
 
 
 def fix_repo_issue(repo, issue):
@@ -2892,6 +3099,8 @@ def handle_chat_command(message):
 # ─── API Server ───────────────────────────────────────────────────────────────
 
 STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
+DASHBOARD_JSX = os.path.join(STATIC_DIR, "swarm-dashboard.jsx")
+DASHBOARD_JS = os.path.join(STATIC_DIR, "swarm-dashboard.js")
 
 MIME_TYPES = {
     ".html": "text/html",
@@ -2904,13 +3113,48 @@ MIME_TYPES = {
 }
 
 
+def ensure_dashboard_bundle(force: bool = False) -> bool:
+    """Build the browser bundle when the JSX source changes."""
+    try:
+        if not os.path.exists(DASHBOARD_JSX):
+            return False
+        if not force and os.path.exists(DASHBOARD_JS):
+            if os.path.getmtime(DASHBOARD_JS) >= os.path.getmtime(DASHBOARD_JSX):
+                return True
+        result = subprocess.run(
+            [
+                "npx",
+                "esbuild",
+                DASHBOARD_JSX,
+                f"--outfile={DASHBOARD_JS}",
+                "--format=iife",
+                "--platform=browser",
+                "--jsx=transform",
+                "--jsx-factory=React.createElement",
+                "--jsx-fragment=React.Fragment",
+            ],
+            cwd=STATIC_DIR,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            log.error("Dashboard bundle build failed: %s", (result.stderr or result.stdout).strip()[:400])
+            return False
+        return True
+    except Exception as e:
+        log.error("Dashboard bundle build failed: %s", e)
+        return False
+
+
 # ─── Rate Limiting ────────────────────────────────────────────────────────────
 
 _rate_limits = {}  # ip -> [timestamps]
 _rate_lock = threading.Lock()
 RATE_LIMIT_RPM = int(os.environ.get("RATE_LIMIT_RPM", "120"))  # requests per minute
-RATE_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/favicon.ico", "/api/events",
-                      "/api/token", "/telegram-app", "/api/status"}
+RATE_EXEMPT_PATHS = {"/", "/index.html", "/swarm-dashboard.jsx", "/swarm-dashboard.js", "/favicon.ico", "/api/events",
+                     "/api/token", "/telegram-app", "/api/status",
+                     "/api/app/session/open", "/api/app/session/heartbeat", "/api/app/session/close"}
 
 
 RATE_STRICT_PATHS = {"/api/chat", "/api/bridge/inbox", "/api/bridge/outbox"}
@@ -2921,6 +3165,8 @@ _rate_strict = {}  # ip:path -> [timestamps]
 def _check_rate_limit(ip, path):
     """Return True if request is allowed, False if rate-limited."""
     path = path.rstrip("/") or "/"  # Normalize trailing slashes
+    if ip in {"127.0.0.1", "::1", "::ffff:127.0.0.1"}:
+        return True
     if path in RATE_EXEMPT_PATHS:
         return True
     now = time.time()
@@ -2943,6 +3189,80 @@ def _check_rate_limit(ip, path):
             return False
         _rate_limits[ip].append(now)
         return True
+
+
+DASHBOARD_SESSION_TTL_SEC = int(os.environ.get("DASHBOARD_SESSION_TTL_SEC", "20"))
+_dashboard_sessions = {}
+_dashboard_session_lock = threading.Lock()
+
+
+def _prune_dashboard_sessions(now=None):
+    now = now or time.time()
+    stale = []
+    with _dashboard_session_lock:
+        for session_id, meta in list(_dashboard_sessions.items()):
+            if now - meta.get("last_seen", 0) > DASHBOARD_SESSION_TTL_SEC:
+                stale.append(session_id)
+        for session_id in stale:
+            _dashboard_sessions.pop(session_id, None)
+        return len(_dashboard_sessions)
+
+
+def touch_dashboard_session(session_id, meta=None):
+    if not session_id:
+        return None
+    now = time.time()
+    with _dashboard_session_lock:
+        current = dict(_dashboard_sessions.get(session_id) or {})
+        current.update(meta or {})
+        current["last_seen"] = now
+        _dashboard_sessions[session_id] = current
+        return {"session_id": session_id, "count": len(_dashboard_sessions), "last_seen": now}
+
+
+def close_dashboard_session(session_id):
+    if not session_id:
+        return {"closed": False, "count": _prune_dashboard_sessions()}
+    with _dashboard_session_lock:
+        _dashboard_sessions.pop(session_id, None)
+        return {"closed": True, "count": len(_dashboard_sessions)}
+
+
+def get_dashboard_session_snapshot():
+    count = _prune_dashboard_sessions()
+    with _dashboard_session_lock:
+        return {
+            "count": count,
+            "sessions": [
+                {
+                    "session_id": session_id,
+                    "path": meta.get("path", ""),
+                    "visible": bool(meta.get("visible", True)),
+                    "last_seen": meta.get("last_seen", 0),
+                }
+                for session_id, meta in _dashboard_sessions.items()
+            ],
+        }
+
+
+def has_active_dashboard_sessions():
+    return get_dashboard_session_snapshot()["count"] > 0
+
+
+def dashboard_session_watchdog():
+    last_count = None
+    while True:
+        time.sleep(5)
+        snapshot = get_dashboard_session_snapshot()
+        count = snapshot["count"]
+        if count != last_count:
+            sse_broadcast("dashboard_presence", {"active": count > 0, "count": count})
+            last_count = count
+        if count == 0:
+            active_threads = any(t.is_alive() for t in getattr(manager, "threads", {}).values())
+            if active_threads:
+                log.info("No active dashboard sessions remain; stopping all repo work")
+                manager.stop_all()
 
 
 # ─── Request Metrics ──────────────────────────────────────────────────────────
@@ -3031,7 +3351,13 @@ class API(BaseHTTPRequestHandler):
 
     def _check_auth(self):
         """Three-layer auth check. Returns True if authorized, False if denied (response already sent)."""
-        p = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        p = parsed.path
+        q = parse_qs(parsed.query)
+
+        # EventSource cannot send Authorization headers. Some browser lifecycle APIs are also header-limited.
+        if p in {"/api/events", "/api/app/session/open", "/api/app/session/heartbeat", "/api/app/session/close"} and q.get("token", [""])[0] == API_TOKEN:
+            return True
 
         # Exempt paths don't need bearer token
         if p in AUTH_EXEMPT_PATHS:
@@ -3138,9 +3464,13 @@ class API(BaseHTTPRequestHandler):
 
         # Static file serving
         if path == "/" or path == "/index.html":
+            ensure_dashboard_bundle()
             return self._serve_file(os.path.join(STATIC_DIR, "index.html"))
         if path == "/swarm-dashboard.jsx":
             return self._serve_file(os.path.join(STATIC_DIR, "swarm-dashboard.jsx"))
+        if path == "/swarm-dashboard.js":
+            ensure_dashboard_bundle()
+            return self._serve_file(os.path.join(STATIC_DIR, "swarm-dashboard.js"))
         if path == "/favicon.ico":
             self.send_response(204)
             self.send_header("Content-Length", "0")
@@ -3234,10 +3564,12 @@ class API(BaseHTTPRequestHandler):
                     r["cycle_count"] = st.cycle_count
                     r["active_agents"] = st.active_agents
                     # Check actual thread state, not stale DB value
+                    runtime = manager.get_runtime_status(r["id"])
+                    r["managed"] = runtime["managed"]
+                    r["busy"] = runtime["busy"]
+                    r["running"] = runtime["managed"]
+                    r["paused"] = runtime["paused"]
                     orch = manager.orchestrators.get(r["id"])
-                    thread_alive = r["id"] in manager.threads and manager.threads[r["id"]].is_alive()
-                    r["running"] = thread_alive and st.running
-                    r["paused"] = orch.is_paused if orch else False
                     r["last_activity"] = orch.state.last_activity if orch else 0
                     # Combined queries for all counts (5 queries → 2)
                     ic = db.get_item_counts()
@@ -3513,7 +3845,7 @@ class API(BaseHTTPRequestHandler):
                 for row in rows:
                     row["repo_id"] = r["id"]
                     row["repo_name"] = r["name"]
-                errors.append(row)
+                    errors.append(row)
             errors.sort(key=lambda e: e.get("created_at", ""), reverse=True)
             return self._json({"errors": errors[:limit]})
 
@@ -3696,7 +4028,7 @@ class API(BaseHTTPRequestHandler):
             hrs, rem = divmod(int(uptime_sec), 3600)
             mins, secs = divmod(rem, 60)
             repos = manager.master.get_repos()
-            running = sum(1 for r in repos if r.get("running"))
+            runtime_counts = manager.count_runtime_repos()
             with _sse_lock:
                 sse_count = len(_sse_clients)
             costs = get_costs()
@@ -3715,8 +4047,11 @@ class API(BaseHTTPRequestHandler):
                 "uptime": f"{hrs}h {mins}m {secs}s",
                 "uptime_seconds": int(uptime_sec),
                 "repos_total": len(repos),
-                "repos_running": running,
+                "repos_running": runtime_counts["busy"],
+                "repos_managed": runtime_counts["managed"],
+                "repos_paused": runtime_counts["paused"],
                 "sse_clients": sse_count,
+                "dashboard_sessions": get_dashboard_session_snapshot()["count"],
                 "total_cost": sum(costs.values()),
                 "circuit_breakers": cb_summary,
                 "threads": threading.active_count(),
@@ -3727,6 +4062,7 @@ class API(BaseHTTPRequestHandler):
 
         if path == "/api/system":
             repos = manager.master.get_repos()
+            runtime_counts = manager.count_runtime_repos()
             costs = get_costs()
             total_items = 0
             done_items = 0
@@ -3746,8 +4082,9 @@ class API(BaseHTTPRequestHandler):
                 total_mistakes += s.get("mistakes", 0)
             return self._json({
                 "repos": len(repos),
-                "running": sum(1 for r in repos if r.get("running")),
-                "paused": sum(1 for r in repos if r.get("paused")),
+                "running": runtime_counts["busy"],
+                "managed": runtime_counts["managed"],
+                "paused": runtime_counts["paused"],
                 "total_items": total_items,
                 "done_items": done_items,
                 "total_steps": total_steps,
@@ -3765,7 +4102,7 @@ class API(BaseHTTPRequestHandler):
             hrs, rem = divmod(int(uptime_sec), 3600)
             mins, secs = divmod(rem, 60)
             repos_list = manager.master.get_repos()
-            running = sum(1 for r in repos_list if r.get("running"))
+            runtime_counts = manager.count_runtime_repos()
             costs = get_costs()
             repos_out = []
             for r in repos_list:
@@ -3788,7 +4125,9 @@ class API(BaseHTTPRequestHandler):
                 "status": {
                     "uptime": f"{hrs}h {mins}m {secs}s",
                     "repos_total": len(repos_list),
-                    "repos_running": running,
+                    "repos_running": runtime_counts["busy"],
+                    "repos_managed": runtime_counts["managed"],
+                    "repos_paused": runtime_counts["paused"],
                     "total_cost": sum(costs.values()),
                     "version": "3.0",
                 },
@@ -4254,6 +4593,25 @@ class API(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         b = self._body()
 
+        if path in {"/api/app/session/open", "/api/app/session/heartbeat", "/api/app/session/close"}:
+            session_id = (b.get("session_id") or "").strip()[:100]
+            if path == "/api/app/session/close":
+                result = close_dashboard_session(session_id)
+                if result["count"] == 0:
+                    manager.stop_all()
+                return self._json({"ok": True, **result})
+            result = touch_dashboard_session(
+                session_id,
+                {
+                    "path": b.get("path", "")[:120],
+                    "visible": b.get("visible", True),
+                    "user_agent": self.headers.get("User-Agent", "")[:200],
+                },
+            )
+            if not result:
+                return self._json({"error": "session_id required"}, 400)
+            return self._json({"ok": True, **result})
+
         if path == "/api/token/rotate":
             global API_TOKEN
             old_token = API_TOKEN
@@ -4423,9 +4781,9 @@ class API(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)[:200]}, 500)
 
         if path == "/api/start":
-            rid = _safe_int(b.get("repo_id"))
+            rid_raw = b.get("repo_id")
             tag = b.get("tag")
-            if rid == "all":
+            if rid_raw == "all":
                 return self._json(manager.start_all())
             if tag:
                 # Start all repos with this tag
@@ -4437,15 +4795,15 @@ class API(BaseHTTPRequestHandler):
                         if res.get("ok"):
                             started.append(r["name"])
                 return self._json({"ok": True, "started": started, "tag": tag})
-            rid_int = self._safe_int(rid)
+            rid_int = self._safe_int(rid_raw)
             if rid_int is None:
                 return self._json({"error": "repo_id required (integer or 'all')"}, 400)
             return self._json(manager.start_repo(rid_int))
 
         if path == "/api/stop":
-            rid = _safe_int(b.get("repo_id"))
+            rid_raw = b.get("repo_id")
             tag = b.get("tag")
-            if rid == "all":
+            if rid_raw == "all":
                 manager.stop_all()
                 return self._json({"ok": True})
             if tag:
@@ -4456,7 +4814,7 @@ class API(BaseHTTPRequestHandler):
                         manager.stop_repo(r["id"])
                         stopped.append(r["name"])
                 return self._json({"ok": True, "stopped": stopped, "tag": tag})
-            rid_int = self._safe_int(rid)
+            rid_int = self._safe_int(rid_raw)
             if rid_int is None:
                 return self._json({"error": "repo_id required (integer or 'all')"}, 400)
             return self._json(manager.stop_repo(rid_int))
@@ -5243,8 +5601,33 @@ def digest_scheduler():
         time.sleep(300)  # Check every 5 minutes
 
 
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+    allow_reuse_port = False
+
+
+def _find_listening_pid(port):
+    try:
+        import psutil
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == port:
+                if conn.pid and conn.pid != os.getpid():
+                    return conn.pid
+    except Exception:
+        return None
+    return None
+
+
 def serve():
-    s = ThreadingHTTPServer(("0.0.0.0", API_PORT), API)
+    try:
+        s = ExclusiveThreadingHTTPServer(("0.0.0.0", API_PORT), API)
+    except OSError as exc:
+        owner_pid = _find_listening_pid(API_PORT)
+        if owner_pid:
+            log.error(f"API port {API_PORT} is already in use by PID {owner_pid}. Stop the existing server before starting another.")
+        else:
+            log.error(f"API port {API_PORT} is unavailable: {exc}")
+        return
     log.info(f"🌐 API on http://localhost:{API_PORT}")
     if PUBLIC_URL:
         log.info(f"🌍 Public URL: {PUBLIC_URL}")
@@ -5264,6 +5647,10 @@ def main():
     ap.add_argument("--telegram", action="store_true", help="Enable Telegram bot")
     args = ap.parse_args()
 
+    # Never inherit stale runtime state across app restarts.
+    manager.reset_startup_runtime()
+    ensure_dashboard_bundle()
+
     # Start API server
     st = threading.Thread(target=serve, daemon=True)
     st.start()
@@ -5276,6 +5663,10 @@ def main():
     wt = threading.Thread(target=manager.watchdog, name="watchdog", daemon=True)
     wt.start()
 
+    # Stop repo work when the dashboard is no longer open anywhere.
+    dwt = threading.Thread(target=dashboard_session_watchdog, name="dashboard-watchdog", daemon=True)
+    dwt.start()
+
     # Start Telegram bot if requested
     if args.telegram:
         TELEGRAM_ENABLED = True
@@ -5287,8 +5678,8 @@ def main():
             log.error(f"Telegram bot failed to start: {e}")
 
     if args.start_all:
-        manager.start_all()
-        log.info("🚀 All repos started. Press Ctrl+C to stop.")
+        log.info("Start-all requested")
+        log.info("Start-all result: %s", manager.start_all())
 
     # Graceful shutdown handler for SIGTERM (Docker, systemd, etc.)
     _shutdown_event = threading.Event()
@@ -5319,3 +5710,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+

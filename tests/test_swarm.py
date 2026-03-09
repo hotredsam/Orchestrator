@@ -1043,12 +1043,17 @@ class TestAPIEndpoints:
         r = urlopen("http://localhost:6969/")
         html = r.read().decode()
         assert "react" in html.lower()
-        assert "swarm-dashboard.jsx" in html
+        assert "swarm-dashboard.js" in html
 
     def test_140_dashboard_serves_jsx(self):
         r = urlopen("http://localhost:6969/swarm-dashboard.jsx")
         jsx = r.read().decode()
         assert "Dashboard" in jsx or "function" in jsx
+
+    def test_140b_dashboard_serves_compiled_js(self):
+        r = urlopen("http://localhost:6969/swarm-dashboard.js")
+        js = r.read().decode()
+        assert "ReactDOM.createRoot" in js or "createRoot" in js
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3278,3 +3283,124 @@ class TestEdgeCasesIntegration:
         r = detect_project_type("/nonexistent/xyz/path")
         assert r["type"] == "unknown"
         assert r["file_count"] == 0
+
+
+class TestDashboardRegressionGuards:
+    def test_521_plan_stats_declared_before_tab_badges(self, project_dir):
+        jsx = Path(project_dir, "swarm-dashboard.jsx").read_text(encoding="utf-8")
+        assert jsx.index("const planStats = useMemo") < jsx.index("const tabBadges = useMemo")
+
+    def test_522_dashboard_load_normalizes_api_shapes(self, project_dir):
+        jsx = Path(project_dir, "swarm-dashboard.jsx").read_text(encoding="utf-8")
+        assert "const asArray = (value) => Array.isArray(value) ? value : [];" in jsx
+        assert "const collectionKeys = new Set([\"items\", \"plan\", \"logs\", \"agents\", \"memory\", \"mistakes\", \"audio\", \"history\", \"repoNotes\"]);" in jsx
+        assert "setRepos(d);" in jsx
+        assert "const d = asArray(await r.json()).map(repoRow => ({" in jsx
+        assert "const missingApiRef = useRef(new Set());" in jsx
+        assert "const es = new EventSource(`${API}/api/events?token=${encodeURIComponent(apiToken)}`);" in jsx
+        assert "if (!apiToken) return undefined;" in jsx
+        assert 'postSession("/api/app/session/open").then(ok => { if (alive) setSessionReady(ok); });' in jsx
+
+    def test_523_api_server_guards_duplicate_bind_and_sse_query_auth(self, project_dir):
+        py = Path(project_dir, "orchestrator.py").read_text(encoding="utf-8")
+        assert "class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):" in py
+        assert "allow_reuse_port = False" in py
+        assert "if p in {\"/api/events\", \"/api/app/session/open\", \"/api/app/session/heartbeat\", \"/api/app/session/close\"}" in py
+        assert "manager.reset_startup_runtime()" in py
+        assert "runtime_counts = manager.count_runtime_repos()" in py
+
+    def test_524_dashboard_browser_smoke(self, project_dir):
+        if not shutil.which("node"):
+            pytest.skip("node not installed")
+        smoke = Path(project_dir, "scripts", "dashboard_browser_smoke.js")
+        if not smoke.exists():
+            pytest.skip("dashboard browser smoke script missing")
+        try:
+            urlopen("http://127.0.0.1:6969/", timeout=2)
+        except Exception:
+            pytest.skip("Server not running on port 6969")
+        runner = Path(project_dir, "output", "playwright-runner", "node_modules", "playwright-core")
+        if not runner.exists():
+            pytest.skip("playwright-core runner not available")
+        r = subprocess.run(
+            ["node", str(smoke), "--url", "http://127.0.0.1:6969/"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            shell=SHELL,
+        )
+        assert r.returncode == 0, r.stdout + "\n" + r.stderr
+
+    def test_525_masterdb_get_repo_roundtrip(self, master_db, tmp_path):
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        created = master_db.add_repo("dash-regression", str(repo_path))
+        loaded = master_db.get_repo(created["id"])
+        assert loaded is not None
+        assert loaded["id"] == created["id"]
+        assert loaded["name"] == "dash-regression"
+
+    def test_526_local_dashboard_requests_are_rate_limit_exempt(self):
+        from orchestrator import _check_rate_limit
+        assert _check_rate_limit("127.0.0.1", "/api/repos") is True
+        assert _check_rate_limit("::1", "/api/items") is True
+
+    def test_527_dashboard_session_helpers_track_open_and_close(self):
+        from orchestrator import touch_dashboard_session, close_dashboard_session, get_dashboard_session_snapshot
+        touch_dashboard_session("pytest-session", {"path": "/", "visible": True})
+        snapshot = get_dashboard_session_snapshot()
+        assert snapshot["count"] >= 1
+        assert any(s["session_id"] == "pytest-session" for s in snapshot["sessions"])
+        close_dashboard_session("pytest-session")
+        snapshot = get_dashboard_session_snapshot()
+        assert all(s["session_id"] != "pytest-session" for s in snapshot["sessions"])
+
+    def test_528_manager_requires_open_dashboard_session(self, master_db, tmp_path):
+        from orchestrator import Manager
+        repo_path = tmp_path / "gated-repo"
+        repo_path.mkdir()
+        master_db.add_repo("gated-repo", str(repo_path))
+        manager = Manager()
+        manager.master.close()
+        manager.master = master_db
+        with patch("orchestrator.has_active_dashboard_sessions", return_value=False):
+            result = manager.start_repo(master_db.get_repos()[0]["id"])
+        assert result["ok"] is False
+        assert "Dashboard must be open" in result["error"]
+
+    def test_529_launchers_default_to_server_only(self, project_dir):
+        launch_bat = Path(project_dir, "scripts", "launch-swarm.bat").read_text(encoding="utf-8")
+        launch_sh = Path(project_dir, "scripts", "launch-swarm.sh").read_text(encoding="utf-8")
+        restart_ps1 = Path(project_dir, "scripts", "restart-server.ps1").read_text(encoding="utf-8")
+        start_tg_ps1 = Path(project_dir, "scripts", "start-telegram.ps1").read_text(encoding="utf-8")
+        assert "--server-only" in launch_bat
+        assert "--start-all" not in launch_bat
+        assert "--server-only" in launch_sh
+        assert "--start-all" not in launch_sh
+        assert "--server-only" in restart_ps1
+        assert "--server-only" in start_tg_ps1
+
+    def test_530_dashboard_uses_session_heartbeat_and_slower_default_poll(self, project_dir):
+        jsx = Path(project_dir, "swarm-dashboard.jsx").read_text(encoding="utf-8")
+        assert 'localStorage.getItem("swarm-refresh") || "15000"' in jsx
+        assert 'postSession("/api/app/session/open")' in jsx
+        assert 'postSession("/api/app/session/heartbeat")' in jsx
+        assert 'postSession("/api/app/session/close")' in jsx
+
+    def test_531_index_serves_precompiled_dashboard_bundle(self, project_dir):
+        html = Path(project_dir, "index.html").read_text(encoding="utf-8")
+        assert "babel.min.js" not in html
+        assert 'type="text/babel"' not in html
+        assert 'src="swarm-dashboard.js"' in html
+
+    def test_532_dashboard_bundle_builder_and_acceptance_script_exist(self, project_dir):
+        py = Path(project_dir, "orchestrator.py").read_text(encoding="utf-8")
+        assert "def ensure_dashboard_bundle(force: bool = False) -> bool:" in py
+        assert 'if path == "/swarm-dashboard.js":' in py
+        assert "if self.stop_event.is_set():" in py
+        assert "self.state.current_state = State.IDLE" in py
+        acceptance = Path(project_dir, "scripts", "dashboard_lifecycle_acceptance.js")
+        assert acceptance.exists()

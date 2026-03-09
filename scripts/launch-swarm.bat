@@ -23,8 +23,8 @@ if not errorlevel 1 (
     exit /b 0
 )
 
-REM Start orchestrator in background (hidden window)
-start /b /min pythonw orchestrator.py --start-all 2>nul || start /b python orchestrator.py --start-all
+REM Start orchestrator in background (hidden window) with repos stopped by default
+start /b /min pythonw orchestrator.py --server-only 2>nul || start /b python orchestrator.py --server-only
 
 REM Wait for API
 echo   Waiting for API...

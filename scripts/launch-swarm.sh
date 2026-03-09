@@ -26,9 +26,9 @@ if curl -s "$URL/api/repos" > /dev/null 2>&1; then
     exit 0
 fi
 
-# Start orchestrator in background
+# Start orchestrator in background with repos stopped by default
 cd "$PROJECT_DIR"
-PYTHONIOENCODING=utf-8 python3 orchestrator.py --start-all &
+PYTHONIOENCODING=utf-8 python3 orchestrator.py --server-only &
 ORCH_PID=$!
 echo "  Orchestrator PID: $ORCH_PID"
 

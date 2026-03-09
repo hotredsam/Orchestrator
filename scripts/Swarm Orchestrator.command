@@ -15,7 +15,7 @@ if curl -s http://localhost:6969/api/repos > /dev/null 2>&1; then
     exit 0
 fi
 
-PYTHONIOENCODING=utf-8 python3 orchestrator.py --start-all &
+PYTHONIOENCODING=utf-8 python3 orchestrator.py --server-only &
 PID=$!
 
 # Wait for ready

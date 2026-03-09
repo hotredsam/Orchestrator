@@ -10,7 +10,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { width: 100%; height: 100%; }
@@ -18,13 +17,6 @@
 </head>
 <body>
   <div id="root"></div>
-  <script type="text/babel" src="swarm-dashboard.jsx"></script>
-  <script type="text/babel">
-    function App() {
-      return React.createElement(ErrorBoundary, null, React.createElement(Dashboard));
-    }
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(App));
-  </script>
+  <script src="swarm-dashboard.js"></script>
 </body>
 </html>
